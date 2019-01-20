@@ -25,7 +25,7 @@ namespace ProjectPSX {
 
         public void EXECUTE() {
             while (true) {
-                cpu.execute(mmu);
+                cpu.Run(mmu);
             }
         }
 
