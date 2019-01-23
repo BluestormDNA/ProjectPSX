@@ -9,6 +9,8 @@ namespace ProjectPSX {
         private uint HI;
         private uint LO;
 
+        private long cycle; //current CPU cycle counter for debug
+
         //CoPro Regs
         private uint[] COPROC0_REG = new uint[16];
         private uint SR { get { return COPROC0_REG[12]; } set { COPROC0_REG[12] = value; } }
@@ -27,7 +29,7 @@ namespace ProjectPSX {
 
         private struct Opcode {
             public uint instruction;    //Opcode Instruction
-            public uint load; //debug
+            public uint value;          //debug
             //I-Type
             public uint rs;             //Register Source
             public uint rt;             //Register Target
@@ -47,7 +49,7 @@ namespace ProjectPSX {
 
             public void Decode(uint opcode) {
                 instruction = opcode >> 26;
-                load = opcode;
+                value = opcode;
                 //I-Type
                 rs = (opcode >> 21) & 0x1F;
                 rt = (opcode >> 16) & 0x1F;
@@ -73,19 +75,24 @@ namespace ProjectPSX {
         private MEM mem;
 
         internal void Run(MMU mmu) {
+            fetchDecode(mmu);
+            Execute(mmu);
+            MemAccess();
+            WriteBack();
+
+            //debug
+            disassemble();
+            PrintRegs();
+            cycle++;
+        }
+
+        private void fetchDecode(MMU mmu) {
             //PC = PC_Predictor;
             opcode = next_opcode;
             uint load = mmu.read32(PC);
             next_opcode.Decode(load);
             //PC_Predictor += 4;
             PC += 4;
-
-            disassemble(opcode, mmu);
-            Execute(opcode, mmu);
-            MemAccess();
-            WriteBack();
-            cycle++;
-            //debug(opcode);
         }
 
         private void MemAccess() {
@@ -98,88 +105,118 @@ namespace ProjectPSX {
 
         private void WriteBack() {
             REG[wb.WriteRegN] = wb.WriteValue;
+            wb.WriteRegN = 0;
             REG[0] = 0;
         }
 
-        private void Execute(Opcode opcode, MMU mmu) {
+        private void Execute(MMU mmu) {
             switch (opcode.instruction) {
                 case 0b00_0000: //R-Type Instructions
                     switch (opcode.function) {
-                        case 0b00_0000: SLL(opcode);            break;
-                        case 0b00_0010: SRL(opcode);            break;
-                        case 0b00_0011: SRA(opcode);            break;
-                        case 0b00_1000: JR(opcode);             break;
-                        case 0b00_1001: JALR(opcode);           break;
-                        case 0b01_0010: MFLO(opcode);           break;
-                        case 0b01_1010: DIV(opcode);            break;
-                        case 0b10_0000: ADD(opcode);            break;
-                        case 0b10_0001: ADDU(opcode);           break;
-                        case 0b10_0011: SUBU(opcode);           break;
-                        case 0b10_0100: AND(opcode);            break;
-                        case 0b10_1011: SLTU(opcode);           break;
-                        case 0b10_0101: OR(opcode);             break;
-                        default: unimplementedWarning(opcode);  break;
+                        case 0b00_0000: SLL();            break;
+                        case 0b00_0010: SRL();            break;
+                        case 0b00_0011: SRA();            break;
+                        case 0b00_1000: JR();             break;
+                        case 0b00_1001: JALR();           break;
+                        //case 0b00_1100: SYSCALL();        break;
+                        case 0b01_0000: MFHI();           break;
+                        case 0b01_0010: MFLO();           break;
+                        case 0b01_1010: DIV();            break;
+                        case 0b01_1011: DIVU();           break;
+                        case 0b10_0000: ADD();            break;
+                        case 0b10_0001: ADDU();           break;
+                        case 0b10_0011: SUBU();           break;
+                        case 0b10_0100: AND();            break;
+                        case 0b10_1010: SLT();            break;
+                        case 0b10_1011: SLTU();           break;
+                        case 0b10_0101: OR();             break;
+                        default: unimplementedWarning();  break;
                     }
                     break;
                 case 0b00_0001:
                     switch (opcode.rt) {
-                        case 0b00_0000: BLTZ(opcode);           break;
-                        case 0b00_0001: BGEZ(opcode);           break;
-                        default: unimplementedWarning(opcode);  break;
+                        case 0b00_0000: BLTZ();           break;
+                        case 0b00_0001: BGEZ();           break;
+                        default: unimplementedWarning();  break;
                     }
                     break;
                 
-                case 0b00_0010: J(opcode);                      break;
-                case 0b00_0011: JAL(opcode);                    break;
-                case 0b00_0100: BEQ(opcode);                    break;
-                case 0b00_0101: BNE(opcode);                    break;
-                case 0b00_0110: BLEZ(opcode);                   break;
-                case 0b00_0111: BGTZ(opcode);                   break;
-                case 0b00_1000: ADDI(opcode);                   break;
-                case 0b00_1001: ADDIU(opcode);                  break;
-                case 0b00_1010: SLTI(opcode);                   break;
-                case 0b00_1011: SLTIU(opcode);                  break;
+                case 0b00_0010: J();                      break;
+                case 0b00_0011: JAL();                    break;
+                case 0b00_0100: BEQ();                    break;
+                case 0b00_0101: BNE();                    break;
+                case 0b00_0110: BLEZ();                   break;
+                case 0b00_0111: BGTZ();                   break;
+                case 0b00_1000: ADDI();                   break;
+                case 0b00_1001: ADDIU();                  break;
+                case 0b00_1010: SLTI();                   break;
+                case 0b00_1011: SLTIU();                  break;
 
-                case 0b00_1100: ANDI(opcode);                   break;
-                case 0b00_1101: ORI(opcode);                    break;
-                case 0b00_1111: LUI(opcode);                    break;
+                case 0b00_1100: ANDI();                   break;
+                case 0b00_1101: ORI();                    break;
+                case 0b00_1111: LUI();                    break;
 
                 case 0b01_0000: //CoProcessor Instructions
                     switch (opcode.format) {
-                        case 0b0_0000: MFC0(opcode);            break;
-                        case 0b0_0100: MTC0(opcode);            break;
-                        default: unimplementedWarning(opcode);  break;
+                        case 0b0_0000: MFC0();            break;
+                        case 0b0_0100: MTC0();            break;
+                        default: unimplementedWarning();  break;
                     }
                     break;
                
-                case 0b10_0000: LB(opcode, mmu);                break;
-                case 0b10_0100: LBU(opcode, mmu);               break;
-                case 0b10_0011: LW(opcode, mmu);                break;
-                case 0b10_1001: SH(opcode, mmu);                break;
-                case 0b10_1000: SB(opcode, mmu);                break;
-                case 0b10_1011: SW(opcode, mmu);                break;
+                case 0b10_0000: LB(mmu);                  break;
+                case 0b10_0100: LBU(mmu);                 break;
+                case 0b10_0011: LW(mmu);                  break;
+                case 0b10_1001: SH(mmu);                  break;
+                case 0b10_1000: SB(mmu);                  break;
+                case 0b10_1011: SW(mmu);                  break;
                 default:
                     PC -= 4;
-                    unimplementedWarning(opcode);
+                    unimplementedWarning();
                     break;
             }
         }
 
-        private void SLTIU(Opcode opcode) {
-            //unimplementedWarning(opcode);
+        private void SYSCALL() {
+            throw new NotImplementedException();
+        }
+
+        private void SLT() {
+            bool condition = (int)REG[opcode.rs] < (int)REG[opcode.rt];
+            setReg(opcode.rd, condition ? 1u : 0u);
+        }
+
+        private void MFHI() {
+            setReg(opcode.rd, HI);
+        }
+
+        private void DIVU() {
+            uint n = REG[opcode.rs];
+            uint d = REG[opcode.rt];
+
+            if(d == 0) {
+                HI = n;
+                LO = 0xFFFF_FFFF;
+            } else {
+                HI = n % d;
+                LO = n / d;
+            }
+        }
+
+        private void SLTIU() {
             bool condition = REG[opcode.rs] < opcode.imm_s;
             setReg(opcode.rt, condition ? 1u : 0u);
         }
 
-        private void SRL(Opcode opcode) {
+        private void SRL() {
             setReg(opcode.rd, REG[opcode.rt] >> (int)opcode.sa);
         }
 
-        private void MFLO(Opcode opcode) {
+        private void MFLO() {
             setReg(opcode.rd, LO);
         }
 
-        private void DIV(Opcode opcode) { //signed division
+        private void DIV() { //signed division
             int n = (int)REG[opcode.rs];
             int d = (int)REG[opcode.rt];
 
@@ -199,65 +236,61 @@ namespace ProjectPSX {
             }
         }
 
-        private void SRA(Opcode opcode) { //TODO revisit this
-            //setReg(opcode.rd, (uint)((int)REG[opcode.rt] >> (int)opcode.sa));
-            setReg(opcode.rd, (uint)(REG[opcode.rt] >> (int)opcode.sa | REG[opcode.rt] & 0x8000_0000));
+        private void SRA() { //TODO revisit this
+            setReg(opcode.rd, (uint)((int)REG[opcode.rt] >> (int)opcode.sa));
         }
 
-        private void SUBU(Opcode opcode) {
+        private void SUBU() {
             setReg(opcode.rd, REG[opcode.rs] - REG[opcode.rt]);
         }
 
-        private void SLTI(Opcode opcode) {
+        private void SLTI() {
             bool condition = (int)REG[opcode.rs] < (int)opcode.imm_s;
             setReg(opcode.rt, condition ? 1u : 0u);
         }
 
-        private void BGEZ(Opcode opcode) {
+        private void BGEZ() {
             if (((int)REG[opcode.rs]) >= 0) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
         }
 
-        private void BLTZ(Opcode opcode) {
+        private void BLTZ() {
             if (((int)REG[opcode.rs]) < 0) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
         }
 
-        private void JALR(Opcode opcode) {
+        private void JALR() {
             setReg(opcode.rd, PC);
             PC = REG[opcode.rs];
         }
 
-        private void LBU(Opcode opcode, MMU mmu) { //todo recheck this
+        private void LBU(MMU mmu) { //todo recheck this
             if ((SR & 0x10000) == 0) {
                 uint lbu = (byte)mmu.read32(REG[opcode.rs] + opcode.imm_s);
                 mem.LoadRegN = opcode.rt;
                 mem.LoadValue = lbu;
-            } else Console.WriteLine("Ignoring Write");
+            } //else Console.WriteLine("Ignoring Write");
         }
 
-        private void BLEZ(Opcode opcode) {
+        private void BLEZ() {
             if (((int)REG[opcode.rs]) <= 0) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
-            //debug(opcode);
-            //disassemble(opcode);
-            //Console.ReadLine();
         }
 
-        private void BGTZ(Opcode opcode) {
+        private void BGTZ() {
             if (((int)REG[opcode.rs]) > 0) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
         }
 
-        private void ADD(Opcode opcode) {
+        private void ADD() {
             int rs = (int)REG[opcode.rs];
             int rt = (int)REG[opcode.rt];
             try {
@@ -267,77 +300,76 @@ namespace ProjectPSX {
             } catch (OverflowException) {
                 //Console.WriteLine("WARNING ADDI OVERFLOW!");
             }
-            //In theory till here is ok <---- TODO
         }
 
-        private void AND(Opcode opcode) {
+        private void AND() {
             setReg(opcode.rd, REG[opcode.rs] & REG[opcode.rt]);
         }
 
-        private void MFC0(Opcode opcode) {
+        private void MFC0() {
             mem.LoadRegN = opcode.ft;
             mem.LoadValue = COPROC0_REG[opcode.fs];
         }
 
-        private void BEQ(Opcode opcode) {
+        private void BEQ() {
             if (REG[opcode.rs] == REG[opcode.rt]) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
         }
 
-        private void LB(Opcode opcode, MMU mmu) { //todo redo this as it unnecesary read32
+        private void LB(MMU mmu) { //todo redo this as it unnecesary read32
             if ((SR & 0x10000) == 0) {
                 uint lb = (uint)((sbyte)(mmu.read32(REG[opcode.rs] + opcode.imm_s)));
                 mem.LoadRegN = opcode.rt;
                 mem.LoadValue = lb;
-            } else Console.WriteLine("Ignoring Write");
+            } //else Console.WriteLine("Ignoring Write");
         }
 
-        private void JR(Opcode opcode) {
+        private void JR() {
             PC = REG[opcode.rs];
         }
 
-        private void SB(Opcode opcode, MMU mmu) {
+        private void SB(MMU mmu) {
             if ((SR & 0x10000) == 0)
                 mmu.write8(REG[opcode.rs] + opcode.imm_s, (byte)REG[opcode.rt]);
             //else Console.WriteLine("Ignoring Write");
         }
 
-        private void ANDI(Opcode opcode) {
+        private void ANDI() {
             setReg(opcode.rt, REG[opcode.rs] & opcode.imm);
         }
 
-        private void JAL(Opcode opcode) {
+        private void JAL() {
             setReg(31, PC);
             PC = (PC & 0xF000_0000) | (opcode.addr << 2);
         }
 
-        private void SH(Opcode opcode, MMU mmu) {
+        private void SH(MMU mmu) {
             if ((SR & 0x10000) == 0)
                 mmu.write16(REG[opcode.rs] + opcode.imm_s, (ushort)REG[opcode.rt]);
             //else Console.WriteLine("Ignoring Write");
         }
 
-        private void ADDU(Opcode opcode) {
+        private void ADDU() {
             setReg(opcode.rd, REG[opcode.rs] + REG[opcode.rt]);
         }
 
-        private void SLTU(Opcode opcode) {
+        private void SLTU() {
             bool condition = REG[opcode.rs] < REG[opcode.rt];
             setReg(opcode.rd, condition ? 1u : 0u);
         }
 
-        private void LW(Opcode opcode, MMU mmu) {
+        private void LW(MMU mmu) {
             if ((SR & 0x10000) == 0) {
                 uint lw = mmu.read32(REG[opcode.rs] + opcode.imm_s);
                 mem.LoadRegN = opcode.rt;
                 mem.LoadValue = lw;
             }
-            else Console.WriteLine("Ignoring Read");
+            //else Console.WriteLine("Ignoring Read");
         }
 
-        private void ADDI(Opcode opcode) {
+        private void ADDI() {
             int rs = (int)REG[opcode.rs];
             int imm_s = (int)opcode.imm_s;
             try {
@@ -349,46 +381,44 @@ namespace ProjectPSX {
             }
         }
 
-        private void BNE(Opcode opcode) {
-            //Console.WriteLine("BNE Comparing RS " + REG[opcode.rs].ToString("x4") + "  RT " + REG[opcode.rt].ToString("x4"));
+        private void BNE() {
             if (REG[opcode.rs] != REG[opcode.rt]) {
                 PC -= 4;
                 PC += opcode.imm_s << 2;
             }
         }
 
-        private void MTC0(Opcode opcode) {
+        private void MTC0() {
             COPROC0_REG[opcode.fs] = REG[opcode.ft];
         }
 
-        private void OR(Opcode opcode) {
+        private void OR() {
             setReg(opcode.rd, REG[opcode.rs] | REG[opcode.rt]);
         }
 
-        private void J(Opcode opcode) {
+        private void J() {
             PC = (PC & 0xF000_0000) | (opcode.addr << 2);
         }
 
-        private void ADDIU(Opcode opcode) {
+        private void ADDIU() {
             setReg(opcode.rt, REG[opcode.rs] + opcode.imm_s);
         }
 
-        private void SLL(Opcode opcode) {
+        private void SLL() {
             setReg(opcode.rd, REG[opcode.rt] << (int)opcode.sa);
         }
 
-        private void SW(Opcode opcode, MMU mmu) {
+        private void SW(MMU mmu) {
             if ((SR & 0x10000) == 0)
                 mmu.write32(REG[opcode.rs] + opcode.imm_s, REG[opcode.rt]);
             //else Console.WriteLine("Ignoring Write");
-            //Console.WriteLine("Just in case... READ: " + mmu.read32(REG[opcode.rs] + opcode.imm_s).ToString("x8"));
         }
 
-        private void LUI(Opcode opcode) {
+        private void LUI() {
             setReg(opcode.rt, opcode.imm << 16);
         }
 
-        private void ORI(Opcode opcode) {
+        private void ORI() {
             setReg(opcode.rt, REG[opcode.rs] | opcode.imm);
         }
 
@@ -397,106 +427,116 @@ namespace ProjectPSX {
             wb.WriteValue = value;
         }
 
-        private void unimplementedWarning(Opcode opcode) {
+        private void unimplementedWarning() {
             Console.WriteLine("Unimplemented OPCODE");
-            debug(opcode);
+            string funct_string = opcode.instruction == 0 ? " Function: " + opcode.function.ToString("x8") : "";
+            Console.WriteLine("Cycle: " + cycle + " PC: " + (PC - 8).ToString("x8") + " Load32: " + opcode.value.ToString("x8")
+                + " Instr: " + opcode.instruction.ToString("x8") + funct_string);
+            disassemble();
+            PrintRegs();
             throw new NotImplementedException();
         }
 
-        long cycle;
-        private void debug(Opcode opcode) {
-            string funct_string = opcode.instruction == 0 ? " Function: " + opcode.function.ToString("x4") : "";
-            Console.WriteLine("Cycle: " + cycle + " PC: " + (PC - 8).ToString("x4") + " Load32: " + opcode.load.ToString("x4")
-                + " Instr: " + opcode.instruction.ToString("x4") + funct_string);
-            //Console.WriteLine("Debug: REG31 " + REG[31].ToString("x4"));
+        private void TTY() {
             if (PC == 0x000000B4 && REG[9] == 0x3D) {
                 Console.WriteLine("TEXT!!!!!!!!!!!!!!!!: " + (char)REG[4]);
             }
-            PrintRegs();
         }
 
-        private void disassemble(Opcode opcode, MMU mmu) {
+        private void disassemble() {
             string pc = (PC - 8).ToString("x8");
-            string load = opcode.load.ToString("x8");
+            string load = opcode.value.ToString("x8");
             string output = "";
             string values = "";
 
             switch (opcode.instruction) {
                 case 0b00_0000: //R-Type Instructions
                     switch (opcode.function) {
-                        case 0b00_0000: //SLL(opcode); break;
+                        case 0b00_0000: //SLL(); break;
                             //setReg(opcode.rd, REG[opcode.rt] << (int)opcode.sa);
-                            if(opcode.load == 0) {
+                            if(opcode.value == 0) {
                                 output = "NOP";
                             } else {
                                 output = "SLL" + opcode.rd;
                             }
                             break;
-                        case 0b00_0010: //SRL(opcode);
+                        case 0b00_0010: //SRL();
                             output = "SRL";
                             break;
-                        case 0b00_0011: //SRA(opcode);
+                        case 0b00_0011: //SRA();
                             output = "SRA";
                             break;
-                        case 0b00_1000: //JR(opcode);
+                        case 0b00_1000: //JR();
                             output = "JR";
                             break;
-                        case 0b00_1001: //JALR(opcode);
+                        case 0b00_1001: //JALR();
                             output = "JALR";
                             break;
-                        case 0b01_0010: //MFLO(opcode);
+                        case 0b00_1100: //SYSCALL(); break;
+                            output = "SYSCALL";
+                            break;
+                        case 0b01_0000: //MFHI(); break;
+                            output = "MFHI";
+                            break;
+                        case 0b01_0010: //MFLO();
                             output = "MFLO";
                             break;
-                        case 0b01_1010: //DIV(opcode)
+                        case 0b01_1010: //DIV()
                             output = "DIV";
                             ; break;
-                        case 0b10_0000: //ADD(opcode);
+                        case 0b01_1011: //DIVU(); break;
+                            output = "DIVU";
+                            break;
+                        case 0b10_0000: //ADD();
                             output = "ADD";
                             break;
-                        case 0b10_0001: //ADDU(opcode);
+                        case 0b10_0001: //ADDU();
                             output = "ADDU";
                             break;
-                        case 0b10_0011: //SUBU(opcode);
+                        case 0b10_0011: //SUBU();
                             output = "LUI";
                             break;
-                        case 0b10_0100: //AND(opcode);
+                        case 0b10_0100: //AND();
                             output = "LUI";
                             break;
-                        case 0b10_1011: //SLTU(opcode);
+                        case 0b10_1010: //SLT(); break;
                             output = "SLTU";
                             break;
-                        case 0b10_0101: //OR(opcode);
+                        case 0b10_1011: //SLTU();
+                            output = "SLTU";
+                            break;
+                        case 0b10_0101: //OR();
                             // setReg(opcode.rd, REG[opcode.rs] | REG[opcode.rt]);
                             output = "OR";
                             values = "R" + opcode.rd + "," + (REG[opcode.rs] | REG[opcode.rt]).ToString("x8");
                             break;
-                        default: unimplementedWarning(opcode); break;
+                        default: unimplementedWarning(); break;
                     }
                     break;
                 case 0b00_0001:
                     switch (opcode.rt) {
-                        case 0b00_0000: //BLTZ(opcode);
+                        case 0b00_0000: //BLTZ();
                             output = "BLTZ";
                             break;
-                        case 0b00_0001: //BGEZ(opcode);
+                        case 0b00_0001: //BGEZ();
                             output = "BGEZ";
                             break;
-                        default: unimplementedWarning(opcode); break;
+                        default: unimplementedWarning(); break;
                     }
                     break;
 
-                case 0b00_0010: //J(opcode);
+                case 0b00_0010: //J();
                     // PC = (PC & 0xF000_0000) | (opcode.addr << 2);
                     output = "J";
                     values = ((PC & 0xF000_0000) | (opcode.addr << 2)).ToString("x8");
                     break;
-                case 0b00_0011: //JAL(opcode);
+                case 0b00_0011: //JAL();
                     output = "JAL";
                     break;
-                case 0b00_0100: //BEQ(opcode);
+                case 0b00_0100: //BEQ();
                     output = "BEQ";
                     break;
-                case 0b00_0101: //BNE(opcode);
+                case 0b00_0101: //BNE();
                     /*
                       if (REG[opcode.rs] != REG[opcode.rt]) {
                         PC -= 4;
@@ -506,13 +546,13 @@ namespace ProjectPSX {
                     output = "BNE";
                     values = "R" + opcode.rs +"[" + REG[opcode.rs].ToString("x8") + "]" +"," + "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], (" + ((PC-4)+(opcode.imm_s << 2)).ToString("x8") +")";
                     break;
-                case 0b00_0110: //BLEZ(opcode);
+                case 0b00_0110: //BLEZ();
                     output = "BLEZ";
                     break;
-                case 0b00_0111: //BGTZ(opcode);
+                case 0b00_0111: //BGTZ();
                     output = "BGTZ";
                     break;
-                case 0b00_1000: //ADDI(opcode);
+                case 0b00_1000: //ADDI();
                     //int rs = (int)REG[opcode.rs];
                     //int imm_s = (int)opcode.imm_s;
                     //try {
@@ -533,27 +573,27 @@ namespace ProjectPSX {
                         values = "R" + opcode.rt + "," + REG[opcode.rs].ToString("x8") + " + "  + opcode.imm_s.ToString("x8") + " UNHANDLED OVERFLOW";
                     }
                     break;
-                case 0b00_1001: //ADDIU(opcode);
+                case 0b00_1001: //ADDIU();
                     // setReg(opcode.rt, REG[opcode.rs] + opcode.imm_s);
                     output = "ADDIU";
                     values = "R" + opcode.rt + "," + (REG[opcode.rs] + opcode.imm_s).ToString("x8");
                     break;
-                case 0b00_1010: //SLTI(opcode);
+                case 0b00_1010: //SLTI();
                     output = "SLTI";
                     break;
-                case 0b00_1011: //SLTIU(opcode);
+                case 0b00_1011: //SLTIU();
                     output = "SLTIU";
                     break;
                                 
-                case 0b00_1100: //ANDI(opcode);
+                case 0b00_1100: //ANDI();
                     output = "ANDI";
                     break;
-                case 0b00_1101: //ORI(opcode);
+                case 0b00_1101: //ORI();
                     //setReg(opcode.rt, REG[opcode.rs] | opcode.imm);
                     output = "ORI";
                     values = "R" + opcode.rt + "," + (REG[opcode.rs] | opcode.imm).ToString("x8");
                     break;
-                case 0b00_1111: //LUI(opcode);
+                case 0b00_1111: //LUI();
                     //setReg(opcode.rt, opcode.imm << 16);
                     output = "LUI";
                     values = "R" + opcode.rt + "," + (opcode.imm << 16).ToString("x8");
@@ -562,42 +602,42 @@ namespace ProjectPSX {
 
                 case 0b01_0000: //CoProcessor Instructions
                     switch (opcode.format) {
-                        case 0b0_0000://MFC0(opcode);
+                        case 0b0_0000://MFC0();
                             output = "MFC0";
                             break;
-                        case 0b0_0100://MTC0(opcode);
+                        case 0b0_0100://MTC0();
                             // COPROC0_REG[opcode.fs] = REG[opcode.ft];
                             output = "MTC0";
                             values = "R" + opcode.fs + "," + "R" + opcode.ft + "["+REG[opcode.ft].ToString("x8")+"]";
                             break;
-                        default: unimplementedWarning(opcode); break;
+                        default: unimplementedWarning(); break;
                     }
                     break;
 
-                case 0b10_0000:// LB(opcode, mmu);
+                case 0b10_0000:// LB(mmu);
                     output = "LB";
                     break;
-                case 0b10_0100:// LBU(opcode, mmu);
+                case 0b10_0100:// LBU(mmu);
                     output = "LBU";
                     break;
-                case 0b10_0011:// LW(opcode, mmu);
+                case 0b10_0011:// LW(mmu);
                     //if ((SR & 0x10000) == 0) {
                     //    uint lw = mmu.read32(REG[opcode.rs] + opcode.imm_s);
                     //    mem.LoadRegN = opcode.rt;
                     //    mem.LoadValue = lw;
                     //} else Console.WriteLine("Ignoring Write");
                     if ((SR & 0x10000) == 0)
-                        values = "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], " + opcode.imm_s.ToString("x8") + "(" + REG[opcode.rs].ToString("x8") + ")" + "[" + (opcode.imm_s + REG[opcode.rs]).ToString("x8") + "]" + " READ = "+mmu.read32(REG[opcode.rs] + opcode.imm_s).ToString("x8");
-                    else values = "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], " + opcode.imm_s.ToString("x8") + "(" + REG[opcode.rs].ToString("x8") + ")" + "[" + (opcode.imm_s + REG[opcode.rs]).ToString("x8") + "]" + " READ = " + mmu.read32(REG[opcode.rs] + opcode.imm_s).ToString("x8") + " WARNING IGNORED LOAD";
+                        values = "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], " + opcode.imm_s.ToString("x8") + "(" + REG[opcode.rs].ToString("x8") + ")" + "[" + (opcode.imm_s + REG[opcode.rs]).ToString("x8") + "]" /*+ " READ = "+mmu.read32(REG[opcode.rs] + opcode.imm_s).ToString("x8")*/;
+                    else values = "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], " + opcode.imm_s.ToString("x8") + "(" + REG[opcode.rs].ToString("x8") + ")" + "[" + (opcode.imm_s + REG[opcode.rs]).ToString("x8") + "]" /* + " READ = " + mmu.read32(REG[opcode.rs] + opcode.imm_s).ToString("x8")*/ + " WARNING IGNORED LOAD";
                     output = "LW";
                     break;
-                case 0b10_1001:// SH(opcode, mmu);
+                case 0b10_1001:// SH(mmu);
                     output = "SH";
                     break;
-                case 0b10_1000:// SB(opcode, mmu);
+                case 0b10_1000:// SB(mmu);
                     output = "SB";
                     break;
-                case 0b10_1011:// SW(opcode, mmu);
+                case 0b10_1011:// SW(mmu);
                     //if ((SR & 0x10000) == 0)
                     //    mmu.write32(REG[opcode.rs] + opcode.imm_s, REG[opcode.rt]);
                     output = "SW";
@@ -609,7 +649,6 @@ namespace ProjectPSX {
                     break;
             }
             Console.WriteLine("{0,-8} {1,-8} {2,-8} {3,-8} {4,-20}", cycle, pc, load, output, values);
-            PrintRegs();
         }
 
         private void PrintRegs() {
