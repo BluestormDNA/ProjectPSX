@@ -170,7 +170,7 @@ namespace ProjectPSX {
                 case 0b10_1000: SB(mmu);                  break;
                 case 0b10_1011: SW(mmu);                  break;
                 default:
-                    PC -= 4;
+                    PC_Predictor -= 4;
                     unimplementedWarning();
                     break;
             }
@@ -263,7 +263,7 @@ namespace ProjectPSX {
         }
 
         private void JALR() {
-            setReg(opcode.rd, PC);
+            setReg(opcode.rd, PC_Predictor);
             PC_Predictor = REG[opcode.rs];
         }
 
@@ -340,8 +340,8 @@ namespace ProjectPSX {
         }
 
         private void JAL() {
-            setReg(31, PC);
-            PC_Predictor = (PC & 0xF000_0000) | (opcode.addr << 2);
+            setReg(31, PC_Predictor);
+            PC_Predictor = (PC_Predictor & 0xF000_0000) | (opcode.addr << 2);
         }
 
         private void SH(MMU mmu) {
@@ -396,7 +396,7 @@ namespace ProjectPSX {
         }
 
         private void J() {
-            PC_Predictor = (PC & 0xF000_0000) | (opcode.addr << 2);
+            PC_Predictor = (PC_Predictor & 0xF000_0000) | (opcode.addr << 2);
         }
 
         private void ADDIU() {
@@ -429,7 +429,7 @@ namespace ProjectPSX {
         private void unimplementedWarning() {
             Console.WriteLine("Unimplemented OPCODE");
             string funct_string = opcode.instruction == 0 ? " Function: " + opcode.function.ToString("x8") : "";
-            Console.WriteLine("Cycle: " + cycle + " PC: " + (PC - 8).ToString("x8") + " Load32: " + opcode.value.ToString("x8")
+            Console.WriteLine("Cycle: " + cycle + " PC: " + PC_Now.ToString("x8") + " Load32: " + opcode.value.ToString("x8")
                 + " Instr: " + opcode.instruction.ToString("x8") + funct_string);
             disassemble();
             PrintRegs();
@@ -443,7 +443,7 @@ namespace ProjectPSX {
         }
 
         private void disassemble() {
-            string pc = (PC_Now).ToString("x8");
+            string pc = PC_Now.ToString("x8");
             string load = opcode.value.ToString("x8");
             string output = "";
             string values = "";
@@ -527,7 +527,7 @@ namespace ProjectPSX {
                 case 0b00_0010: //J();
                     // PC = (PC & 0xF000_0000) | (opcode.addr << 2);
                     output = "J";
-                    values = ((PC & 0xF000_0000) | (opcode.addr << 2)).ToString("x8");
+                    values = ((PC_Predictor & 0xF000_0000) | (opcode.addr << 2)).ToString("x8");
                     break;
                 case 0b00_0011: //JAL();
                     output = "JAL";
