@@ -3,8 +3,9 @@
 namespace ProjectPSX {
     internal class CPU {
 
-        private uint PC = 0xbfc0_0000;
-        //private uint PC_Predictor = 0xbfc0_0000; // Bios Entry Point
+        private uint PC = 0xbfc0_0000; // Bios Entry Point
+        private uint PC_Predictor = 0xbfc0_0004; //next op for branch delay slot emulation
+        private uint PC_Now; // PC on current execution as PC and PC Predictor go ahead after fetch this is handy on Branch Delay so it not gives erronious PC-4
         private uint[] REG = new uint[32];
         private uint HI;
         private uint LO;
@@ -69,7 +70,6 @@ namespace ProjectPSX {
             }
         }
         private Opcode opcode;
-        private Opcode next_opcode; //used as MIPS execute next opcode even if branch (Branch Delay Slot)
 
         private WB wb;
         private MEM mem;
@@ -81,18 +81,17 @@ namespace ProjectPSX {
             WriteBack();
 
             //debug
-            disassemble();
-            PrintRegs();
-            cycle++;
+            //disassemble();
+            //PrintRegs();
         }
 
         private void fetchDecode(MMU mmu) {
-            //PC = PC_Predictor;
-            opcode = next_opcode;
             uint load = mmu.read32(PC);
-            next_opcode.Decode(load);
-            //PC_Predictor += 4;
-            PC += 4;
+            opcode.Decode(load);
+            PC_Now = PC;
+            PC = PC_Predictor;
+            PC_Predictor += 4;
+            cycle++;
         }
 
         private void MemAccess() {
@@ -251,21 +250,21 @@ namespace ProjectPSX {
 
         private void BGEZ() {
             if (((int)REG[opcode.rs]) >= 0) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
         private void BLTZ() {
             if (((int)REG[opcode.rs]) < 0) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
         private void JALR() {
             setReg(opcode.rd, PC);
-            PC = REG[opcode.rs];
+            PC_Predictor = REG[opcode.rs];
         }
 
         private void LBU(MMU mmu) { //todo recheck this
@@ -278,15 +277,15 @@ namespace ProjectPSX {
 
         private void BLEZ() {
             if (((int)REG[opcode.rs]) <= 0) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
         private void BGTZ() {
             if (((int)REG[opcode.rs]) > 0) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
@@ -313,8 +312,8 @@ namespace ProjectPSX {
 
         private void BEQ() {
             if (REG[opcode.rs] == REG[opcode.rt]) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
@@ -327,7 +326,7 @@ namespace ProjectPSX {
         }
 
         private void JR() {
-            PC = REG[opcode.rs];
+            PC_Predictor = REG[opcode.rs];
         }
 
         private void SB(MMU mmu) {
@@ -342,7 +341,7 @@ namespace ProjectPSX {
 
         private void JAL() {
             setReg(31, PC);
-            PC = (PC & 0xF000_0000) | (opcode.addr << 2);
+            PC_Predictor = (PC & 0xF000_0000) | (opcode.addr << 2);
         }
 
         private void SH(MMU mmu) {
@@ -383,8 +382,8 @@ namespace ProjectPSX {
 
         private void BNE() {
             if (REG[opcode.rs] != REG[opcode.rt]) {
-                PC -= 4;
-                PC += opcode.imm_s << 2;
+                PC_Predictor -= 4;
+                PC_Predictor += opcode.imm_s << 2;
             }
         }
 
@@ -397,7 +396,7 @@ namespace ProjectPSX {
         }
 
         private void J() {
-            PC = (PC & 0xF000_0000) | (opcode.addr << 2);
+            PC_Predictor = (PC & 0xF000_0000) | (opcode.addr << 2);
         }
 
         private void ADDIU() {
@@ -444,7 +443,7 @@ namespace ProjectPSX {
         }
 
         private void disassemble() {
-            string pc = (PC - 8).ToString("x8");
+            string pc = (PC_Now).ToString("x8");
             string load = opcode.value.ToString("x8");
             string output = "";
             string values = "";
@@ -544,7 +543,7 @@ namespace ProjectPSX {
                       }
                      */
                     output = "BNE";
-                    values = "R" + opcode.rs +"[" + REG[opcode.rs].ToString("x8") + "]" +"," + "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], (" + ((PC-4)+(opcode.imm_s << 2)).ToString("x8") +")";
+                    values = "R" + opcode.rs +"[" + REG[opcode.rs].ToString("x8") + "]" +"," + "R" + opcode.rt + "[" + REG[opcode.rt].ToString("x8") + "], (" + ((PC_Now)+(opcode.imm_s << 2)).ToString("x8") +")";
                     break;
                 case 0b00_0110: //BLEZ();
                     output = "BLEZ";
