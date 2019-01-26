@@ -57,6 +57,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="PSX\EX.cs" />
     <Compile Include="PSX\CPU.cs" />
     <Compile Include="PSX\MMU.cs" />
     <Compile Include="PSX\ProjectPSX.cs" />
