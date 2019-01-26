@@ -12,9 +12,6 @@ namespace ProjectPSX {
         private byte[] IO = new byte[512];
 
         internal uint read32(uint addr) {
-            if (addr % 4 != 0) {
-                //Console.WriteLine("UNALIGNED READ");
-            }
             //Console.WriteLine("READ ADDR: " + addr.ToString("x4"));
             switch (addr) {
                 case uint KUSEG when addr >= 0x0000_0000 && addr < 0x1F00_0000:
@@ -29,14 +26,18 @@ namespace ProjectPSX {
                     if (addr == 0x1f00_0084) { Console.WriteLine("EX1 IO PORT READ RETURNING FF"); return 0xFFFF_FFFF; } //todo look if this is needed EX1 IO port
                     addr &= 0x7_FFFF;
                     return (uint)((EX1[addr + 3] << 24) | (EX1[addr + 2] << 16) | (EX1[addr + 1] << 8) | EX1[addr]);
-                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400: //Warning: _1000
-                case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400: //Warning: _1000
-                case uint KSEG1 when addr >= 0xBF80_0000 && addr < 0xBF80_0400: //Warning: _1000
+                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400:
+                case uint KSEG1 when addr >= 0xBF80_0000 && addr < 0xBF80_0400:
                     addr &= 0xFFF;
                     return (uint)((SCRATHPAD[addr + 3] << 24) | (SCRATHPAD[addr + 2] << 16) | (SCRATHPAD[addr + 1] << 8) | SCRATHPAD[addr]);
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_3000:
                 case uint KSEG0 when addr >= 0x9F80_1000 && addr < 0x9F80_3000:
                 case uint KSEG1 when addr >= 0xBF80_1000 && addr < 0xBF80_3000:
+                    if (0x1f8010f0 == addr) {
+                        Console.WriteLine("DMA ACCESS");
+                        return 0;
+                    }
                     addr &= 0x1FFF;
                     return (uint)((REGISTERS[addr + 3] << 24) | (REGISTERS[addr + 2] << 16) | (REGISTERS[addr + 1] << 8) | REGISTERS[addr]);
                 case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
@@ -54,18 +55,10 @@ namespace ProjectPSX {
         }
 
         internal void write32(uint addr, uint value) {
-            if (addr % 4 != 0) {
-                Console.WriteLine("UNALIGNED WRITE");
-            }
-
             switch (addr) {
                 case uint KUSEG when addr >= 0x0000_0000 && addr < 0x1F00_0000:
                 case uint KSEG0 when addr >= 0x8000_0000 && addr < 0x9F00_0000:
                 case uint KSEG1 when addr >= 0xA000_0000 && addr < 0xBF00_0000:
-                    //if(addr == 0x801F_FDE0 || addr == 0x801F_FE00 || addr == 0xA000_B9B0) { DEBUG
-                    //    Console.WriteLine("Write on " + addr.ToString("x8") + value.ToString("x8"));
-                    //    Console.ReadLine();
-                    //}
                     addr &= 0x1F_FFFF;
                     RAM[addr] = (byte)(value);
                     RAM[addr + 1] = (byte)(value >> 8);
@@ -81,9 +74,9 @@ namespace ProjectPSX {
                     EX1[addr + 2] = (byte)(value >> 16);
                     EX1[addr + 3] = (byte)(value >> 24);
                     break;
-                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400: //Warning: _1000
-                case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400: //Warning: _1000
-                case uint KSEG1 when addr >= 0xBF80_0000 && addr < 0xBF80_0400: //Warning: _1000
+                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400:
+                case uint KSEG1 when addr >= 0xBF80_0000 && addr < 0xBF80_0400:
                     addr &= 0xFFF;
                     SCRATHPAD[addr] = (byte)(value);
                     SCRATHPAD[addr + 1] = (byte)(value >> 8);
@@ -139,11 +132,6 @@ namespace ProjectPSX {
         }
 
         internal void write8(uint addr, byte value) {
-            if (addr % 1 != 0) {
-                Console.WriteLine("UNALIGNED WRITE");
-            }
-            //Console.WriteLine("Write Addres Byte: " + addr.ToString("x4"));
-
             switch (addr) {
                 case uint KUSEG when addr >= 0x0000_0000 && addr < 0x1F00_0000:
                 case uint KSEG0 when addr >= 0x8000_0000 && addr < 0x9F00_0000:
@@ -188,10 +176,6 @@ namespace ProjectPSX {
         }
 
         internal void write16(uint addr, ushort value) {
-            if (addr % 2 != 0) {
-                Console.WriteLine("UNALIGNED WRITE");
-            }
-
             switch (addr) {
                 case uint KUSEG when addr >= 0x0000_0000 && addr < 0x1F00_0000:
                 case uint KSEG0 when addr >= 0x8000_0000 && addr < 0x9F00_0000:
