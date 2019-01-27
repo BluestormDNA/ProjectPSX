@@ -35,7 +35,7 @@ namespace ProjectPSX {
         }
 
         private struct Instr {
-            public uint opcode;    //Instr opcode
+            public uint opcode;         //Instr opcode
             public uint value;          //debug
             //I-Type
             public uint rs;             //Register Source
@@ -135,21 +135,25 @@ namespace ProjectPSX {
                         case 0b00_1000: JR();             break;
                         case 0b00_1001: JALR();           break;
                         case 0b00_1100: SYSCALL();        break;
+                        case 0b00_1101: BREAK();          break;
                         case 0b01_0000: MFHI();           break;
                         case 0b01_0001: MTHI();           break;
                         case 0b01_0010: MFLO();           break;
                         case 0b01_0011: MTLO();           break;
+                        case 0b01_1000: MULT();           break;
                         case 0b01_1001: MULTU();          break;
                         case 0b01_1010: DIV();            break;
                         case 0b01_1011: DIVU();           break;
                         case 0b10_0000: ADD();            break;
                         case 0b10_0001: ADDU();           break;
+                        case 0b10_0010: SUB();            break;
                         case 0b10_0011: SUBU();           break;
                         case 0b10_0100: AND();            break;
+                        case 0b10_0101: OR();             break;
+                        case 0b10_0110: XOR();            break;
                         case 0b10_0111: NOR();            break;
                         case 0b10_1010: SLT();            break;
                         case 0b10_1011: SLTU();           break;
-                        case 0b10_0101: OR();             break;
                         default: unimplementedWarning();  break;
                     }
                     break;
@@ -173,9 +177,10 @@ namespace ProjectPSX {
                 case 0b00_1011: SLTIU();                  break;
                 case 0b00_1100: ANDI();                   break;
                 case 0b00_1101: ORI();                    break;
+                case 0b00_1110: XORI();                   break;
                 case 0b00_1111: LUI();                    break;
 
-                case 0b01_0000: //CoProcessor opcodes
+                case 0b01_0000: //CoProcessor opcodes Cop0
                     switch (instr.format) {
                         case 0b0_0000: MFC0();            break;
                         case 0b0_0100: MTC0();            break;
@@ -183,7 +188,11 @@ namespace ProjectPSX {
                         default: unimplementedWarning();  break;
                     }
                     break;
-               
+
+                case 0b01_0001: COP1();                   break;
+                case 0b01_0010: COP2();                   break;
+                case 0b01_0011: COP3();                   break;
+
                 case 0b10_0000: LB(mmu);                  break;
                 case 0b10_0001: LH(mmu);                  break;
                 case 0b10_0011: LW(mmu);                  break;
@@ -197,6 +206,49 @@ namespace ProjectPSX {
                     unimplementedWarning();
                     break;
             }
+        }
+
+        private void COP2() {
+            Console.WriteLine("GTE ACCESS");
+            throw new NotImplementedException();
+        }
+
+        private void COP3() {
+            EXCEPTION(EX.COPROCESSOR_ERROR);
+        }
+
+        private void COP1() {
+            EXCEPTION(EX.COPROCESSOR_ERROR);
+        }
+
+        private void XORI() {
+            setReg(instr.rt, REG[instr.rs] ^ REG[instr.imm]);
+        }
+
+        private void SUB() {
+            int rs = (int)REG[instr.rs];
+            int rt = (int)REG[instr.rt];
+            try {
+                uint sub = (uint)checked(rs - rt);
+                setReg(instr.rd, sub);
+            } catch (OverflowException) {
+                EXCEPTION(EX.OVERFLOW);
+            }
+        }
+
+        private void MULT() {
+            long value = (int)REG[instr.rs] * (int)REG[instr.rt];
+
+            HI = (uint)(value >> 32);
+            LO = (uint)value;
+        }
+
+        private void BREAK() {
+            EXCEPTION(EX.BREAK);
+        }
+
+        private void XOR() {
+            setReg(instr.rd, REG[instr.rs] ^ REG[instr.rt]);
         }
 
         private void MULTU() {
@@ -599,22 +651,24 @@ namespace ProjectPSX {
                         case 0b00_1000: output = "JR";      break;
                         case 0b00_1001: output = "JALR";    break;
                         case 0b00_1100: output = "SYSCALL"; break;
+                        case 0b00_1101: output = "BREAK";   break;
                         case 0b01_0000: output = "MFHI";    break;
                         case 0b01_0010: output = "MFLO";    break;
                         case 0b01_0011: output = "MTLO";    break;
+                        case 0b01_1000: output = "MULT";    break;
                         case 0b01_1001: output = "MULTU";   break;
                         case 0b01_1010: output = "DIV";     break;
                         case 0b01_1011: output = "DIVU";    break;
                         case 0b10_0000: output = "ADD";     break;
                         case 0b10_0001: output = "ADDU";    break;
-                        case 0b10_0011: output = "LUI";     break;
+                        case 0b10_0010: output = "SUB";     break;
+                        case 0b10_0011: output = "SUBU";    break;
                         case 0b10_0100: output = "AND";     break;
+                        case 0b10_0101: output = "OR"; values = "R" + instr.rd + "," + (REG[instr.rs] | REG[instr.rt]).ToString("x8"); break;
+                        case 0b10_0110: output = "XOR";     break;
                         case 0b10_0111: output = "NOR";     break;
                         case 0b10_1010: output = "SLT";     break;
                         case 0b10_1011: output = "SLTU";    break;
-                        case 0b10_0101: output = "OR";
-                            values = "R" + instr.rd + "," + (REG[instr.rs] | REG[instr.rt]).ToString("x8");
-                            break;
                         default: /*unimplementedWarning();*/ break;
                     }
                     break;
