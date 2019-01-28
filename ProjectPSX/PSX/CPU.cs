@@ -154,7 +154,10 @@ namespace ProjectPSX {
                         case 0b10_0111: NOR();            break;
                         case 0b10_1010: SLT();            break;
                         case 0b10_1011: SLTU();           break;
-                        default: unimplementedWarning();  break;
+                        default:
+                            EXCEPTION(EX.ILLEGAL_INSTR);
+                            unimplementedWarning();
+                            break;
                     }
                     break;
                 case 0b00_0001:
@@ -195,17 +198,116 @@ namespace ProjectPSX {
 
                 case 0b10_0000: LB(mmu);                  break;
                 case 0b10_0001: LH(mmu);                  break;
+                case 0b10_0010: LWL(mmu);                 break;
                 case 0b10_0011: LW(mmu);                  break;
                 case 0b10_0100: LBU(mmu);                 break;
                 case 0b10_0101: LHU(mmu);                 break;
+                case 0b10_0110: LWR(mmu);                 break;
                 case 0b10_1000: SB(mmu);                  break;
                 case 0b10_1001: SH(mmu);                  break;
+                case 0b10_1010: SWL(mmu);                 break;
                 case 0b10_1011: SW(mmu);                  break;
+                case 0b10_1110: SWR(mmu);                 break;
+                case 0b11_0000: //LWC0
+                case 0b11_0001: //LWC1
+                case 0b11_0011: //LWC3
+                case 0b11_1000: //SWC0
+                case 0b11_1001: //SWC1
+                case 0b11_1011: UNIMPL_LW_SW_COP0_1_3();  break;
+                case 0b11_0010: LWC2(mmu);                break;
+                case 0b11_1010: SWC2(mmu);                break;
+                //pending lwc0-3 and swc0-3 and illegal opc
                 default:
-                    PC_Predictor -= 4;
+                    EXCEPTION(EX.ILLEGAL_INSTR);
                     unimplementedWarning();
                     break;
             }
+        }
+
+        private void SWC2(MMU mmu) {
+            Console.WriteLine("Store at GTE");
+            throw new NotImplementedException();
+        }
+
+        private void LWC2(MMU mmu) {
+            Console.WriteLine("Load from GTE");
+            throw new NotImplementedException();
+        }
+
+        private void UNIMPL_LW_SW_COP0_1_3() { //PSX Unimplemented CoProcessor Ops
+            EXCEPTION(EX.COPROCESSOR_ERROR);
+        }
+
+        private void SWR(MMU mmu) {
+            uint addr = REG[instr.rs] + instr.imm_s;
+            uint aligned_addr = (uint)(addr & ~0b11);
+
+            uint aligned_load = mmu.read32(aligned_addr);
+
+            uint value = 0;
+            switch (addr & 0b11) {
+                case 0: value = aligned_load | REG[instr.rt]; break;
+                case 1: value = aligned_load & 0xFF | REG[instr.rt] << 8; break;
+                case 2: value = aligned_load & 0xFFFF | REG[instr.rt] << 16; break;
+                case 3: value = aligned_load & 0xFF_FFFF | REG[instr.rt] << 24; break;
+            }
+
+            mmu.write32(addr, value);
+        }
+
+        private void SWL(MMU mmu) {
+            uint addr = REG[instr.rs] + instr.imm_s;
+            uint aligned_addr = (uint)(addr & ~0b11);
+
+            uint aligned_load = mmu.read32(aligned_addr);
+
+            uint value = 0;
+            switch (addr & 0b11) {
+                case 3: value = aligned_load | REG[instr.rt]; break;
+                case 2: value = aligned_load & 0xFF | REG[instr.rt] >> 8; break;
+                case 1: value = aligned_load & 0xFFFF | REG[instr.rt] >> 16; break;
+                case 0: value = aligned_load & 0xFF_FFFF | REG[instr.rt] >> 24; break;
+            }
+
+            mmu.write32(addr, value);
+        }
+
+        private void LWR(MMU mmu) {
+            uint addr = REG[instr.rs] + instr.imm_s;
+            uint aligned_addr = (uint)(addr & ~0b11);
+
+            uint aligned_load = mmu.read32(aligned_addr);
+
+            uint value = 0;
+            switch (addr & 0b11) {
+                case 0: value = aligned_load;       break;
+                case 1: value = aligned_load >> 8;  break;
+                case 2: value = aligned_load >> 16; break;
+                case 3: value = aligned_load >> 24; break;
+            }
+
+            uint prev_value = mem.LoadRegNPostDelay == instr.rt ?
+                mem.LoadValuePostDelay : REG[instr.rt];
+            delayedLoad(instr.rt, prev_value | value);
+        }
+
+        private void LWL(MMU mmu) {
+            uint addr = REG[instr.rs] + instr.imm_s;
+            uint aligned_addr = (uint)(addr & ~0b11);
+
+            uint aligned_load = mmu.read32(aligned_addr);
+
+            uint value = 0;
+            switch(addr & 0b11) {
+                case 0: value = aligned_load << 24; break;
+                case 1: value = aligned_load << 16; break;
+                case 2: value = aligned_load << 8;  break;
+                case 3: value = aligned_load;       break;
+            }
+
+            uint prev_value = mem.LoadRegNPostDelay == instr.rt ?
+                mem.LoadValuePostDelay : REG[instr.rt];
+            delayedLoad(instr.rt, prev_value | value);
         }
 
         private void COP2() {
@@ -278,8 +380,7 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
                     uint value = (uint)(short)mmu.read32(addr);
-                    mem.LoadRegN = instr.rt;
-                    mem.LoadValue = value;
+                    delayedLoad(instr.rt, value);
                 }
 
             } //else Console.WriteLine("Ignoring Load");
@@ -297,8 +398,7 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
                     uint value = (ushort)mmu.read32(addr);
-                    mem.LoadRegN = instr.rt;
-                    mem.LoadValue = value;
+                    delayedLoad(instr.rt, value);
                 }
 
             } //else Console.WriteLine("Ignoring Load");
@@ -441,8 +541,7 @@ namespace ProjectPSX {
         private void LBU(MMU mmu) { //todo recheck this
             if ((SR & 0x10000) == 0) {
                 uint value = (byte)mmu.read32(REG[instr.rs] + instr.imm_s);
-                mem.LoadRegN = instr.rt;
-                mem.LoadValue = value;
+                delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Load");
         }
 
@@ -474,8 +573,7 @@ namespace ProjectPSX {
         }
 
         private void MFC0() {
-            mem.LoadRegN = instr.ft;
-            mem.LoadValue = Cop0Reg[instr.fs];
+            delayedLoad(instr.ft, Cop0Reg[instr.fs]);
         }
 
         private void BEQ() {
@@ -486,9 +584,8 @@ namespace ProjectPSX {
 
         private void LB(MMU mmu) { //todo redo this as it unnecesary read32
             if ((SR & 0x10000) == 0) {
-                uint lb = (uint)((sbyte)(mmu.read32(REG[instr.rs] + instr.imm_s)));
-                mem.LoadRegN = instr.rt;
-                mem.LoadValue = lb;
+                uint value = (uint)((sbyte)(mmu.read32(REG[instr.rs] + instr.imm_s)));
+                delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Write");
         }
 
@@ -542,8 +639,7 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
                     uint value = mmu.read32(addr);
-                    mem.LoadRegN = instr.rt;
-                    mem.LoadValue = value;
+                    delayedLoad(instr.rt, value);
                 }
 
             } //else Console.WriteLine("Ignoring Load");
@@ -611,6 +707,11 @@ namespace ProjectPSX {
         private void setReg(uint regN, uint value) {
             wb.WriteRegN = regN;
             wb.WriteValue = value;
+        }
+
+        private void delayedLoad(uint regN, uint value) {
+            mem.LoadRegN = regN;
+            mem.LoadValue = value;
         }
 
         private void unimplementedWarning() {
@@ -762,6 +863,7 @@ namespace ProjectPSX {
                 case 0b10_0001: //LH(mmu); break;
                     output = "LH";
                     break;
+                case 0b10_0010: output = "LWL"; break;
                 case 0b10_0100:// LBU(mmu);
                     output = "LBU";
                     break;
@@ -777,6 +879,8 @@ namespace ProjectPSX {
                 case 0b10_1001:// SH(mmu);
                     output = "SH";
                     break;
+                case 0b10_1010: output = "SWL"; break;
+                case 0b10_0110: output = "LWR"; break;
                 case 0b10_1000:// SB(mmu);
                     output = "SB";
                     break;
@@ -788,6 +892,7 @@ namespace ProjectPSX {
                         values = "R" + instr.rt + "["+REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") +")" + "["+ (instr.imm_s + REG[instr.rs]).ToString("x8") + "]";
                     else values = "R" + instr.rt + "[" + REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + REG[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
                     break;
+                case 0b10_1110: output = "SW"; break;
                 default:
                     break;
             }
