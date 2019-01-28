@@ -10,6 +10,7 @@ namespace ProjectPSX {
         public const uint STORE_ADRESS_ERROR = 0x5;
         public const uint SYSCALL = 0x8;
         public const uint BREAK = 0x9;
+        public const uint ILLEGAL_INSTR = 0xA;
         public const uint COPROCESSOR_ERROR = 0xB;
         public const uint OVERFLOW = 0xC;
     }
