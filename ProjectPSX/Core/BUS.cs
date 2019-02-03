@@ -1,9 +1,11 @@
-﻿using System;
+﻿using ProjectPSX.Devices;
+using System;
 using System.IO;
 
 namespace ProjectPSX {
-    internal class MMU {
+    internal class BUS {
 
+        //Memory
         private byte[] RAM = new byte[2048 * 1024];
         private byte[] EX1 = new byte[512 * 1024];
         private byte[] SCRATHPAD = new byte[1024];
@@ -11,11 +13,17 @@ namespace ProjectPSX {
         private byte[] BIOS = new byte[512 * 1024];
         private byte[] IO = new byte[512];
 
+        //Other Subsystems
+        private DMA dma;
+
+        public BUS() {
+            dma = new DMA();
+        }
+
         private const uint GPUSTAT = 0x1f801814;
         private const uint GP0 = 0x1f801810;
 
-        internal uint read32(uint addr) {
-            //Console.WriteLine("READ ADDR: " + addr.ToString("x4"));
+        internal uint load32(uint addr) {
             switch (addr) {
                 case uint KUSEG when addr >= 0x0000_0000 && addr < 0x1F00_0000:
                 case uint KSEG0 when addr >= 0x8000_0000 && addr < 0x9F00_0000:
@@ -39,29 +47,22 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                 case uint KSEG0 when addr >= 0x9F80_1000 && addr < 0x9F80_2000:
                 case uint KSEG1 when addr >= 0xBF80_1000 && addr < 0xBF80_2000:
-                    if (addr >= 0x1f801080 && addr <= 0x1f8010FF) {
-                        Console.WriteLine("DMA ACCESS");
-                        return 0;
-                    } else if (addr == GPUSTAT) { Console.WriteLine("GPUSTAT ACCESS"); return 0x1000_0000; }
-                    else if (addr == GP0) { Console.WriteLine("GP0 ACCESS"); return 0; } 
-                    else if (addr == 0x1f801104) { Console.WriteLine("Timer 1104 ACCESS"); return 0; } 
-                    else if (addr == 0x1f801114) { Console.WriteLine("Timer 1114 ACCESS"); return 0; }
-                    else if (addr == 0x1f801118) { Console.WriteLine("Timer 1118 ACCESS"); return 0; } 
-                    else if (addr == 0x1f801070) { Console.WriteLine("Interrupt Mask ACCESS"); return 0; } 
-                    else if (addr == 0x1f801074) { Console.WriteLine("Interrupt Status ACCESS"); return 0; }
-                    else if (addr == 0x1f801dae) { Console.WriteLine("SPU ACCESS"); return 0; }
+                    if (addr == GPUSTAT) { Console.WriteLine("GPUSTAT ACCESS"); return 0x1000_0000; } else if (addr == GP0) { Console.WriteLine("GP0 ACCESS"); return 0; } else if (addr == 0x1f801104) { Console.WriteLine("Timer 1104 ACCESS"); return 0; } else if (addr == 0x1f801114) { Console.WriteLine("Timer 1114 ACCESS"); return 0; } else if (addr == 0x1f801118) { Console.WriteLine("Timer 1118 ACCESS"); return 0; } else if (addr == 0x1f801070) { Console.WriteLine("Interrupt Mask ACCESS"); return 0; } else if (addr == 0x1f801074) { Console.WriteLine("Interrupt Status ACCESS"); return 0; } else if (addr == 0x1f801dae) { Console.WriteLine("SPU ACCESS"); return 0; }
 
-                    addr &= 0xFFF;
-                    return (uint)((REGISTERS[addr + 3] << 24) | (REGISTERS[addr + 2] << 16) | (REGISTERS[addr + 1] << 8) | REGISTERS[addr]);
+                    switch (addr) {
+                        case uint DMA when addr >= 0x1F80_1080 && addr < 0x1F80_10FF:
+                            Console.WriteLine("load at addr {0} = {1}", addr.ToString("x8"), dma.load32(addr).ToString("x8"));
+                            return dma.load32(addr);
+
+                        default:
+                            addr &= 0xFFF;
+                            return (uint)((REGISTERS[addr + 3] << 24) | (REGISTERS[addr + 2] << 16) | (REGISTERS[addr + 1] << 8) | REGISTERS[addr]);
+                    }
+
 
                 case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                 case uint KSEG0 when addr >= 0x9FC0_0000 && addr < 0x9FC8_0000:
                 case uint KSEG1 when addr >= 0xBFC0_0000 && addr < 0xBFC8_0000: //BIOS mem map
-                    if (0xbfc04190 == addr) {
-                        Console.WriteLine("DMA LOOP");
-                        return 0;
-                    }
-
                     addr &= 0x7_FFFF;
                     return (uint)((BIOS[addr + 3] << 24) | (BIOS[addr + 2] << 16) | (BIOS[addr + 1] << 8) | BIOS[addr]);
 
@@ -86,6 +87,7 @@ namespace ProjectPSX {
                     RAM[addr + 2] = (byte)(value >> 16);
                     RAM[addr + 3] = (byte)(value >> 24);
                     break;
+
                 case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
                 case uint KSEG0 when addr >= 0x9F00_0000 && addr < 0x9F08_0000:
                 case uint KSEG1 when addr >= 0xBF00_0000 && addr < 0xBF08_0000:
@@ -95,6 +97,7 @@ namespace ProjectPSX {
                     EX1[addr + 2] = (byte)(value >> 16);
                     EX1[addr + 3] = (byte)(value >> 24);
                     break;
+
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
                 case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400:
                 case uint KSEG1 when addr >= 0xBF80_0000 && addr < 0xBF80_0400:
@@ -104,21 +107,33 @@ namespace ProjectPSX {
                     SCRATHPAD[addr + 2] = (byte)(value >> 16);
                     SCRATHPAD[addr + 3] = (byte)(value >> 24);
                     break;
+
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                 case uint KSEG0 when addr >= 0x9F80_1000 && addr < 0x9F80_2000:
                 case uint KSEG1 when addr >= 0xBF80_1000 && addr < 0xBF80_2000:
-                    addr &= 0xFFF;
-                    REGISTERS[addr] = (byte)(value);
-                    REGISTERS[addr + 1] = (byte)(value >> 8);
-                    REGISTERS[addr + 2] = (byte)(value >> 16);
-                    REGISTERS[addr + 3] = (byte)(value >> 24);
+
+                    switch (addr) {
+                        case uint DMA when addr >= 0x1F80_1080 && addr < 0x1F80_10FF:
+                            dma.write32(addr, value);
+                            break;
+
+                        default:
+                            addr &= 0xFFF;
+                            REGISTERS[addr] = (byte)(value);
+                            REGISTERS[addr + 1] = (byte)(value >> 8);
+                            REGISTERS[addr + 2] = (byte)(value >> 16);
+                            REGISTERS[addr + 3] = (byte)(value >> 24);
+                            break;
+                    }
                     break;
+
                 case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                 case uint KSEG0 when addr >= 0x9FC0_0000 && addr < 0x9FC8_0000:
                 case uint KSEG1 when addr >= 0xBFC0_0000 && addr < 0xBFC8_0000: //BIOS mem map
                     Console.WriteLine("WARNING WRITE 32 on BIOS RANGE" + addr.ToString("x8"));
                     Console.ReadLine();
                     break;
+
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
                     addr &= 0x1FF;
                     IO[addr] = (byte)(value);
@@ -126,6 +141,7 @@ namespace ProjectPSX {
                     IO[addr + 2] = (byte)(value >> 16);
                     IO[addr + 3] = (byte)(value >> 24);
                     break;
+
                 default:
                     Console.WriteLine("Unsupported WRITE AREA: " + addr.ToString("x4") + ": " + value.ToString("x4"));
                     break;

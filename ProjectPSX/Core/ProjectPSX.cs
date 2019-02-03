@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace ProjectPSX {
     class ProjectPSX {
         private CPU cpu;
-        private MMU mmu;
+        private BUS mmu;
 
 
         public ProjectPSX() {
@@ -16,7 +16,7 @@ namespace ProjectPSX {
 
         public void POWER_ON() {
             cpu = new CPU();
-            mmu = new MMU();
+            mmu = new BUS();
 
             mmu.loadBios();
 
