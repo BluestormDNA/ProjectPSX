@@ -93,7 +93,7 @@ namespace ProjectPSX {
         }
 
         private void fetchDecode(BUS bus) {
-            uint load = bus.load32(PC);
+            uint load = bus.load(Width.WORD, PC);
             PC_Now = PC;
             PC = PC_Predictor;
             PC_Predictor += 4;
@@ -243,7 +243,7 @@ namespace ProjectPSX {
             uint addr = REG[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load32(aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -253,14 +253,14 @@ namespace ProjectPSX {
                 case 3: value = aligned_load & 0xFF_FFFF | REG[instr.rt] << 24; break;
             }
 
-            bus.write32(addr, value);
+            bus.write(Width.WORD, addr, value);
         }
 
         private void SWL(BUS bus) {
             uint addr = REG[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load32(aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -270,14 +270,14 @@ namespace ProjectPSX {
                 case 0: value = aligned_load & 0xFF_FFFF | REG[instr.rt] >> 24; break;
             }
 
-            bus.write32(addr, value);
+            bus.write(Width.WORD, addr, value);
         }
 
         private void LWR(BUS bus) {
             uint addr = REG[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load32(aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -296,7 +296,7 @@ namespace ProjectPSX {
             uint addr = REG[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load32(aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr);
 
             uint value = 0;
             switch(addr & 0b11) {
@@ -380,7 +380,7 @@ namespace ProjectPSX {
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
-                    uint value = (uint)(short)bus.load32(addr);
+                    uint value = (uint)(short)bus.load(Width.HALF, addr);
                     delayedLoad(instr.rt, value);
                 }
 
@@ -398,7 +398,7 @@ namespace ProjectPSX {
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
-                    uint value = (ushort)bus.load32(addr);
+                    uint value = bus.load(Width.HALF, addr);
                     delayedLoad(instr.rt, value);
                 }
 
@@ -541,7 +541,7 @@ namespace ProjectPSX {
 
         private void LBU(BUS bus) { //todo recheck this
             if ((SR & 0x10000) == 0) {
-                uint value = (byte)bus.load32(REG[instr.rs] + instr.imm_s);
+                uint value = bus.load(Width.BYTE, REG[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Load");
         }
@@ -585,7 +585,7 @@ namespace ProjectPSX {
 
         private void LB(BUS bus) { //todo redo this as it unnecesary load32
             if ((SR & 0x10000) == 0) {
-                uint value = (uint)((sbyte)(bus.load32(REG[instr.rs] + instr.imm_s)));
+                uint value = (uint)(sbyte)bus.load(Width.BYTE, REG[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Write");
         }
@@ -597,7 +597,7 @@ namespace ProjectPSX {
 
         private void SB(BUS bus) {
             if ((SR & 0x10000) == 0)
-                bus.write8(REG[instr.rs] + instr.imm_s, (byte)REG[instr.rt]);
+                bus.write(Width.BYTE, REG[instr.rs] + instr.imm_s, (byte)REG[instr.rt]);
             //else Console.WriteLine("Ignoring Write");
         }
 
@@ -617,7 +617,7 @@ namespace ProjectPSX {
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write16(addr, (ushort)REG[instr.rt]);
+                    bus.write(Width.HALF, addr, (ushort)REG[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
@@ -639,7 +639,7 @@ namespace ProjectPSX {
                 if ((addr % 4) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
-                    uint value = bus.load32(addr);
+                    uint value = bus.load(Width.WORD, addr);
                     delayedLoad(instr.rt, value);
                 }
 
@@ -691,7 +691,7 @@ namespace ProjectPSX {
                 if ((addr % 4) != 0) {
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write32(addr, REG[instr.rt]);
+                    bus.write(Width.WORD, addr, REG[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");

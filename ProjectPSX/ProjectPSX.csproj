@@ -59,7 +59,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Devices\Device.cs" />
     <Compile Include="Devices\DMA.cs" />
-    <Compile Include="Core\EX.cs" />
+    <Compile Include="Util\Constants.cs" />
     <Compile Include="Core\CPU.cs" />
     <Compile Include="Core\BUS.cs" />
     <Compile Include="Core\ProjectPSX.cs" />
@@ -88,5 +88,6 @@
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
