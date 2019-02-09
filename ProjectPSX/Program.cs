@@ -1,19 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+﻿using OpenTK;
+using System;
 
 namespace ProjectPSX {
-    static class Program {
-        /// <summary>
-        /// Punto de entrada principal para la aplicación.
-        /// </summary>
-        [STAThread]
+    class Program {
         static void Main() {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            GameWindow window = new GameWindow(800, 600);
+            window.Title = "ProjectPSX";
+            Emu emu = new Emu(window);
+            window.Run();
         }
     }
 }

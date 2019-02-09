@@ -87,9 +87,13 @@ namespace ProjectPSX {
             WriteBack();
 
             //debug
-            TTY();
-            //disassemble();
-            //PrintRegs();
+            //TTY();
+            /*
+            if(cycle > 19249000) {
+                disassemble();
+                PrintRegs();
+            }*/
+
         }
 
         private void fetchDecode(BUS bus) {
@@ -908,6 +912,7 @@ namespace ProjectPSX {
             }
             Console.Write("{0,20}", "HI " + HI.ToString("x8"));
             Console.Write("{0,20}", "LO " + LO.ToString("x8") +"\n");
+            //if(REG[23] == 0xE1003000 || REG[23] == 0xE1001000) { Console.WriteLine("========== Warning!!!! ==== REF24 E100"); Console.ReadLine(); }
         }
 
 
