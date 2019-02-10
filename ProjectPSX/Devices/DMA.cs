@@ -28,14 +28,14 @@ namespace ProjectPSX.Devices {
             switch (channel) {
                 case uint CHANNELS when channel >= 0 && channel <= 6:
                     if (register == 8 && isActive(value)) {
-                        Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
+                        //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
                         handleDMA(addr, value);
                         disableChannel(addr, value);
                     }
                     break;
 
                 case 7:
-                    Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
+                    //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
                     break;
 
                 default:
@@ -51,7 +51,7 @@ namespace ProjectPSX.Devices {
 
         private void handleDMA(uint addr, uint control) {
             uint syncMode = (control >> 9) & 3;
-            Console.WriteLine("[DMA] SyncMode: " + syncMode);
+            //Console.WriteLine("[DMA] SyncMode: " + syncMode);
             switch (syncMode) {
                 case 2:
                     linkedList(addr, control);
@@ -105,7 +105,7 @@ namespace ProjectPSX.Devices {
                                 } else {
                                     data = (dmaAddress - 4) & 0xFF_FFFF;
                                 }
-                                Console.WriteLine("[DMA] [C6 OTC] Address: {0} Data: {1}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"));
+                                //Console.WriteLine("[DMA] [C6 OTC] Address: {0} Data: {1}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"));
                                 break;
                             default:
                                 data = 0;
@@ -174,7 +174,7 @@ namespace ProjectPSX.Devices {
         }
 
         public new uint load(Width w, uint addr) {
-            Console.WriteLine("[DMA] Load: {0}  Value: {1}", addr.ToString("x8"), base.load(w, addr).ToString("x8"));
+            //Console.WriteLine("[DMA] Load: {0}  Value: {1}", addr.ToString("x8"), base.load(w, addr).ToString("x8"));
             return base.load(w, addr);
         }
 

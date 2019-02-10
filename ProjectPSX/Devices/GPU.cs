@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Threading.Tasks;
 
 namespace ProjectPSX.Devices {
 
@@ -11,15 +13,28 @@ namespace ProjectPSX.Devices {
 
         //private byte[] VRAM;    //todo
 
+        //private Renderer renderer;
+
         private Command command;
         private int size;
         private Queue<uint> commandBuffer = new Queue<uint>();
+
+        private static Display display;
 
         private enum Mode {
             COMMAND,
             VRAM
         }
         private Mode mode;
+
+        private struct VRAM_Coord {
+            public int x;
+            public int origin_x;
+            public int y;
+            public ushort w;
+            public ushort h;
+        }
+        private VRAM_Coord vram_coord;
 
         //GP0
         private byte textureXBase;
@@ -72,9 +87,15 @@ namespace ProjectPSX.Devices {
         private ushort displayY2;
 
         public GPU() {
+            display = new Display();
+            Task t = Task.Factory.StartNew(ShowUI, TaskCreationOptions.LongRunning);
             mem = new byte[1024 * 1024];
             mode = Mode.COMMAND;
             GP1_Reset();
+        }
+
+        private void ShowUI() {
+            display.ShowDialog();
         }
 
         public uint loadGPUSTAT() {
@@ -107,18 +128,18 @@ namespace ProjectPSX.Devices {
             GPUSTAT |= (uint)dmaDirection << 29;
             GPUSTAT |= (uint)(isOddLine ? 1 : 0) << 31;
 
-            Console.WriteLine("[GPU] LOAD GPUSTAT: {0}", GPUSTAT.ToString("x8"));
+            //Console.WriteLine("[GPU] LOAD GPUSTAT: {0}", GPUSTAT.ToString("x8"));
             return GPUSTAT;
         }
 
         public uint loadGPUREAD() {
             //TODO
-            Console.WriteLine("[GPU] LOAD GPUREAD: {0}", 0.ToString("x8"));
+            //Console.WriteLine("[GPU] LOAD GPUREAD: {0}", 0.ToString("x8"));
             return 0;
         }
 
         public void writeGP0(uint value) {
-            Console.WriteLine("[GPU] GP0 WRITE: {0}", value.ToString("x8"));
+            //Console.WriteLine("[GPU] GP0 WRITE: {0}", value.ToString("x8"));
             //if (something about VRAM) else
             switch (mode) {
                 case Mode.COMMAND: ExecuteGP0Command(value); break;
@@ -127,14 +148,35 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void WriteToVRAM(uint value) {
-            Console.WriteLine("Trying to Write to VRAM: Size " + size);
-            // copy to VRAM lack position values x y w h to class?
-            Console.WriteLine("[GPU] [VRAM] Write " + value.ToString("x8"));
+        private void WriteToVRAM(uint value) { //todo rewrite this mess
+            ushort val1 = (ushort)(value >> 16);
+            ushort val2 = (ushort)(value & 0xFFFF);
+
+            drawVRAMPixel(val2);
+            drawVRAMPixel(val1);
+
             size--;
             if (size == 0) {
                 mode = Mode.COMMAND;
+                display.update(); // todo
             }
+        }
+
+        private void drawVRAMPixel(ushort val) {
+            display.VRAM.SetPixel(vram_coord.x, vram_coord.y, getColor(val));
+            vram_coord.x++;
+            if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
+                vram_coord.x -= vram_coord.w;
+                vram_coord.y++;
+            }
+        }
+
+        private Color getColor(ushort val) {
+            byte r = (byte)((val & 0x1F) << 3);
+            byte g = (byte)(((val >> 5) & 0x1F) << 3);
+            byte b = (byte)(((val >> 10) & 0x1F) << 3);
+
+            return Color.FromArgb(r,g,b);
         }
 
         private void ExecuteGP0Command(uint value) {
@@ -218,7 +260,7 @@ namespace ProjectPSX.Devices {
 
         public delegate void Command();
 
-        private void GP0_MemCopyRectCPUtoVRAM() {
+        private void GP0_MemCopyRectCPUtoVRAM() { //todo rewrite this vram mess
             uint command = commandBuffer.Dequeue();
             uint yx = commandBuffer.Dequeue();
             uint wh = commandBuffer.Dequeue();
@@ -226,16 +268,18 @@ namespace ProjectPSX.Devices {
             ushort x = (ushort)(yx & 0xFFFF);
             ushort y = (ushort)(yx >> 16);
 
-            ushort h = (ushort)(wh & 0xFFFF);
-            ushort w = (ushort)(wh >> 16);
+            ushort w = (ushort)(wh & 0xFFFF);
+            ushort h = (ushort)(wh >> 16);
 
-            size = (ushort)(((w * h) + 1) >> 1);
+            size = (ushort)(((h * w) + 1) >> 1);
+            vram_coord.x = x;
+            vram_coord.origin_x = x;
+            vram_coord.y = y;
+            vram_coord.w = w;
+            vram_coord.h = h;
 
             mode = Mode.VRAM;
-            Console.WriteLine("Image Load x y = " + x + " " + y);
-            Console.WriteLine("Image Load Size = " + w * h);
-            Console.WriteLine("ImageSize Normalized = " + size);
-            Console.ReadLine();
+            //Console.ReadLine();
 
             //throw new NotImplementedException();
         }
@@ -251,8 +295,12 @@ namespace ProjectPSX.Devices {
             uint val2 = commandBuffer.Dequeue();
             uint val3 = commandBuffer.Dequeue();
             uint val4 = commandBuffer.Dequeue();
-            Console.WriteLine("[GPU] [DRAW] MonoQuadOpaque");
-            Console.ReadLine();
+            //Console.WriteLine("[GPU] [DRAW] MonoQuadOpaque");
+            //Console.ReadLine();
+
+            //OpenGLtest
+
+            //renderer.posicion += 0.1;
         }
 
         private void GP0_SetTextureWindow() {
@@ -281,8 +329,8 @@ namespace ProjectPSX.Devices {
         private void GP0_NOP() {
             //maybe something about timings?
             commandBuffer.Dequeue();
-            Console.WriteLine("[GPU] [GP0] NOP");
-            Console.ReadLine();
+            //Console.WriteLine("[GPU] [GP0] NOP");
+            //Console.ReadLine();
         }
 
         private void GP0_SetDrawMode() {
@@ -298,7 +346,7 @@ namespace ProjectPSX.Devices {
             isTexturedRectangleXFlipped = ((val >> 12) & 1) != 0;
             isTexturedRectangleYFlipped = ((val >> 13) & 1) != 0;
 
-            Console.WriteLine("[GPU] [GP0] DrawMode");
+            //Console.WriteLine("[GPU] [GP0] DrawMode");
         }
 
         private void GP0_SetDrawingAreaTopLeft() {
@@ -317,8 +365,8 @@ namespace ProjectPSX.Devices {
 
         public void writeGP1(uint value) {
             //TODO
-            Console.WriteLine("[GPU] GP1 Write Value: {0}", value.ToString("x8"));
-            //Console.ReadLine();
+            //Console.WriteLine("[GPU] GP1 Write Value: {0}", value.ToString("x8"));
+            ////Console.ReadLine();
             ExecuteGP1Command(value);
         }
 

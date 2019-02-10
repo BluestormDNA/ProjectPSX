@@ -1,13 +1,28 @@
-﻿using OpenTK;
-using System;
+﻿using System;
+using System.Threading.Tasks;
 
 namespace ProjectPSX {
     class Program {
+        private CPU cpu;
+        private BUS mmu;
+
         static void Main() {
-            GameWindow window = new GameWindow(800, 600);
-            window.Title = "ProjectPSX";
-            Emu emu = new Emu(window);
-            window.Run();
+            Program p = new Program();
+            p.POWER_ON();
         }
+
+        public void POWER_ON() {
+            cpu = new CPU();
+            mmu = new BUS();
+
+            mmu.loadBios();
+
+            while (true) {
+                cpu.Run(mmu);
+            }
+
+        }
+
     }
 }
+
