@@ -64,6 +64,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Devices\CDROM.cs" />
     <Compile Include="Devices\GPU.cs" />
     <Compile Include="Display.cs">
       <SubType>Form</SubType>

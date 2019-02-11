@@ -16,10 +16,12 @@ namespace ProjectPSX {
         //Other Subsystems
         private DMA dma;
         private GPU gpu;
+        private CDROM cdrom;
 
         public BUS() {
             dma = new DMA();
             gpu = new GPU();
+            cdrom = new CDROM();
 
             dma.setDMA_Transfer(this);
         }
@@ -50,11 +52,12 @@ namespace ProjectPSX {
                     switch (addr) {
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(w, addr);
+                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            return cdrom.load(w, addr);
                         case 0x1F801810:
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
-
                         default:
                             addr &= 0xFFF;
                             //return load(w, addr, REGISTERS);
@@ -100,6 +103,9 @@ namespace ProjectPSX {
                     switch (addr) {
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(w, addr, value);
+                            break;
+                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            cdrom.write(w, addr, value);
                             break;
                         case 0x1F801810:
                             gpu.writeGP0(value);
