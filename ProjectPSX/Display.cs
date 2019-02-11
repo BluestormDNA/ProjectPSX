@@ -1,7 +1,9 @@
 ﻿using ProjectDMG;
+using ProjectPSX.Devices;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using static ProjectPSX.Devices.GPU;
 
 namespace ProjectPSX {
     public class Display : Form {
@@ -42,6 +44,8 @@ namespace ProjectPSX {
                 }
             }
         }
+
+
 
     }
 }

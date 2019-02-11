@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{6351ED6D-2403-43EE-8DD8-EB7E796B41EB}</ProjectGuid>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <RootNamespace>ProjectPSX</RootNamespace>
     <AssemblyName>ProjectPSX</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>

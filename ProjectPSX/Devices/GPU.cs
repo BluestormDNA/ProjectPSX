@@ -28,13 +28,21 @@ namespace ProjectPSX.Devices {
         private Mode mode;
 
         private struct VRAM_Coord {
-            public int x;
+            public int x, y;
             public int origin_x;
-            public int y;
-            public ushort w;
-            public ushort h;
+            public ushort w, h;
         }
         private VRAM_Coord vram_coord;
+
+        public struct Point2D {
+            public int x, y;
+
+            public Point2D(uint val) {
+                x = (int)(val & 0xFFFF);
+                y = (int)((val >> 16) & 0xFFFF);
+            }
+
+        }
 
         //GP0
         private byte textureXBase;
@@ -158,12 +166,11 @@ namespace ProjectPSX.Devices {
             size--;
             if (size == 0) {
                 mode = Mode.COMMAND;
-                display.update(); // todo
             }
         }
 
         private void drawVRAMPixel(ushort val) {
-            display.VRAM.SetPixel(vram_coord.x, vram_coord.y, getColor(val));
+            display.VRAM.SetPixel(vram_coord.x, vram_coord.y, get555Color(val));
             vram_coord.x++;
             if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
                 vram_coord.x -= vram_coord.w;
@@ -171,12 +178,20 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private Color getColor(ushort val) {
+        private Color get555Color(ushort val) {
             byte r = (byte)((val & 0x1F) << 3);
             byte g = (byte)(((val >> 5) & 0x1F) << 3);
             byte b = (byte)(((val >> 10) & 0x1F) << 3);
 
-            return Color.FromArgb(r,g,b);
+            return Color.FromArgb(r, g, b);
+        }
+
+        private Color get888Color(uint val) {
+            byte r = (byte)(val & 0x0000FF);
+            byte g = (byte)((val & 0x00FF00) >> 8);
+            byte b = (byte)((val & 0xFF0000) >> 16);
+
+            return Color.FromArgb(r, g, b);
         }
 
         private void ExecuteGP0Command(uint value) {
@@ -213,36 +228,64 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void GP0_RenderTexturedQuadBlend() {
-            uint val0 = commandBuffer.Dequeue();
-            uint val1 = commandBuffer.Dequeue();
-            uint val2 = commandBuffer.Dequeue();
-            uint val3 = commandBuffer.Dequeue();
-            uint val4 = commandBuffer.Dequeue();
-            uint val5 = commandBuffer.Dequeue();
-            uint val6 = commandBuffer.Dequeue();
-            uint val7 = commandBuffer.Dequeue();
-            uint val8 = commandBuffer.Dequeue();
+        private void GP0_RenderTexturedQuadBlend() { //2C
+            uint color = commandBuffer.Dequeue();
+
+            int quad = 4;
+            uint[] colors = new uint[quad]; //this should be text
+            Point2D[] vertices = new Point2D[quad];
+
+            /*temp*/
+            //uint color = 0;
+            for (int i = 0; i < quad; i++) {
+                vertices[i] = new Point2D(commandBuffer.Dequeue());
+                colors[i] = commandBuffer.Dequeue();
+            }
+
+            rasterizeTri(vertices[0], vertices[1], vertices[2], colors[0]); //hardcoded color 0 should be text array
+            rasterizeTri(vertices[1], vertices[2], vertices[3], colors[0]);
+
+            //display.update();
+            Console.WriteLine("RenderTexturedQuadBlend");
         }
 
-        private void GP0_RenderShadedTriOpaque() {
-            uint val0 = commandBuffer.Dequeue();
-            uint val1 = commandBuffer.Dequeue();
-            uint val2 = commandBuffer.Dequeue();
-            uint val3 = commandBuffer.Dequeue();
-            uint val4 = commandBuffer.Dequeue();
-            uint val5 = commandBuffer.Dequeue();
+        private void GP0_RenderShadedTriOpaque() { // 0x30
+
+            int tri = 3;
+            Color[] colors = new Color[tri];
+            Point2D[] vertices = new Point2D[tri];
+
+            for (int i = 0; i < tri; i++) {
+                colors[i] = get888Color(commandBuffer.Dequeue());
+                vertices[i] = new Point2D(commandBuffer.Dequeue());
+            }
+
+
+            rasterizeShadedTri(vertices, colors);
         }
 
-        private void GP0_RenderShadedQuadOpaque() {
-            uint val0 = commandBuffer.Dequeue();
-            uint val1 = commandBuffer.Dequeue();
-            uint val2 = commandBuffer.Dequeue();
-            uint val3 = commandBuffer.Dequeue();
-            uint val4 = commandBuffer.Dequeue();
-            uint val5 = commandBuffer.Dequeue();
-            uint val6 = commandBuffer.Dequeue();
-            uint val7 = commandBuffer.Dequeue();
+        private void GP0_RenderShadedQuadOpaque() { //0x38
+
+            int quad = 4;
+            Color[] colors = new Color[quad];
+            Point2D[] vertices = new Point2D[quad];
+
+            for (int i = 0; i < quad; i++) {
+                colors[i] = get888Color(commandBuffer.Dequeue());
+                vertices[i] = new Point2D(commandBuffer.Dequeue());
+            }
+
+            Color[] colors1 = new Color[] { colors[0], colors[1], colors[2] };
+            Point2D[] vertices1 = new Point2D[] { vertices[0], vertices[1], vertices[2] };
+
+            Color[] colors2 = new Color[] { colors[1], colors[2], colors[3] };
+            Point2D[] vertices2 = new Point2D[] { vertices[1], vertices[2], vertices[3] };
+
+            rasterizeShadedTri(vertices1, colors1);
+            rasterizeShadedTri(vertices2, colors2);
+
+            //display.update();
+            Console.WriteLine("RenderShadedQuadOpaque");
         }
 
         private void GP0_MemCopyRectVRAMtoCPU() {
@@ -289,18 +332,172 @@ namespace ProjectPSX.Devices {
             //throw new NotImplementedException();
         }
 
-        private void GP0_RenderMonoQuadOpaque() {
-            uint val0 = commandBuffer.Dequeue();
-            uint val1 = commandBuffer.Dequeue();
-            uint val2 = commandBuffer.Dequeue();
-            uint val3 = commandBuffer.Dequeue();
-            uint val4 = commandBuffer.Dequeue();
-            //Console.WriteLine("[GPU] [DRAW] MonoQuadOpaque");
+        private void GP0_RenderMonoQuadOpaque() { //<----------------- 28
+            display.update(); //test
+
+            uint color = commandBuffer.Dequeue();
+
+            int quad = 4;
+            Point2D[] vertices = new Point2D[quad];
+
+            for (int i = 0; i < quad; i++) {
+                vertices[i] = new Point2D(commandBuffer.Dequeue());
+            }
+
+            rasterizeTri(vertices[0], vertices[1], vertices[2], color);
+            rasterizeTri(vertices[2], vertices[1], vertices[3], color);
+
+            //display.update();
+            Console.WriteLine("RenderMonoQuadOpaque");
+        }
+
+        //remember to refactor Point2D to rasterizer class and... well clear this mess beetwin gpu rasterizer and display
+        internal void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, uint color) {
+
+            //v0.x += drawingXOffset;
+            //v1.x += drawingXOffset;
+            //v2.x += drawingXOffset;
+            //
+            //v0.y += drawingYOffset;
+            //v1.y += drawingYOffset;
+            //v2.y += drawingYOffset;
+
+            if (orient2d(v0, v1, v2) < 0) {
+                Point2D aux = v1;
+                v1 = v2;
+                v2 = aux;
+            }
+
+            (Point2D min, Point2D max) = boundingBox(v0, v1, v2);
+
+            int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
+            int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
+            int A20 = v2.y - v0.y, B20 = v0.x - v2.x;
+
+            int w0_row = orient2d(v1, v2, min);
+            int w1_row = orient2d(v2, v0, min);
+            int w2_row = orient2d(v0, v1, min);
+
+            // Rasterize
+            for (int y = min.y; y <= max.y; y++) {
+                // Barycentric coordinates at start of row
+                int w0 = w0_row;
+                int w1 = w1_row;
+                int w2 = w2_row;
+
+                for (int x = min.x; x <= max.x; x++) {
+                    // If p is on or inside all edges, render pixel.
+                    if ((w0 | w1 | w2) >= 0) {
+                        display.VRAM.SetPixel((x & 0x3FFF), (y & 0x1FFF), get888Color(color));
+                    }
+                    // One step to the right
+                    w0 += A12;
+                    w1 += A20;
+                    w2 += A01;
+                }
+
+                // One row step
+                w0_row += B12;
+                w1_row += B20;
+                w2_row += B01;
+            }
+        }
+
+        internal void rasterizeShadedTri(Point2D[] vertices, Color[] colors) {
+
+            Point2D v0 = vertices[0];
+            Point2D v1 = vertices[1];
+            Point2D v2 = vertices[2];
+            //v0.x += drawingXOffset;
+            //v1.x += drawingXOffset;
+            //v2.x += drawingXOffset;
+            //
+            //v0.y += drawingYOffset;
+            //v1.y += drawingYOffset;
+            //v2.y += drawingYOffset;
+            int area = orient2d(v0, v1, v2);
+            if (area < 0) {
+                Point2D aux = v1;
+                v1 = v0;
+                v0 = aux;
+                Color caux = colors[1];
+                colors[1] = colors[0];
+                colors[0] = caux;
+
+                //area *= -1;
+            }
+
+            (Point2D min, Point2D max) = boundingBox(v0, v1, v2);
+
+            int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
+            int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
+            int A20 = v2.y - v0.y, B20 = v0.x - v2.x;
+
+            int w0_row = orient2d(v1, v2, min);
+            int w1_row = orient2d(v2, v0, min);
+            int w2_row = orient2d(v0, v1, min);
+
+            // Rasterize
+            for (int y = min.y; y <= max.y; y++) {
+                // Barycentric coordinates at start of row
+                int w0 = w0_row;
+                int w1 = w1_row;
+                int w2 = w2_row;
+
+                for (int x = min.x; x <= max.x; x++) {
+                    // If p is on or inside all edges, render pixel.
+                    if ((w0 | w1 | w2) >= 0) {
+
+                        //Console.WriteLine("Area " + area);
+                        //Console.WriteLine("w {0} {1} {2}", w0, w1, w2);
+                        //Console.WriteLine("w {0} {1} {2}", w0/area, w1/area, w2/area);
+                        float[] weigths = new float[] { w0, w1, w2 };
+                        display.VRAM.SetPixel((x & 0x3FFF), (y & 0x1FFF), getShadedColor(weigths, colors));
+                    }
+                    // One step to the right
+                    w0 += A12;
+                    w1 += A20;
+                    w2 += A01;
+                }
+
+                // One row step
+                w0_row += B12;
+                w1_row += B20;
+                w2_row += B01;
+            }
+        }
+
+        private Color getShadedColor(float[] weights, Color[] colors) {
+            //https://codeplea.com/triangular-interpolation
+            float w = weights[0] + weights[1] + weights[2];
+            int r = (byte)((colors[0].R * weights[0] + colors[1].R * weights[1] + colors[2].R * weights[2]) / w);
+            int g = (byte)((colors[0].G * weights[0] + colors[1].G * weights[1] + colors[2].G * weights[2]) / w);
+            int b = (byte)((colors[0].B * weights[0] + colors[1].B * weights[1] + colors[2].B * weights[2]) / w);
+
+            //Console.WriteLine("rgb {0} {1} {2}", r, g, b);
             //Console.ReadLine();
+            return Color.FromArgb(r, g, b);
+        }
 
-            //OpenGLtest
+        private int orient2d(Point2D a, Point2D b, Point2D c) {
+            return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        }
 
-            //renderer.posicion += 0.1;
+        private (Point2D min, Point2D max) boundingBox(Point2D p0, Point2D p1, Point2D p2) {
+            Point2D min = new Point2D();
+            Point2D max = new Point2D();
+
+            int minX = Math.Min(p0.x, Math.Min(p1.x, p2.x));
+            int minY = Math.Min(p0.y, Math.Min(p1.y, p2.y));
+            int maxX = Math.Max(p0.x, Math.Max(p1.x, p2.x));
+            int maxY = Math.Max(p0.y, Math.Max(p1.y, p2.y));
+
+            min.x = Math.Max(minX, drawingAreaLeft); //Warning Clipping?
+            min.y = Math.Max(minY, drawingAreaTop);
+            max.x = Math.Min(maxX, drawingAreaRight);
+            max.y = Math.Min(maxY, drawingAreaBottom);
+
+            return (min, max);
         }
 
         private void GP0_SetTextureWindow() {
@@ -353,14 +550,14 @@ namespace ProjectPSX.Devices {
             uint val = commandBuffer.Dequeue();
 
             drawingAreaTop = (ushort)((val >> 10) & 0x3FF);
-            drawingAreaLeft = (ushort)(val & 0x1FF); //todo 0x3FF???
+            drawingAreaLeft = (ushort)(val & 0x3FF); //todo 0x3FF???
         }
 
         private void GP0_SetDrawingAreaBottomRight() {
             uint val = commandBuffer.Dequeue();
 
             drawingAreaBottom = (ushort)((val >> 10) & 0x3FF);
-            drawingAreaRight = (ushort)(val & 0x1FF);//todo 0x3FF???
+            drawingAreaRight = (ushort)(val & 0x3FF);//todo 0x3FF???
         }
 
         public void writeGP1(uint value) {
