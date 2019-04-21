@@ -64,8 +64,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Core\BIOS_Disassembler.cs" />
     <Compile Include="Devices\CDROM.cs" />
     <Compile Include="Devices\GPU.cs" />
+    <Compile Include="Devices\InterruptController.cs" />
+    <Compile Include="Devices\TIMERS.cs" />
     <Compile Include="Display.cs">
       <SubType>Form</SubType>
     </Compile>
