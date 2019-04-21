@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 namespace ProjectPSX {
     class Program {
         private CPU cpu;
-        private BUS mmu;
+        private BUS bus;
 
         static void Main() {
             Program p = new Program();
@@ -13,12 +13,13 @@ namespace ProjectPSX {
 
         public void POWER_ON() {
             cpu = new CPU();
-            mmu = new BUS();
+            bus = new BUS();
 
-            mmu.loadBios();
+            bus.loadBios();
 
             while (true) {
-                cpu.Run(mmu);
+                cpu.Run(bus);
+                bus.tick(2); //2 ticks per opcode
             }
 
         }
