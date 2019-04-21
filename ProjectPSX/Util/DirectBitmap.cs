@@ -37,6 +37,27 @@ namespace ProjectDMG {
             return result;
         }
 
+        public ushort GetRawPixelValues(int x, int y) {
+            int index = x + (y * Width);
+            uint color = (uint)Bits[index];
+
+
+            byte r = (byte)((color & 0xFF0000) >> 16 + 3 );
+            byte g = (byte)((color & 0x00FF00) >> 8 + 3);
+            byte b = (byte)((color & 0x0000FF) >> 2);
+
+            return (ushort)((b << 10) | (g << 5) | r);
+
+            /*
+            byte r = (byte)((val & 0x1F) << 3);
+            byte g = (byte)(((val >> 5) & 0x1F) << 3);
+            byte b = (byte)((val >> 10) << 3);
+
+            return Color.FromArgb(r, g, b);
+            */
+            //return p1; //todo add p2
+        }
+
         public void Dispose() {
             if (Disposed) return;
             Disposed = true;
