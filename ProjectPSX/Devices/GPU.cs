@@ -21,7 +21,7 @@ namespace ProjectPSX.Devices {
 
         private static Display display;
 
-        private enum Mode {
+        public enum Mode {
             COMMAND,
             VRAM
         }
@@ -43,7 +43,7 @@ namespace ProjectPSX.Devices {
             }
 
         }
-
+  
         //GP0
         private byte textureXBase;
         private byte textureYBase;
@@ -94,12 +94,27 @@ namespace ProjectPSX.Devices {
         private ushort displayY1;
         private ushort displayY2;
 
-        public GPU() {
+        private uint timer;
+
+        public GPU(InterruptController interruptController) {
+            this.InterruptController = interruptController;
             display = new Display();
             Task t = Task.Factory.StartNew(ShowUI, TaskCreationOptions.LongRunning);
-            mem = new byte[1024 * 1024];
+            //mem = new byte[1024 * 1024];
             mode = Mode.COMMAND;
             GP1_Reset();
+        }
+
+        private InterruptController InterruptController;
+
+        public void tick(uint cycles) {
+            timer += cycles;
+            if (timer >= 564480) {
+                Console.WriteLine("[GPU] Request Interrupt 0x1 VBLANK");
+                InterruptController.set(Interrupt.VBLANK);
+                timer = 0;
+                display.update();
+            }
         }
 
         private void ShowUI() {
@@ -147,8 +162,6 @@ namespace ProjectPSX.Devices {
         }
 
         public void writeGP0(uint value) {
-            //Console.WriteLine("[GPU] GP0 WRITE: {0}", value.ToString("x8"));
-            //if (something about VRAM) else
             switch (mode) {
                 case Mode.COMMAND: ExecuteGP0Command(value); break;
                 case Mode.VRAM: WriteToVRAM(value); break;
@@ -178,10 +191,11 @@ namespace ProjectPSX.Devices {
             }
         }
 
+
         private Color get555Color(ushort val) {
             byte r = (byte)((val & 0x1F) << 3);
             byte g = (byte)(((val >> 5) & 0x1F) << 3);
-            byte b = (byte)(((val >> 10) & 0x1F) << 3);
+            byte b = (byte)((val >> 10) << 2);
 
             return Color.FromArgb(r, g, b);
         }
@@ -199,6 +213,7 @@ namespace ProjectPSX.Devices {
                 uint opcode = (value >> 24) & 0xFF;
                 (size, command) = decode(opcode);
             }
+            //Console.WriteLine("[GPU] GP0 COMMAND: {0}", value.ToString("x8"));
 
             commandBuffer.Enqueue(value);
 
@@ -224,33 +239,191 @@ namespace ProjectPSX.Devices {
                 case 0x28: return (5, GP0_RenderMonoQuadOpaque);
                 case 0x30: return (6, GP0_RenderShadedTriOpaque);
                 case 0x38: return (8, GP0_RenderShadedQuadOpaque);
-                default: return (1, GP0_NOP);
+
+                case 0x60:
+                case 0x62: return (3, GP0_RenderMonoRectangle);
+                case 0x68:
+                case 0x6A:
+                case 0x70:
+                case 0x72:
+                case 0x78:
+                case 0x7A: return (2, GP0_RenderMonoRectangle); // todo hardcode return values and rewrite this
+
+                default: Console.WriteLine("[GPU] Unsupported Command" + opcode.ToString("x8")); Console.ReadLine(); return (1, GP0_NOP);
             }
+        }
+
+        private void GP0_RenderMonoRectangle() {
+            //1st Color+Command(CcBbGgRrh)
+            //2nd Vertex(YyyyXxxxh)
+            //(3rd) Width + Height(YsizXsizh)(variable size only)(max 1023x511)
+            uint command = commandBuffer.Dequeue();
+            int r = (int)(command >> 0) & 0xFF;
+            int g = (int)(command >> 8) & 0xFF;
+            int b = (int)(command >> 16) & 0xFF;
+            uint size = (command >> 24) & 0xFF;
+
+            uint vertex = commandBuffer.Dequeue();
+            int x = (int)(vertex & 0xFFFF);
+            int y = (int)(vertex >> 16) & 0xFFFF;
+
+            uint lengthX = 0;
+            uint lengthY = 0;
+            switch ((size & 0x18) >> 3) {
+                case 0x0:
+                    uint variable = commandBuffer.Dequeue();
+                    lengthX = variable & 0xFFFF;
+                    lengthY = (variable >> 16) & 0xFFFF;
+                    break;
+                case 0x1:
+                    lengthX = 1;
+                    lengthY = 1;
+                    break;
+                case 0x2:
+                    lengthX = 8;
+                    lengthY = 8;
+                    break;
+                case 0x3:
+                    lengthX = 16;
+                    lengthY = 16;
+                    break;
+                default:
+                    Console.WriteLine("INCORRECT LENGTH");
+                    break;
+            }
+
+            Color color = Color.FromArgb(r, g, b);
+            for(int yy = 0; yy < lengthY; yy++) {
+                for (int xx = 0; xx < lengthX; xx++) {
+                    display.VRAM.SetPixel((x/* & 0x3FF*/), (y/* & 0x1FF*/), color);
+                }
+            }
+            //display.update(); // force temp
         }
 
         private void GP0_RenderTexturedQuadBlend() { //2C
-            uint color = commandBuffer.Dequeue();
+            uint color = commandBuffer.Dequeue() & 0xFFFFFF;
 
             int quad = 4;
-            uint[] colors = new uint[quad]; //this should be text
             Point2D[] vertices = new Point2D[quad];
+            uint[] textureCoord = new uint[quad]; //this should be text
 
-            /*temp*/
-            //uint color = 0;
             for (int i = 0; i < quad; i++) {
                 vertices[i] = new Point2D(commandBuffer.Dequeue());
-                colors[i] = commandBuffer.Dequeue();
+                textureCoord[i] = commandBuffer.Dequeue();
             }
 
-            rasterizeTri(vertices[0], vertices[1], vertices[2], colors[0]); //hardcoded color 0 should be text array
-            rasterizeTri(vertices[1], vertices[2], vertices[3], colors[0]);
+            uint palette = (textureCoord[0] >> 16) & 0xFFFF;
+            uint texpage = (textureCoord[1] >> 16) & 0xFFFF;
+            textureCoord[0] &= ~0xFFFF0000;
+            textureCoord[1] &= ~0xFFFF0000;
 
-            //display.update();
-            Console.WriteLine("RenderTexturedQuadBlend");
+            Point2D[] verticesTri1 = new Point2D[] { vertices[0], vertices[1], vertices[2] };
+            uint[] textureCoordTri1 = new uint[] { textureCoord[0], textureCoord[1], textureCoord[2] };
+
+            Point2D[] verticesTri2 = new Point2D[] { vertices[1], vertices[2], vertices[3] };
+            uint[] textureCoordTri2 = new uint[] { textureCoord[1], textureCoord[2], textureCoord[3] };
+
+            //Point2D[] textCordTri = textureCoordToVertice(textureCoord, texpage);
+
+            rasterizeTexturedTri(verticesTri1, textureCoordTri1, color, palette, texpage);
+            rasterizeTexturedTri(verticesTri2, textureCoordTri2, color, palette, texpage);
+            //rasterizeTri(textCordTri, color);  //test
+            //rasterizeTri(verticesTri2, color);
+        }
+
+        private Point2D[] textureCoordToVertice(uint[] textureCoord, uint texpage) {
+            int x = (int)((texpage & 0xF) * 64);
+            int y = (int)(texpage & 0x10) * 16;
+
+            //Console.WriteLine("Texpage x={0} y{1}", x, y);
+
+            Point2D[] ret = new Point2D[4];
+            ret[0] = new Point2D();
+            ret[1] = new Point2D();
+            ret[2] = new Point2D();
+            ret[3] = new Point2D();
+
+            ret[0].x = (int)(x + (textureCoord[0] & 0xFF) / 4);
+            ret[0].y = (int)((textureCoord[0] >> 8) & 0xFF);
+            ret[1].x = (int)(x + (textureCoord[1] & 0xFF) / 4);
+            ret[1].y = (int)((textureCoord[1] >> 8) & 0xFF);
+            ret[2].x = (int)(x + (textureCoord[2] & 0xFF) / 4);
+            ret[2].y = (int)((textureCoord[2] >> 8) & 0xFF);
+            ret[3].x = (int)(x + (textureCoord[3] & 0xFF) / 4);
+            ret[3].y = (int)((textureCoord[3] >> 8) & 0xFF);
+
+            //ret[0].x = 896;
+            // ret[0].y = 0;
+            //ret[1].x = 896+(239/4);
+            //ret[1].y = 0;
+            //ret[2].x = 896;
+            //ret[2].y = 59;
+            //ret[3].x = (239/4);
+            ///ret[3].y = 59;
+
+            return ret;
+        }
+
+
+
+        private void rasterizeTexturedTri(Point2D[] vertices, uint[] textureCoord, uint color, uint palette, uint texpage) {
+            Point2D v0 = vertices[0];
+            Point2D v1 = vertices[1];
+            Point2D v2 = vertices[2];
+
+            int area = orient2d(v0, v1, v2);
+            if (area < 0) {
+                Point2D aux = v1;
+                v1 = v2;
+                v2 = aux;
+                uint taux = textureCoord[1];
+                textureCoord[1] = textureCoord[2];
+                textureCoord[2] = taux;
+            }
+
+            (Point2D min, Point2D max) = boundingBox(v0, v1, v2);
+
+            int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
+            int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
+            int A20 = v2.y - v0.y, B20 = v0.x - v2.x;
+
+            int w0_row = orient2d(v1, v2, min);
+            int w1_row = orient2d(v2, v0, min);
+            int w2_row = orient2d(v0, v1, min);
+
+            // Rasterize
+            for (int y = min.y; y <= max.y; y++) {
+                // Barycentric coordinates at start of row
+                int w0 = w0_row;
+                int w1 = w1_row;
+                int w2 = w2_row;
+
+                for (int x = min.x; x <= max.x; x++) {
+                    // If p is on or inside all edges, render pixel.
+                    if ((w0 | w1 | w2) >= 0) {
+                        Color col = getTextureColor(w0, w1, w2, textureCoord, palette, texpage);
+
+                        if((uint)col.ToArgb() != 0xFF00_0000) {
+                            display.VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
+                        }
+
+                    }
+                    // One step to the right
+                    w0 += A12;
+                    w1 += A20;
+                    w2 += A01;
+                }
+
+                // One row step
+                w0_row += B12;
+                w1_row += B20;
+                w2_row += B01;
+            }
+
         }
 
         private void GP0_RenderShadedTriOpaque() { // 0x30
-
             int tri = 3;
             Color[] colors = new Color[tri];
             Point2D[] vertices = new Point2D[tri];
@@ -265,7 +438,6 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP0_RenderShadedQuadOpaque() { //0x38
-
             int quad = 4;
             Color[] colors = new Color[quad];
             Point2D[] vertices = new Point2D[quad];
@@ -283,9 +455,6 @@ namespace ProjectPSX.Devices {
 
             rasterizeShadedTri(vertices1, colors1);
             rasterizeShadedTri(vertices2, colors2);
-
-            //display.update();
-            Console.WriteLine("RenderShadedQuadOpaque");
         }
 
         private void GP0_MemCopyRectVRAMtoCPU() {
@@ -322,9 +491,6 @@ namespace ProjectPSX.Devices {
             vram_coord.h = h;
 
             mode = Mode.VRAM;
-            //Console.ReadLine();
-
-            //throw new NotImplementedException();
         }
 
         private void GP0_MemClearCache() {
@@ -333,26 +499,31 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP0_RenderMonoQuadOpaque() { //<----------------- 28
-            display.update(); //test
-
             uint color = commandBuffer.Dequeue();
 
             int quad = 4;
             Point2D[] vertices = new Point2D[quad];
 
-            for (int i = 0; i < quad; i++) {
-                vertices[i] = new Point2D(commandBuffer.Dequeue());
+
+            for (int i = 0; i < quad; i++) { // test
+                uint ver = commandBuffer.Dequeue();
+                vertices[i] = new Point2D(ver);
+                //Console.WriteLine("GP0 QUAD: " + ver.ToString("x8"));
             }
 
-            rasterizeTri(vertices[0], vertices[1], vertices[2], color);
-            rasterizeTri(vertices[2], vertices[1], vertices[3], color);
+            Point2D[] vertices1 = new Point2D[] { vertices[0], vertices[1], vertices[2] };
+            Point2D[] vertices2 = new Point2D[] { vertices[1], vertices[2], vertices[3] };
 
-            //display.update();
-            Console.WriteLine("RenderMonoQuadOpaque");
+            rasterizeTri(vertices1, color);
+            rasterizeTri(vertices2, color);
         }
 
         //remember to refactor Point2D to rasterizer class and... well clear this mess beetwin gpu rasterizer and display
-        internal void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, uint color) {
+        internal void rasterizeTri(Point2D[] vertices, uint color) {
+
+            Point2D v0 = vertices[0];
+            Point2D v1 = vertices[1];
+            Point2D v2 = vertices[2];
 
             //v0.x += drawingXOffset;
             //v1.x += drawingXOffset;
@@ -388,7 +559,7 @@ namespace ProjectPSX.Devices {
                 for (int x = min.x; x <= max.x; x++) {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 | w1 | w2) >= 0) {
-                        display.VRAM.SetPixel((x & 0x3FFF), (y & 0x1FFF), get888Color(color));
+                        display.VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), get888Color(color));
                     }
                     // One step to the right
                     w0 += A12;
@@ -423,8 +594,6 @@ namespace ProjectPSX.Devices {
                 Color caux = colors[1];
                 colors[1] = colors[0];
                 colors[0] = caux;
-
-                //area *= -1;
             }
 
             (Point2D min, Point2D max) = boundingBox(v0, v1, v2);
@@ -447,12 +616,7 @@ namespace ProjectPSX.Devices {
                 for (int x = min.x; x <= max.x; x++) {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 | w1 | w2) >= 0) {
-
-                        //Console.WriteLine("Area " + area);
-                        //Console.WriteLine("w {0} {1} {2}", w0, w1, w2);
-                        //Console.WriteLine("w {0} {1} {2}", w0/area, w1/area, w2/area);
-                        float[] weigths = new float[] { w0, w1, w2 };
-                        display.VRAM.SetPixel((x & 0x3FFF), (y & 0x1FFF), getShadedColor(weigths, colors));
+                        display.VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), getShadedColor(w0, w1, w2, colors));
                     }
                     // One step to the right
                     w0 += A12;
@@ -467,16 +631,66 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private Color getShadedColor(float[] weights, Color[] colors) {
+        private Color getShadedColor(int w0, int w1, int w2, Color[] colors) {
             //https://codeplea.com/triangular-interpolation
-            float w = weights[0] + weights[1] + weights[2];
-            int r = (byte)((colors[0].R * weights[0] + colors[1].R * weights[1] + colors[2].R * weights[2]) / w);
-            int g = (byte)((colors[0].G * weights[0] + colors[1].G * weights[1] + colors[2].G * weights[2]) / w);
-            int b = (byte)((colors[0].B * weights[0] + colors[1].B * weights[1] + colors[2].B * weights[2]) / w);
+            float w = w0 + w1 + w2;
+            byte r = (byte)((colors[0].R * w0 + colors[1].R * w1 + colors[2].R * w2) / w);
+            byte g = (byte)((colors[0].G * w0 + colors[1].G * w1 + colors[2].G * w2) / w);
+            byte b = (byte)((colors[0].B * w0 + colors[1].B * w1 + colors[2].B * w2) / w);
 
-            //Console.WriteLine("rgb {0} {1} {2}", r, g, b);
-            //Console.ReadLine();
             return Color.FromArgb(r, g, b);
+        }
+
+        private Color getTextureColor(int w0, int w1, int w2, uint[] textureCoord, uint palette, uint texpage) {
+
+            uint clutX = (palette & 0x3f) * 16;
+            uint clutY = ((palette >> 6) & 0x1FF);
+
+            //Console.WriteLine("TextureCoord0 {0} {3}  TextureCoord1 {1} {4}  TextureCoord2 {2} {5}",
+            //  textureCoord[0] & 0xFF, textureCoord[1] & 0xFF, textureCoord[2] & 0xFF,
+            // ((textureCoord[0] >> 8) & 0xFF), ((textureCoord[1] >> 8) & 0xFF) , ((textureCoord[2] >> 8) & 0xFF));
+
+            //https://codeplea.com/triangular-interpolation
+
+            int XBase = (int)(texpage & 0xF) * 64;
+            int YBase = (int)((texpage >> 4) & 0x1) * 256;
+
+            float w = w0 + w1 + w2;
+            float x = ((textureCoord[0] & 0xFF) * w0 + (textureCoord[1] & 0xFF) * w1 + (textureCoord[2] & 0xFF) * w2) / w;
+            float y = (((textureCoord[0] >> 8) & 0xFF) * w0 + ((textureCoord[1] >> 8) & 0xFF) * w1 + ((textureCoord[2] >> 8) & 0xFF) * w2) / w;
+
+            //byte xr = (byte)Math.Round(x);
+            //byte yr = (byte)Math.Round(y);
+
+            ushort index = display.VRAM.GetRawPixelValues((int)x/4 + XBase, (int)y + YBase);
+            //Console.WriteLine(index.ToString("x8"));
+
+            byte p = 0;
+            byte xx = (byte)x;
+            byte pix = (byte)(xx % 4);
+            //Console.WriteLine(pix);
+            switch (pix) {
+                case 0: p = (byte)(index & 0xF); break;
+                case 1: p = (byte)((index >> 4) & 0xF); break;
+                case 2: p = (byte)((index >> 8) & 0xF); break;
+                case 3: p = (byte)((index >> 12) & 0xF); break;
+                default: Console.WriteLine((pix)); Console.ReadLine(); break;
+            }
+
+            return display.VRAM.GetPixel((int)(clutX + p), (int)clutY);
+
+            //Console.WriteLine("index " + index);
+            //display.VRAM.SetPixel((int)((x) + (XBase)),  (int)(y + (YBase)), Color.Red);
+
+            //Console.WriteLine("x {0} y {1}", x, y);
+            //display.VRAM.SetPixel(xr + XBase,yr + YBase, Color.Red);
+
+            //clut test
+            //display.VRAM.SetPixel((int)clutX + index , (int)clutY, Color.Red); //works on line!
+
+            //return display.VRAM.GetPixel((int)x + XBase, (int)y + YBase);
+
+
         }
 
         private int orient2d(Point2D a, Point2D b, Point2D c) {
@@ -492,7 +706,7 @@ namespace ProjectPSX.Devices {
             int maxX = Math.Max(p0.x, Math.Max(p1.x, p2.x));
             int maxY = Math.Max(p0.y, Math.Max(p1.y, p2.y));
 
-            min.x = Math.Max(minX, drawingAreaLeft); //Warning Clipping?
+            min.x = Math.Max(minX, drawingAreaLeft); //Todo reenable after tests
             min.y = Math.Max(minY, drawingAreaTop);
             max.x = Math.Min(maxX, drawingAreaRight);
             max.y = Math.Min(maxY, drawingAreaBottom);
@@ -521,6 +735,8 @@ namespace ProjectPSX.Devices {
 
             drawingXOffset = (ushort)(short)(val & 0x7FF);
             drawingYOffset = (ushort)(short)((val >> 11) & 0x7FF);
+
+            //display.update(); //force refresh as lack of irq and timings on GPU
         }
 
         private void GP0_NOP() {
