@@ -1,26 +1,28 @@
 ﻿using System;
 
 namespace ProjectPSX {
-    internal class CPU {
+    internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
 
         private uint PC = 0xbfc0_0000; // Bios Entry Point
         private uint PC_Predictor = 0xbfc0_0004; //next op for branch delay slot emulation
         private uint PC_Now; // PC on current execution as PC and PC Predictor go ahead after fetch. This is handy on Branch Delay so it dosn't give erronious PC-4
 
-        private uint[] REG = new uint[32];
+        private uint[] GPR = new uint[32];
         private uint HI;
         private uint LO;
 
         private bool isBranch;
         private bool isDelaySlot;
 
-        private long cycle; //current CPU cycle counter for debug
-
         //CoPro Regs
         private uint[] Cop0Reg = new uint[16];
-        private uint SR     { get { return Cop0Reg[12]; } set { Cop0Reg[12] = value; } }
-        private uint CAUSE  { get { return Cop0Reg[13]; } set { Cop0Reg[13] = value; } }
-        private uint EPC    { get { return Cop0Reg[14]; } set { Cop0Reg[14] = value; } }
+        private uint SR { get { return Cop0Reg[12]; } set { Cop0Reg[12] = value; } }
+        private uint CAUSE { get { return Cop0Reg[13]; } set { Cop0Reg[13] = value; } }
+        private uint EPC { get { return Cop0Reg[14]; } set { Cop0Reg[14] = value; } }
+
+        //Debug
+        private long cycle; //current CPU cycle counter for debug
+        private BIOS_Disassembler bios = new BIOS_Disassembler();
 
         private struct MEM {
             public uint LoadRegNPostDelay;
@@ -80,19 +82,80 @@ namespace ProjectPSX {
         private WB wb;
         private MEM mem;
 
+        private bool debug = false;
+
         internal void Run(BUS bus) {
             fetchDecode(bus);
-            Execute(bus);
+            if (handleInterrupts(bus))
+                fetchDecode(bus); // handle interrupts
+            try {
+                Execute(bus);
+            } catch (Exception e){
+                bios.verbose(PC, GPR);
+                disassemble();
+                PrintRegs();
+                Console.ReadLine();
+            }
             MemAccess();
             WriteBack();
 
-            //debug
-            //TTY();
-            /*
-            if(cycle > 19249000) {
-                disassemble();
-                PrintRegs();
-            }*/
+            /*debug*/
+            TTY();
+            //forceTest(bus);
+
+            if (debug) {
+                bios.verbose(PC_Now, GPR);
+                //disassemble();
+                //PrintRegs();
+            }
+            if (debug == false && cycle == 19258500) { //0x800583B0 CD COMMAND 0x19
+                debug = true;
+            }
+
+
+        }
+
+        private void forceTest(BUS bus) {
+            if (PC == 0x8003_0000) {
+                bus.loadEXE();
+                GPR[29] = 0x801F_FFF0;
+                GPR[28] = 0;
+                GPR[30] = 0;
+                PC_Predictor = 0x8001_0000;
+                //debug = true;
+            }
+        }
+        public bool handleInterrupts(BUS bus) {
+            uint I_STAT = bus.load(Width.WORD, 0x1F801070);
+            uint I_MASK = bus.load(Width.WORD, 0x1F801074);
+            
+            if ((I_STAT & I_MASK) != 0) {
+                //Console.WriteLine("I_STAT " + I_STAT.ToString("x8") + " I_MASK " + I_MASK.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
+                CAUSE |= 0x400;
+            } else {
+                CAUSE = (uint)(CAUSE & ~0x400);
+            }
+
+            bool IEC = (SR & 0x1) == 1;
+            byte IM = (byte)((SR >> 8) & 0xFF);
+            byte IP = (byte)((CAUSE >> 8) & 0xFF);
+            bool Cop0Interrupt = (IM & IP) != 0;
+
+            if (IEC && Cop0Interrupt){
+                //disassemble();
+                //PrintRegs();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("[EXCEPTION HANDLING] IEC " + IEC + " IM " +IM.ToString("x8") + " IP " +IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
+                //debug = true;
+                EXCEPTION(EX.INTERRUPT);
+                CAUSE = (uint)(CAUSE & ~0x400);
+                Console.WriteLine(" POST EX CAUSE " + CAUSE.ToString("x8"));
+                Console.ResetColor();
+                //if (I_STAT != 0)
+                //  bus.write(Width.WORD, 0x1F801070, 0xffff_fffb); //test cd disable
+                return true;
+            }
+            return false;
 
         }
 
@@ -101,10 +164,11 @@ namespace ProjectPSX {
             PC_Now = PC;
             PC = PC_Predictor;
             PC_Predictor += 4;
+
             isDelaySlot = isBranch;
             isBranch = false;
 
-            if((PC_Now % 4) != 0) {
+            if ((PC_Now % 4) != 0) {
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 return;
             }
@@ -114,17 +178,19 @@ namespace ProjectPSX {
         }
 
         private void MemAccess() {
-            REG[mem.LoadRegNPostDelay] = mem.LoadValuePostDelay;
+            if(mem.LoadRegN != mem.LoadRegNPostDelay) { //if loadDelay on same reg it is lost/overwritten (amidog tests)
+                GPR[mem.LoadRegNPostDelay] = mem.LoadValuePostDelay;
+            }
             mem.LoadRegNPostDelay = mem.LoadRegN;
             mem.LoadValuePostDelay = mem.LoadValue;
             mem.LoadRegN = 0;
-            REG[0] = 0;
+            GPR[0] = 0;
         }
 
         private void WriteBack() {
-            REG[wb.WriteRegN] = wb.WriteValue;
+            GPR[wb.WriteRegN] = wb.WriteValue;
             wb.WriteRegN = 0;
-            REG[0] = 0;
+            GPR[0] = 0;
         }
 
         private void Execute(BUS bus) {
@@ -160,16 +226,25 @@ namespace ProjectPSX {
                         case 0b10_1010: SLT();            break;
                         case 0b10_1011: SLTU();           break;
                         default:
-                            EXCEPTION(EX.ILLEGAL_INSTR);
                             unimplementedWarning();
+                            EXCEPTION(EX.ILLEGAL_INSTR);
                             break;
                     }
                     break;
                 case 0b00_0001:
                     switch (instr.rt) {
-                        case 0b00_0000: BLTZ();           break;
-                        case 0b00_0001: BGEZ();           break;
-                        default: unimplementedWarning();  break;
+                        case 0b01_0000: BLTZAL(); break;
+                        case 0b01_0001: BGEZAL(); break;
+                        default:
+                            switch (instr.rt & 0x1) {
+                                //somewhow the psx mips accepts every possible combination of rt as BLTZ/BGEZ
+                                //as long its not 0b1_0000 / 0b1_0001. Example: 0b010111 would be BGEZ
+                                case 0b00_0000: BLTZ(); break;
+                                case 0b00_0001: BGEZ(); break;
+                                //default: unimplementedWarning(); EXCEPTION(EX.ILLEGAL_INSTR); break;
+                                //As it eats wathever opcode it gets, should be impossible to throw Exception here
+                            }
+                            break;
                     }
                     break;
                 
@@ -223,10 +298,24 @@ namespace ProjectPSX {
                 case 0b11_1010: SWC2(bus);                break;
                 //pending lwc0-3 and swc0-3 and illegal opc
                 default:
-                    EXCEPTION(EX.ILLEGAL_INSTR);
                     unimplementedWarning();
+                    EXCEPTION(EX.ILLEGAL_INSTR);
                     break;
             }
+        }
+
+        private void BGEZAL() {
+            if (((int)GPR[instr.rs]) >= 0) {
+                BRANCH();
+            }
+            GPR[31] = PC_Predictor;
+        }
+
+        private void BLTZAL() {
+            if (((int)GPR[instr.rs]) < 0) {
+                BRANCH();
+            }
+            GPR[31] = PC_Predictor;
         }
 
         private void SWC2(BUS bus) {
@@ -244,75 +333,92 @@ namespace ProjectPSX {
         }
 
         private void SWR(BUS bus) {
-            uint addr = REG[instr.rs] + instr.imm_s;
+            uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
 
             uint value = 0;
             switch (addr & 0b11) {
-                case 0: value = aligned_load | REG[instr.rt]; break;
-                case 1: value = aligned_load & 0xFF | REG[instr.rt] << 8; break;
-                case 2: value = aligned_load & 0xFFFF | REG[instr.rt] << 16; break;
-                case 3: value = aligned_load & 0xFF_FFFF | REG[instr.rt] << 24; break;
+                case 0: value = GPR[instr.rt]; break;
+                case 1: value = (aligned_load & 0x0000_00FF) | (GPR[instr.rt] << 8); break;
+                case 2: value = (aligned_load & 0x0000_FFFF) | (GPR[instr.rt] << 16); break;
+                case 3: value = (aligned_load & 0x00FF_FFFF) | (GPR[instr.rt] << 24); break;
             }
 
-            bus.write(Width.WORD, addr, value);
+            bus.write(Width.WORD, addr & 0xFFFF_FFFC, value);
         }
 
         private void SWL(BUS bus) {
-            uint addr = REG[instr.rs] + instr.imm_s;
+            uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
 
             uint value = 0;
             switch (addr & 0b11) {
-                case 3: value = aligned_load | REG[instr.rt]; break;
-                case 2: value = aligned_load & 0xFF | REG[instr.rt] >> 8; break;
-                case 1: value = aligned_load & 0xFFFF | REG[instr.rt] >> 16; break;
-                case 0: value = aligned_load & 0xFF_FFFF | REG[instr.rt] >> 24; break;
+                case 0: value = (aligned_load & 0xFFFF_FF00) | (GPR[instr.rt] >> 24); break;
+                case 1: value = (aligned_load & 0xFFFF_0000) | (GPR[instr.rt] >> 16); break;
+                case 2: value = (aligned_load & 0xFF00_0000) | (GPR[instr.rt] >> 8); break;
+                case 3: value = GPR[instr.rt]; break;
             }
 
-            bus.write(Width.WORD, addr, value);
+            bus.write(Width.WORD, addr & 0xFFFF_FFFC, value);
         }
 
         private void LWR(BUS bus) {
-            uint addr = REG[instr.rs] + instr.imm_s;
+            uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+
+            //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
 
             uint value = 0;
+            uint LRValue = GPR[instr.rt];
+
+            if (instr.rt == mem.LoadRegNPostDelay) {
+                LRValue = mem.LoadValuePostDelay;
+                //isLRLoadBypass = false;
+            }
+            //isLROpcode = true;
+
             switch (addr & 0b11) {
-                case 0: value = aligned_load;       break;
-                case 1: value = aligned_load >> 8;  break;
-                case 2: value = aligned_load >> 16; break;
-                case 3: value = aligned_load >> 24; break;
+                case 0: value = aligned_load; break;
+                case 1: value = (LRValue & 0xFF00_0000) | (aligned_load >> 8); break;
+                case 2: value = (LRValue & 0xFFFF_0000) | (aligned_load >> 16); break;
+                case 3: value = (LRValue & 0xFFFF_FF00) | (aligned_load >> 24); break;
             }
 
-            uint prev_value = mem.LoadRegNPostDelay == instr.rt ?
-                mem.LoadValuePostDelay : REG[instr.rt];
-            delayedLoad(instr.rt, prev_value | value);
+            //Console.WriteLine("case " + (addr & 0b11) + " LWR Value " + value.ToString("x8"));
+            delayedLoad(instr.rt, value);
         }
 
         private void LWL(BUS bus) {
-            uint addr = REG[instr.rs] + instr.imm_s;
+            uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr);
+            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+
+            //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
 
             uint value = 0;
-            switch(addr & 0b11) {
-                case 0: value = aligned_load << 24; break;
-                case 1: value = aligned_load << 16; break;
-                case 2: value = aligned_load << 8;  break;
-                case 3: value = aligned_load;       break;
-            }
+            uint LRValue = GPR[instr.rt];
 
-            uint prev_value = mem.LoadRegNPostDelay == instr.rt ?
-                mem.LoadValuePostDelay : REG[instr.rt];
-            delayedLoad(instr.rt, prev_value | value);
+            if (instr.rt == mem.LoadRegNPostDelay) {
+                LRValue = mem.LoadValuePostDelay;
+                //isLRLoadBypass = false;
+            }
+            //isLROpcode = true;
+
+            switch (addr & 0b11) {
+                case 0: value = (LRValue & 0x00FF_FFFF) | (aligned_load << 24); break;
+                case 1: value = (LRValue & 0x0000_FFFF) | (aligned_load << 16); break;
+                case 2: value = (LRValue & 0x0000_00FF) | (aligned_load << 8); break;
+                case 3: value = aligned_load; break;
+            }
+            //Console.WriteLine("case " + (addr & 0b11) + " LWL Value " + value.ToString("x8"));
+            delayedLoad(instr.rt, value);
         }
 
         private void COP2() {
@@ -329,22 +435,22 @@ namespace ProjectPSX {
         }
 
         private void XORI() {
-            setReg(instr.rt, REG[instr.rs] ^ REG[instr.imm]);
+            setGPR(instr.rt, GPR[instr.rs] ^ instr.imm);
         }
 
         private void SUB() {
-            int rs = (int)REG[instr.rs];
-            int rt = (int)REG[instr.rt];
+            int rs = (int)GPR[instr.rs];
+            int rt = (int)GPR[instr.rt];
             try {
                 uint sub = (uint)checked(rs - rt);
-                setReg(instr.rd, sub);
+                setGPR(instr.rd, sub);
             } catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW);
             }
         }
 
         private void MULT() {
-            long value = (int)REG[instr.rs] * (int)REG[instr.rt];
+            long value = (long)(int)GPR[instr.rs] * (long)(int)GPR[instr.rt]; //sign extend to pass amidog cpu test
 
             HI = (uint)(value >> 32);
             LO = (uint)value;
@@ -355,31 +461,31 @@ namespace ProjectPSX {
         }
 
         private void XOR() {
-            setReg(instr.rd, REG[instr.rs] ^ REG[instr.rt]);
+            setGPR(instr.rd, GPR[instr.rs] ^ GPR[instr.rt]);
         }
 
         private void MULTU() {
-            ulong value = REG[instr.rs] * REG[instr.rt];
+            ulong value = (ulong)GPR[instr.rs] * (ulong)GPR[instr.rt]; //sign extend to pass amidog cpu test
 
             HI = (uint)(value >> 32);
             LO = (uint)value;
         }
 
         private void SRLV() {
-            setReg(instr.rd, REG[instr.rt] >> (int)(REG[instr.rs] & 0x1F));
+            setGPR(instr.rd, GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F));
         }
 
         private void SRAV() {
-            setReg(instr.rd, (uint)((int)REG[instr.rt] >> (int)(REG[instr.rs] & 0x1F)));
+            setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F)));
         }
 
         private void NOR() {
-            setReg(instr.rd, ~(REG[instr.rs] | REG[instr.rt]));
+            setGPR(instr.rd, ~(GPR[instr.rs] | GPR[instr.rt]));
         }
 
         private void LH(BUS bus) {
             if ((SR & 0x10000) == 0) {
-                uint addr = REG[instr.rs] + instr.imm_s;
+                uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
@@ -392,12 +498,12 @@ namespace ProjectPSX {
         }
 
         private void SLLV() {
-            setReg(instr.rd, REG[instr.rt] << (int)(REG[instr.rs] & 0x1F));
+            setGPR(instr.rd, GPR[instr.rt] << (int)(GPR[instr.rs] & 0x1F));
         }
 
         private void LHU(BUS bus) {
             if ((SR & 0x10000) == 0) {
-                uint addr = REG[instr.rs] + instr.imm_s;
+                uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
@@ -410,17 +516,22 @@ namespace ProjectPSX {
         }
 
         private void RFE() {
+            //Console.ForegroundColor = ConsoleColor.Yellow;
+            //Console.WriteLine("[RFE] PRE SR" + SR.ToString("x8"));
             uint mode = SR & 0x3F;
-            SR = (uint)(SR & ~0x3F);
+            SR = (uint)(SR & ~0xF);////////////
             SR |= mode >> 2;
+            //Console.WriteLine("[RFE] POST SR" + SR.ToString("x8"));
+            //Console.ResetColor();
+            //Console.ReadLine();
         }
 
         private void MTHI() {
-            HI = REG[instr.rs];
+            HI = GPR[instr.rs];
         }
 
         private void MTLO() {
-            LO = REG[instr.rs];
+            LO = GPR[instr.rs];
         }
 
         private void EXCEPTION(EX cause) {
@@ -431,17 +542,34 @@ namespace ProjectPSX {
                 ExAdress = 0x8000_0080;
             }
 
+            //Console.ForegroundColor = ConsoleColor.Yellow;
+            //Console.WriteLine("[EXCEPTION F] PRE SR" + SR.ToString("x8"));
+
             uint mode = SR & 0x3F;
             SR = (uint)(SR & ~0x3F);
             SR |= (mode << 2) & 0x3F;
 
+            //Console.WriteLine("[EXCEPTION F] POST SR" + SR.ToString("x8"));
+
+            uint OldCause = CAUSE & 0x3000ff00;
+
             CAUSE = (uint)cause << 2;
+            CAUSE |= OldCause;
+
+            //Console.WriteLine("[EXCEPTION F] PRE EPC " + EPC.ToString("x8"));
+
             EPC = PC_Now;
 
             if (isDelaySlot) {
                 EPC = EPC - 4;
                 CAUSE = (uint)(CAUSE |(1 << 31));
             }
+
+            //Console.WriteLine("[EXCEPTION F] POST EPC " + EPC.ToString("x8"));
+            //disassemble();
+            //PrintRegs();
+            //Console.ResetColor();
+            //Console.ReadLine();
 
             PC = ExAdress;
             PC_Predictor = PC + 4;
@@ -452,17 +580,17 @@ namespace ProjectPSX {
         }
 
         private void SLT() {
-            bool condition = (int)REG[instr.rs] < (int)REG[instr.rt];
-            setReg(instr.rd, condition ? 1u : 0u);
+            bool condition = (int)GPR[instr.rs] < (int)GPR[instr.rt];
+            setGPR(instr.rd, condition ? 1u : 0u);
         }
 
         private void MFHI() {
-            setReg(instr.rd, HI);
+            setGPR(instr.rd, HI);
         }
 
         private void DIVU() {
-            uint n = REG[instr.rs];
-            uint d = REG[instr.rt];
+            uint n = GPR[instr.rs];
+            uint d = GPR[instr.rt];
 
             if(d == 0) {
                 HI = n;
@@ -474,21 +602,21 @@ namespace ProjectPSX {
         }
 
         private void SLTIU() {
-            bool condition = REG[instr.rs] < instr.imm_s;
-            setReg(instr.rt, condition ? 1u : 0u);
+            bool condition = GPR[instr.rs] < instr.imm_s;
+            setGPR(instr.rt, condition ? 1u : 0u);
         }
 
         private void SRL() {
-            setReg(instr.rd, REG[instr.rt] >> (int)instr.sa);
+            setGPR(instr.rd, GPR[instr.rt] >> (int)instr.sa);
         }
 
         private void MFLO() {
-            setReg(instr.rd, LO);
+            setGPR(instr.rd, LO);
         }
 
         private void DIV() { //signed division
-            int n = (int)REG[instr.rs];
-            int d = (int)REG[instr.rt];
+            int n = (int)GPR[instr.rs];
+            int d = (int)GPR[instr.rt];
 
             if(d == 0) {
                 HI = (uint) n;
@@ -507,16 +635,16 @@ namespace ProjectPSX {
         }
 
         private void SRA() { //TODO revisit this
-            setReg(instr.rd, (uint)((int)REG[instr.rt] >> (int)instr.sa));
+            setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)instr.sa));
         }
 
         private void SUBU() {
-            setReg(instr.rd, REG[instr.rs] - REG[instr.rt]);
+            setGPR(instr.rd, GPR[instr.rs] - GPR[instr.rt]);
         }
 
         private void SLTI() {
-            bool condition = (int)REG[instr.rs] < (int)instr.imm_s;
-            setReg(instr.rt, condition ? 1u : 0u);
+            bool condition = (int)GPR[instr.rs] < (int)instr.imm_s;
+            setGPR(instr.rt, condition ? 1u : 0u);
         }
 
         private void BRANCH() {
@@ -526,55 +654,58 @@ namespace ProjectPSX {
         }
 
         private void BGEZ() {
-            if (((int)REG[instr.rs]) >= 0) {
+            if (((int)GPR[instr.rs]) >= 0) {
                 BRANCH();
             }
         }
 
         private void BLTZ() {
-            if (((int)REG[instr.rs]) < 0) {
+            if (((int)GPR[instr.rs]) < 0) {
                 BRANCH();
             }
         }
 
         private void JALR() {
             isBranch = true;
-            setReg(instr.rd, PC_Predictor);
+            setGPR(instr.rd, PC_Predictor);
             JR();
         }
 
         private void LBU(BUS bus) { //todo recheck this
             if ((SR & 0x10000) == 0) {
-                uint value = bus.load(Width.BYTE, REG[instr.rs] + instr.imm_s);
+                uint value = bus.load(Width.BYTE, GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Load");
         }
 
         private void BLEZ() {
-            if (((int)REG[instr.rs]) <= 0) {
+            if (((int)GPR[instr.rs]) <= 0) {
                 BRANCH();
             }
         }
 
         private void BGTZ() {
-            if (((int)REG[instr.rs]) > 0) {
+            if (((int)GPR[instr.rs]) > 0) {
                 BRANCH();
             }
         }
 
         private void ADD() {
-            int rs = (int)REG[instr.rs];
-            int rt = (int)REG[instr.rt];
+            int rs = (int)GPR[instr.rs];
+            int rt = (int)GPR[instr.rt];
             try {
                 uint add = (uint)checked(rs + rt);
-                setReg(instr.rd, add);
+                setGPR(instr.rd, add);
+                //if(rs + rt != 2408)
+                //Console.WriteLine("ADD NO OVERLOW -- " + rs.ToString("x8") + " + " + rt.ToString("x8") + " " + (rs + rt) );
             } catch (OverflowException) {
+                //Console.WriteLine("ADD OVERLOW -- " + rs.ToString("x8") + " + " + rt.ToString("x8"));
                 EXCEPTION(EX.OVERFLOW);
             }
         }
 
         private void AND() {
-            setReg(instr.rd, REG[instr.rs] & REG[instr.rt]);
+            setGPR(instr.rd, GPR[instr.rs] & GPR[instr.rt]);
         }
 
         private void MFC0() {
@@ -582,63 +713,63 @@ namespace ProjectPSX {
         }
 
         private void BEQ() {
-            if (REG[instr.rs] == REG[instr.rt]) {
+            if (GPR[instr.rs] == GPR[instr.rt]) {
                 BRANCH();
             }
         }
 
         private void LB(BUS bus) { //todo redo this as it unnecesary load32
             if ((SR & 0x10000) == 0) {
-                uint value = (uint)(sbyte)bus.load(Width.BYTE, REG[instr.rs] + instr.imm_s);
+                uint value = (uint)(sbyte)bus.load(Width.BYTE, GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Write");
         }
 
         private void JR() {
             isBranch = true;
-            PC_Predictor = REG[instr.rs];
+            PC_Predictor = GPR[instr.rs];
         }
 
         private void SB(BUS bus) {
             if ((SR & 0x10000) == 0)
-                bus.write(Width.BYTE, REG[instr.rs] + instr.imm_s, (byte)REG[instr.rt]);
+                bus.write(Width.BYTE, GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
             //else Console.WriteLine("Ignoring Write");
         }
 
         private void ANDI() {
-            setReg(instr.rt, REG[instr.rs] & instr.imm);
+            setGPR(instr.rt, GPR[instr.rs] & instr.imm);
         }
 
         private void JAL() {
-            setReg(31, PC_Predictor);
+            setGPR(31, PC_Predictor);
             J();
         }
 
         private void SH(BUS bus) {
             if ((SR & 0x10000) == 0) {
-                uint addr = REG[instr.rs] + instr.imm_s;
+                uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr % 2) != 0) {
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write(Width.HALF, addr, (ushort)REG[instr.rt]);
+                    bus.write(Width.HALF, addr, (ushort)GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
         }
 
         private void ADDU() {
-            setReg(instr.rd, REG[instr.rs] + REG[instr.rt]);
+            setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
         }
 
         private void SLTU() {
-            bool condition = REG[instr.rs] < REG[instr.rt];
-            setReg(instr.rd, condition ? 1u : 0u);
+            bool condition = GPR[instr.rs] < GPR[instr.rt];
+            setGPR(instr.rd, condition ? 1u : 0u);
         }
 
         private void LW(BUS bus) {
             if ((SR & 0x10000) == 0) {
-                uint addr = REG[instr.rs] + instr.imm_s;
+                uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr % 4) != 0) {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
@@ -651,28 +782,38 @@ namespace ProjectPSX {
         }
 
         private void ADDI() {
-            int rs = (int)REG[instr.rs];
+            int rs = (int)GPR[instr.rs];
             int imm_s = (int)instr.imm_s;
             try {
                 uint addi = (uint) checked(rs + imm_s);
-                setReg(instr.rt, addi);
+                setGPR(instr.rt, addi);
             } catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW);
             }
         }
 
         private void BNE() {
-            if (REG[instr.rs] != REG[instr.rt]) {
+            if (GPR[instr.rs] != GPR[instr.rt]) {
                 BRANCH();
             }
         }
 
         private void MTC0() {
-            Cop0Reg[instr.fs] = REG[instr.ft];
+            Cop0Reg[instr.fs] = GPR[instr.ft];
+            if (instr.fs == 12) {
+                Console.WriteLine("[WARNING MTC0 SR] " + GPR[instr.ft].ToString("x8"));
+                //disassemble();
+                //PrintRegs();
+            } else if (instr.fs == 13) {
+                Console.WriteLine("[WARNING MTC0 CAUSE] " + GPR[instr.ft].ToString("x8"));
+                Console.WriteLine(Cop0Reg[13].ToString("x8"));
+                disassemble();
+                PrintRegs();
+            }
         }
 
         private void OR() {
-            setReg(instr.rd, REG[instr.rs] | REG[instr.rt]);
+            setGPR(instr.rd, GPR[instr.rs] | GPR[instr.rt]);
         }
 
         private void J() {
@@ -681,35 +822,35 @@ namespace ProjectPSX {
         }
 
         private void ADDIU() {
-            setReg(instr.rt, REG[instr.rs] + instr.imm_s);
+            setGPR(instr.rt, GPR[instr.rs] + instr.imm_s);
         }
 
         private void SLL() {
-            setReg(instr.rd, REG[instr.rt] << (int)instr.sa);
+            setGPR(instr.rd, GPR[instr.rt] << (int)instr.sa);
         }
 
         private void SW(BUS bus) {
             if ((SR & 0x10000) == 0) {
-                uint addr = REG[instr.rs] + instr.imm_s;
+                uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr % 4) != 0) {
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write(Width.WORD, addr, REG[instr.rt]);
+                    bus.write(Width.WORD, addr, GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
         }
 
             private void LUI() {
-            setReg(instr.rt, instr.imm << 16);
+            setGPR(instr.rt, instr.imm << 16);
         }
 
         private void ORI() {
-            setReg(instr.rt, REG[instr.rs] | instr.imm);
+            setGPR(instr.rt, GPR[instr.rs] | instr.imm);
         }
 
-        private void setReg(uint regN, uint value) {
+        private void setGPR(uint regN, uint value) {
             wb.WriteRegN = regN;
             wb.WriteValue = value;
         }
@@ -720,7 +861,7 @@ namespace ProjectPSX {
         }
 
         private void unimplementedWarning() {
-            Console.WriteLine("Unimplemented instr");
+            Console.WriteLine("[CPU] Unimplemented instruction: ");
             string funct_string = instr.opcode == 0 ? " Function: " + instr.function.ToString("x8") : "";
             string format_string = instr.opcode == 0b01_0000 ? " Function: " + instr.format.ToString("x8") : "";
             Console.WriteLine("Cycle: " + cycle + " PC: " + PC_Now.ToString("x8") + " Load32: " + instr.value.ToString("x8")
@@ -731,8 +872,10 @@ namespace ProjectPSX {
         }
 
         private void TTY() {
-            if (PC == 0x000000B4 && REG[9] == 0x3D) {
-                Console.Write((char)REG[4]);
+            if (PC == 0x000000B4 && GPR[9] == 0x3D) {
+                Console.ForegroundColor = ConsoleColor.DarkCyan;
+                Console.Write((char)GPR[4]);
+                Console.ResetColor();
             }
         }
 
@@ -754,7 +897,7 @@ namespace ProjectPSX {
                         case 0b00_0100: output = "SLLV";    break;
                         case 0b00_0110: output = "SRLV";    break;
                         case 0b00_0111: output = "SRAV";    break;
-                        case 0b00_1000: output = "JR";      break;
+                        case 0b00_1000: output = "JR R" + instr.rs + " " + GPR[instr.rs].ToString("x8");      break;
                         case 0b00_1001: output = "JALR";    break;
                         case 0b00_1100: output = "SYSCALL"; break;
                         case 0b00_1101: output = "BREAK";   break;
@@ -770,7 +913,7 @@ namespace ProjectPSX {
                         case 0b10_0010: output = "SUB";     break;
                         case 0b10_0011: output = "SUBU";    break;
                         case 0b10_0100: output = "AND";     break;
-                        case 0b10_0101: output = "OR"; values = "R" + instr.rd + "," + (REG[instr.rs] | REG[instr.rt]).ToString("x8"); break;
+                        case 0b10_0101: output = "OR"; values = "R" + instr.rd + "," + (GPR[instr.rs] | GPR[instr.rt]).ToString("x8"); break;
                         case 0b10_0110: output = "XOR";     break;
                         case 0b10_0111: output = "NOR";     break;
                         case 0b10_1010: output = "SLT";     break;
@@ -798,7 +941,7 @@ namespace ProjectPSX {
                     break;
                 case 0b00_0101: //BNE();
                     output = "BNE";
-                    values = "R" + instr.rs +"[" + REG[instr.rs].ToString("x8") + "]" +"," + "R" + instr.rt + "[" + REG[instr.rt].ToString("x8") + "], (" + ((PC_Now)+(instr.imm_s << 2)).ToString("x8") +")";
+                    values = "R" + instr.rs +"[" + GPR[instr.rs].ToString("x8") + "]" +"," + "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], (" + ((PC_Now)+(instr.imm_s << 2)).ToString("x8") +")";
                     break;
                 case 0b00_0110: //BLEZ();
                     output = "BLEZ";
@@ -808,20 +951,20 @@ namespace ProjectPSX {
                     break;
                 case 0b00_1000: //ADDI();
                     output = "ADDI";
-                    int rs = (int)REG[instr.rs];
+                    int rs = (int)GPR[instr.rs];
                     int imm_s = (int)instr.imm_s;
                     try {
                         uint addi = (uint)checked(rs + imm_s);
-                        values = "R" + instr.rs + "," + (addi).ToString("x8") + " R" + instr.rs + "=" + REG[instr.rs].ToString("x8"); ;
+                        values = "R" + instr.rs + "," + (addi).ToString("x8") + " R" + instr.rs + "=" + GPR[instr.rs].ToString("x8"); ;
                         //Console.WriteLine("ADDI!");
                     } catch (OverflowException) {
-                        values = "R" + instr.rt + "," + REG[instr.rs].ToString("x8") + " + "  + instr.imm_s.ToString("x8") + " UNHANDLED OVERFLOW";
+                        values = "R" + instr.rt + "," + GPR[instr.rs].ToString("x8") + " + "  + instr.imm_s.ToString("x8") + " UNHANDLED OVERFLOW";
                     }
                     break;
                 case 0b00_1001: //ADDIU();
-                    // setReg(instr.rt, REG[instr.rs] + instr.imm_s);
+                    // setGPR(instr.rt, REG[instr.rs] + instr.imm_s);
                     output = "ADDIU";
-                    values = "R" + instr.rt + "," + (REG[instr.rs] + instr.imm_s).ToString("x8");
+                    values = "R" + instr.rt + "," + (GPR[instr.rs] + instr.imm_s).ToString("x8");
                     break;
                 case 0b00_1010: //SLTI();
                     output = "SLTI";
@@ -834,12 +977,12 @@ namespace ProjectPSX {
                     output = "ANDI";
                     break;
                 case 0b00_1101: //ORI();
-                    //setReg(instr.rt, REG[instr.rs] | instr.imm);
+                    //setGPR(instr.rt, REG[instr.rs] | instr.imm);
                     output = "ORI";
-                    values = "R" + instr.rt + "," + (REG[instr.rs] | instr.imm).ToString("x8");
+                    values = "R" + instr.rt + "," + (GPR[instr.rs] | instr.imm).ToString("x8");
                     break;
                 case 0b00_1111: //LUI();
-                    //setReg(instr.rt, instr.imm << 16);
+                    //setGPR(instr.rt, instr.imm << 16);
                     output = "LUI";
                     values = "R" + instr.rt + "," + (instr.imm << 16).ToString("x8");
                     break;
@@ -853,7 +996,7 @@ namespace ProjectPSX {
                         case 0b0_0100://MTC0();
                             // Cop0Reg[instr.fs] = REG[instr.ft];
                             output = "MTC0";
-                            values = "R" + instr.fs + "," + "R" + instr.ft + "["+REG[instr.ft].ToString("x8")+"]";
+                            values = "R" + instr.fs + "," + "R" + instr.ft + "["+GPR[instr.ft].ToString("x8")+"]";
                             break;
                         case 0b1_0000: //RFE(); break;
                             output = "RFE";
@@ -877,8 +1020,8 @@ namespace ProjectPSX {
                     break;
                 case 0b10_0011:// LW(bus);
                     if ((SR & 0x10000) == 0)
-                        values = "R" + instr.rt + "[" + REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + REG[instr.rs]).ToString("x8") + "]";
-                    else values = "R" + instr.rt + "[" + REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + REG[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED LOAD";
+                        values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
+                    else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED LOAD";
                     output = "LW";
                     break;
                 case 0b10_1001:// SH(bus);
@@ -894,10 +1037,10 @@ namespace ProjectPSX {
                     //    bus.write32(REG[instr.rs] + instr.imm_s, REG[instr.rt]);
                     output = "SW";
                     if ((SR & 0x10000) == 0)
-                        values = "R" + instr.rt + "["+REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") +")" + "["+ (instr.imm_s + REG[instr.rs]).ToString("x8") + "]";
-                    else values = "R" + instr.rt + "[" + REG[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + REG[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + REG[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
+                        values = "R" + instr.rt + "["+GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") +")" + "["+ (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
+                    else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
                     break;
-                case 0b10_1110: output = "SW"; break;
+                case 0b10_1110: output = "SWR"; break;
                 default:
                     break;
             }
@@ -908,10 +1051,24 @@ namespace ProjectPSX {
             for(int i = 0; i < 32; i++) {
                 string padding = (i < 10) ? "0" : "";
                 Console.Write("{0,20}",
-                "R" + padding + i + " " + REG[i].ToString("x8") + "");
+                "R" + padding + i + " " + GPR[i].ToString("x8") + "");
             }
             Console.Write("{0,20}", "HI " + HI.ToString("x8"));
-            Console.Write("{0,20}", "LO " + LO.ToString("x8") +"\n");
+            Console.Write("{0,20}", "LO " + LO.ToString("x8"));
+            Console.Write("{0,20}", "SR " + SR.ToString("x8"));
+            Console.Write("{0,20}", "EPC " + EPC.ToString("x8") + "\n");
+            bool IEC = (SR & 0x1) == 1;
+            byte IM = (byte)((SR >> 8) & 0xFF);
+            byte IP = (byte)((CAUSE >> 8) & 0xFF);
+            Console.WriteLine("[EXCEPTION INFO] IEC " + IEC + " IM " + IM.ToString("x8") + " IP " + IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
+
+            //
+
+            //bool IEC = (SR & 0x1) == 1;
+            //byte IM = (byte)((SR >> 8) & 0xFF);
+            //byte IP = (byte)((CAUSE >> 8) & 0xFF);
+            //bool Cop0Int = (IM & IP) != 0;
+            //Console.WriteLine("IEC " + IEC + " IM " + IM + " IP " + IP + " Cop0Int" + Cop0Int);
             //if(REG[23] == 0xE1003000 || REG[23] == 0xE1001000) { Console.WriteLine("========== Warning!!!! ==== REF24 E100"); Console.ReadLine(); }
         }
 

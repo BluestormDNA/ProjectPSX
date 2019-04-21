@@ -21,7 +21,7 @@ namespace ProjectPSX.Devices {
 
         private static Display display;
 
-        public enum Mode {
+        private enum Mode {
             COMMAND,
             VRAM
         }
