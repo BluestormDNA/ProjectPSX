@@ -7,7 +7,7 @@ namespace ProjectPSX {
 
         //Memory
         private byte[] RAM = new byte[2048 * 1024];
-        //private byte[] EX1 = new byte[512 * 1024];
+        private byte[] EX1 = new byte[512 * 1024];
         private byte[] SCRATHPAD = new byte[1024];
         private byte[] REGISTERS = new byte[4 * 1024];
         private byte[] BIOS = new byte[512 * 1024];
@@ -19,15 +19,22 @@ namespace ProjectPSX {
         private CDROM cdrom;
         private InterruptController interruptController;
         private TIMERS timers;
+        private JOYPAD joypad;
 
         public BUS() {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
             dma = new DMA();
             gpu = new GPU(interruptController);
             cdrom = new CDROM(interruptController);
-            timers = new TIMERS();
+            timers = new TIMERS(interruptController);
+            joypad = new JOYPAD();
 
             dma.setDMA_Transfer(this);
+        }
+
+        internal void setWindow(Window window) {
+            gpu.setWindow(window);
+            joypad.setWindow(window);
         }
 
         internal uint load(Width w, uint addr) {
@@ -41,7 +48,8 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
                 case uint KSEG0 when addr >= 0x9F00_0000 && addr < 0x9F08_0000:
                 case uint KSEG1 when addr >= 0xBF00_0000 && addr < 0xBF08_0000:
-                    return 0xFFFF_FFFF;
+                    addr &= 0x7_FFFF;
+                    return load(w, addr, EX1);
 
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
                 case uint KSEG0 when addr >= 0x9F80_0000 && addr < 0x9F80_0400:
@@ -58,8 +66,12 @@ namespace ProjectPSX {
                             return interruptController.loadISTAT();
                         case 0x1F801074:
                             return interruptController.loadIMASK();
+                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            return joypad.load(w, addr);
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(w, addr);
+                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            return timers.load(w, addr);
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(w, addr);
                         case 0x1F801810:
@@ -83,7 +95,7 @@ namespace ProjectPSX {
                     return load(w, addr, IO);
 
                 default:
-                    //Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+                    Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
                     return 0xFFFF_FFFF;
             }
         }
@@ -95,6 +107,13 @@ namespace ProjectPSX {
                 case uint KSEG1 when addr >= 0xA000_0000 && addr < 0xBF00_0000:
                     addr &= 0x1F_FFFF;
                     write(w, addr, value, RAM);
+                    break;
+
+                case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
+                case uint KSEG0 when addr >= 0x9F00_0000 && addr < 0x9F08_0000:
+                case uint KSEG1 when addr >= 0xBF00_0000 && addr < 0xBF08_0000:
+                    addr &= 0x7_FFFF;
+                    write(w, addr, value, EX1);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
@@ -115,8 +134,14 @@ namespace ProjectPSX {
                         case 0x1F801074:
                             interruptController.writeIMASK(value);
                             break;
+                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            joypad.write(w, addr, value);
+                            break;
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(w, addr, value);
+                            break;
+                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            timers.write(w, addr, value);
                             break;
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             cdrom.write(w, addr, value);
@@ -148,7 +173,7 @@ namespace ProjectPSX {
                     break;
 
                 default:
-                    //Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
                     break;
             }
         }
@@ -167,20 +192,62 @@ namespace ProjectPSX {
             }
         }
 
+        string psx = "./SCPH1001.BIN";
+        string noc = "./PSX-XBOO.ROM";
         internal void loadBios() {
-            byte[] rom = File.ReadAllBytes("./SCPH1001.BIN");
+            byte[] rom = File.ReadAllBytes(psx);
             Array.Copy(rom, 0, BIOS, 0, rom.Length);
         }
 
-        internal void loadEXE()
-        {
-            byte[] exe = File.ReadAllBytes("./psxtest_cpu.exe");
-            Array.Copy(exe, 0x800, RAM, 0x10000, exe.Length - 0x800);
-            //Array.Copy(exe, 0x800, RAM, 0x40808, exe.Length - 0x800);
+        //PSX executables are having an 800h-byte header, followed by the code/data.
+        //
+        // 000h-007h ASCII ID "PS-X EXE"
+        // 008h-00Fh Zerofilled
+        // 010h Initial PC(usually 80010000h, or higher)
+        // 014h Initial GP/R28(usually 0)
+        // 018h Destination Address in RAM(usually 80010000h, or higher)
+        // 01Ch Filesize(must be N*800h)    (excluding 800h-byte header)
+        // 020h Unknown/Unused(usually 0)
+        // 024h Unknown/Unused(usually 0)
+        // 028h Memfill Start Address(usually 0) (when below Size = None)
+        // 02Ch Memfill Size in bytes(usually 0) (0=None)
+        // 030h Initial SP/R29 & FP/R30 Base(usually 801FFFF0h) (or 0=None)
+        // 034h Initial SP/R29 & FP/R30 Offs(usually 0, added to above Base)
+        // 038h-04Bh Reserved for A(43h) Function(should be zerofilled in exefile)
+        // 04Ch-xxxh ASCII marker
+        //            "Sony Computer Entertainment Inc. for Japan area"
+        //            "Sony Computer Entertainment Inc. for Europe area"
+        //            "Sony Computer Entertainment Inc. for North America area"
+        //            (or often zerofilled in some homebrew files)
+        //            (the BIOS doesn't verify this string, and boots fine without it)
+        // xxxh-7FFh Zerofilled
+        // 800h...   Code/Data(loaded to entry[018h] and up)
+
+        internal (uint, uint, uint, uint) loadEXE(String test) {
+            byte[] exe = File.ReadAllBytes(test);
+            uint PC = load(Width.WORD, 0x10, exe);
+            uint R28 = load(Width.WORD, 0x14, exe);
+            uint R29 = load(Width.WORD, 0x30, exe);
+            uint R30 = R29; //base
+            R30 += load(Width.WORD, 0x34, exe); //offset
+
+            uint DestAdress = load(Width.WORD, 0x18, exe);
+            Array.Copy(exe, 0x800, RAM, DestAdress & 0xFFFFFFF, exe.Length - 0x800);
+
+            return (PC, R28, R29, R30);
+        }
+
+        string ex = "./EXPROM.BIN";
+        string nochas = "./PSX-EXP.ROM";
+        internal void loadEXP() {
+            byte[] exe = File.ReadAllBytes(ex);
+            Array.Copy(exe, 0, EX1, 0, exe.Length);
         }
 
         public void tick(uint cycles) {
             gpu.tick(cycles);
+            cdrom.tick(cycles);
+            timers.tick(cycles);
         }
 
         void DMA_Transfer.toGPU(uint value) {
@@ -193,6 +260,14 @@ namespace ProjectPSX {
 
         void DMA_Transfer.toRAM(Width w, uint addr, uint value) {
             write(w, addr, value, RAM);
+        }
+
+        uint DMA_Transfer.fromGPU() {
+            return gpu.loadGPUSTAT();
+        }
+
+        uint DMA_Transfer.fromCD() {
+            return cdrom.getData();
         }
     }
 }
