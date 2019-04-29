@@ -19,43 +19,31 @@ namespace ProjectDMG {
             Height = height;
             Bits = new Int32[width * height];
             BitsHandle = GCHandle.Alloc(Bits, GCHandleType.Pinned);
-            Bitmap = new Bitmap(width, height, width * 4, PixelFormat.Format32bppPArgb, BitsHandle.AddrOfPinnedObject());
+
+            Bitmap = new Bitmap(width, height, width * 4, PixelFormat.Format32bppRgb, BitsHandle.AddrOfPinnedObject());
         }
 
-        public void SetPixel(int x, int y, Color colour) {
+        public void SetPixel(int x, int y, int color) {
             int index = x + (y * Width);
-            int col = colour.ToArgb();
-
-            Bits[index] = col;
+            Bits[index] = color;
         }
 
-        public Color GetPixel(int x, int y) {
+        public int GetPixel(int x, int y) {
             int index = x + (y * Width);
             int col = Bits[index];
-            Color result = Color.FromArgb(col);
-
-            return result;
+            return col;
         }
 
-        public ushort GetRawPixelValues(int x, int y) {
+        public ushort GetPixel16(int x, int y) {
             int index = x + (y * Width);
-            uint color = (uint)Bits[index];
+            int color = Bits[index];
 
+            byte m = (byte)((color & 0xFF000000) >> 24);
+            byte r = (byte)((color & 0x00FF0000) >> 16 + 3 );
+            byte g = (byte)((color & 0x0000FF00) >> 8 + 3);
+            byte b = (byte)((color & 0x000000FF) >> 3);
 
-            byte r = (byte)((color & 0xFF0000) >> 16 + 3 );
-            byte g = (byte)((color & 0x00FF00) >> 8 + 3);
-            byte b = (byte)((color & 0x0000FF) >> 2);
-
-            return (ushort)((b << 10) | (g << 5) | r);
-
-            /*
-            byte r = (byte)((val & 0x1F) << 3);
-            byte g = (byte)(((val >> 5) & 0x1F) << 3);
-            byte b = (byte)((val >> 10) << 3);
-
-            return Color.FromArgb(r, g, b);
-            */
-            //return p1; //todo add p2
+            return (ushort)(m << 15 | b << 10 | g << 5 | r);
         }
 
         public void Dispose() {
