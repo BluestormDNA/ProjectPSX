@@ -99,6 +99,14 @@ namespace ProjectPSX.Devices {
 
                         switch (channel) {
 
+                            case 2: //GPU
+                                data = dma_transfer.fromGPU();
+                                //Console.WriteLine("[DMA] [C2 GPU] Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                                break;
+                            case 3: //CD
+                                data = dma_transfer.fromCD();
+                                //Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                                break;
                             case 6: //OTC
                                 if(size == 1) {
                                     data = 0xFF_FFFF;
@@ -109,7 +117,7 @@ namespace ProjectPSX.Devices {
                                 break;
                             default:
                                 data = 0;
-                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram)" + channel);
+                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channel);
                                 break;
                         }
                         dma_transfer.toRAM(WORD, dmaAddress & 0x1F_FFFC, data);
