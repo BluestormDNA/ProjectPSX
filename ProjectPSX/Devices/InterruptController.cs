@@ -17,15 +17,15 @@ namespace ProjectPSX.Devices {
 
         internal void writeISTAT(uint value) {
             ISTAT &= value & 0x7FF;
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine("[IRQ] [ISTAT] Write " + value.ToString("x8") + " ISTAT " + ISTAT.ToString("x8"));
-            Console.ResetColor();
+            //Console.ForegroundColor = ConsoleColor.Magenta;
+            //Console.WriteLine("[IRQ] [ISTAT] Write " + value.ToString("x8") + " ISTAT " + ISTAT.ToString("x8"));
+            //Console.ResetColor();
             //Console.ReadLine();
         }
 
         internal void writeIMASK(uint value) {
             IMASK = value & 0x7FF;
-            Console.WriteLine("[IRQ] [IMASK] Write " + IMASK.ToString("x8"));
+            //Console.WriteLine("[IRQ] [IMASK] Write " + IMASK.ToString("x8"));
             //Console.ReadLine();
         }
 

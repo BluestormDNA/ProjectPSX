@@ -8,36 +8,41 @@ namespace ProjectPSX.Devices {
     public class TIMERS : Device {
 
         TIMER[] timer = new TIMER[3];
+        InterruptController interruptController = new InterruptController();
 
-        public TIMERS() {
-            timer[0] = new TIMER(0);
-            timer[1] = new TIMER(1);
-            timer[2] = new TIMER(2);
+        public TIMERS(InterruptController interruptController) {
+            this.interruptController = interruptController;
+
+            timer[0] = new TIMER(0, interruptController);
+            timer[1] = new TIMER(1, interruptController);
+            timer[2] = new TIMER(2, interruptController);
         }
 
         public new void write(Width w, uint addr, uint value) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
             timer[timerNumber].write(w, addr, value);
+            //Console.WriteLine("[TIMER] Write on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + value.ToString("x8"));
         }
 
         public new uint load(Width w, uint addr) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
+            //Console.WriteLine("[TIMER] load on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + timer[timerNumber].load(w, addr).ToString("x4"));
             return timer[timerNumber].load(w, addr);
         }
 
-        public void tick(ushort cycles) {
+        public void tick(uint cycles) {
             timer[0].tick(cycles);
             timer[1].tick(cycles);
             timer[2].tick(cycles);
         }
 
-        private class TIMER {
+        public class TIMER {
             private int timerNumber;
 
             private ushort counterValue;
             private uint counterTargetValue;
 
-            private byte counter2div8;
+            private ushort counter2div8;
 
             private byte syncEnable;
             private byte syncMode;
@@ -51,8 +56,11 @@ namespace ProjectPSX.Devices {
             private byte reachedTarget;
             private byte reachedFFFF;
 
-            public TIMER(int timerNumber) {
+            private InterruptController interruptController;
+
+            public TIMER(int timerNumber, InterruptController interruptController) {
                 this.timerNumber = timerNumber;
+                this.interruptController = interruptController;
             }
 
             public void write(Width w, uint addr, uint value) {
@@ -72,10 +80,29 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            public void tick(ushort cycles) { //todo this needs rework
+            public void tick(uint cycles) { //todo this needs rework
+                switch (timerNumber) {
+                    case 0:
+                        break;
+                    case 1:
+                        break;
+                    case 2:
+                        break;
+                }
 
-                counterValue += cycles;
+                counter2div8 += (ushort)cycles;
+                if(counter2div8 == 8) {
+                    counterValue++;
+                }
 
+                if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue){
+                    counterValue = 0;
+                    if (irqWhenCounterTarget == 1) {
+                        interruptController.set(Interrupt.TIMER2);
+                    }
+                } else if(counterValue == 0xFFFF & irqWhenCounterFFFF == 1) {
+                    interruptController.set(Interrupt.TIMER2);
+                }
             }
 
             private void setCounterMode(uint value) {
@@ -90,6 +117,8 @@ namespace ProjectPSX.Devices {
                 interruptRequest = (byte)((value >> 10) & 0x1);
                 reachedTarget = (byte)((value >> 11) & 0x1);
                 reachedFFFF = (byte)((value >> 12) & 0x1);
+
+                counterValue = 0;
             }
 
             private uint getCounterMode() {

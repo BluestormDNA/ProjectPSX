@@ -7,5 +7,9 @@
         uint fromRAM(Width w, uint addr);
 
         void toRAM(Width w, uint addr, uint value);
+
+        uint fromGPU();
+
+        uint fromCD();
     }
 }
