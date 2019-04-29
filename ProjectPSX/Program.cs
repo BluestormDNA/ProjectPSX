@@ -1,29 +1,19 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace ProjectPSX {
-    class Program {
-        private CPU cpu;
-        private BUS bus;
-
+    static class Program {
+        /// <summary>
+        /// Punto de entrada principal para la aplicación.
+        /// </summary>
+        [STAThread]
         static void Main() {
-            Program p = new Program();
-            p.POWER_ON();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new Window());
         }
-
-        public void POWER_ON() {
-            cpu = new CPU();
-            bus = new BUS();
-
-            bus.loadBios();
-
-            while (true) {
-                cpu.Run(bus);
-                bus.tick(2); //2 ticks per opcode
-            }
-
-        }
-
     }
 }
-
