@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Text;
 
 namespace ProjectPSX {
     internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
@@ -20,20 +22,23 @@ namespace ProjectPSX {
         private uint CAUSE { get { return Cop0Reg[13]; } set { Cop0Reg[13] = value; } }
         private uint EPC { get { return Cop0Reg[14]; } set { Cop0Reg[14] = value; } }
 
+        //GTE
+        private GTE gte = new GTE();
+
         //Debug
         private long cycle; //current CPU cycle counter for debug
         private BIOS_Disassembler bios = new BIOS_Disassembler();
 
         private struct MEM {
-            public uint LoadRegNPostDelay;
-            public uint LoadValuePostDelay;
-            public uint LoadRegN;
-            public uint LoadValue;
+            public uint register;
+            public uint value;
+            public uint delayedRegister;
+            public uint delayedValue;
         }
 
         private struct WB {
-            public uint WriteRegN;
-            public uint WriteValue;
+            public uint register;
+            public uint value;
         }
 
         private struct Instr {
@@ -79,56 +84,86 @@ namespace ProjectPSX {
         }
         private Instr instr;
 
-        private WB wb;
-        private MEM mem;
+        private WB writeBack;
+        private MEM memoryLoad;
 
         private bool debug = false;
+        private bool isEX1 = true;
+        private bool exe = true;
+
+        public CPU() {
+            Cop0Reg[15] = 0x2; //PRID Processor ID
+        }
 
         internal void Run(BUS bus) {
             fetchDecode(bus);
-            if (handleInterrupts(bus))
-                fetchDecode(bus); // handle interrupts
-            try {
-                Execute(bus);
-            } catch (Exception e){
-                bios.verbose(PC, GPR);
-                disassemble();
-                PrintRegs();
-                Console.ReadLine();
-            }
+            Execute(bus);
             MemAccess();
             WriteBack();
 
             /*debug*/
             TTY();
-            //forceTest(bus);
+            forceTest(bus);
+            //if (isEX1) forceEX1(bus);
+
 
             if (debug) {
-                bios.verbose(PC_Now, GPR);
+                //bios.verbose(PC_Now, GPR);
                 //disassemble();
                 //PrintRegs();
+                //output();
             }
-            if (debug == false && cycle == 19258500) { //0x800583B0 CD COMMAND 0x19
-                debug = true;
-            }
-
-
+            //if (debug == false && PC_Now == 0x800583B0) { //0x800583B0 CD COMMAND 0x19
+            //    debug = true;
+            //}
         }
 
+        int dev;
+        StringBuilder str = new StringBuilder();
+        private void output() {
+            dev++;
+            string debug = PC_Now.ToString("x8") + " " + instr.value.ToString("x8") + "\n";
+
+            str.Append(debug);
+
+            if (dev == 1000) {
+                using (StreamWriter writer = new StreamWriter("log.txt", true)) {
+                    writer.WriteLine(str);
+                }
+                str.Clear();
+                dev = 0;
+            }
+        }
+
+        string tcpu = "./psxtest_cpu.exe";
+        string tcpx = "./psxtest_cpx.exe";
+        string tgte = "./psxtest_gte.exe";
         private void forceTest(BUS bus) {
-            if (PC == 0x8003_0000) {
-                bus.loadEXE();
-                GPR[29] = 0x801F_FFF0;
-                GPR[28] = 0;
-                GPR[30] = 0;
-                PC_Predictor = 0x8001_0000;
-                //debug = true;
+            if (PC == 0x8003_0000 && exe == true) {
+                (uint PC, uint R28, uint R29, uint R30) = bus.loadEXE(tcpx);
+                Console.WriteLine("TEST PC {0} R28 {1} R29 {2} R30 {3}", PC.ToString("x8"), R28.ToString("x8"), R29.ToString("x8"), R30.ToString("x8"));
+                GPR[29] = R29;//0x801FFF00;//R29;
+                GPR[28] = R28;
+                GPR[30] = R30;//0x801FFF00;//R30;
+                //GPR[31] = 0xBFC03D60;
+                this.PC = PC;
+                PC_Predictor = PC + 4;
+
+                debug = true;
+                exe = false;
             }
         }
-        public bool handleInterrupts(BUS bus) {
+
+        private void forceEX1(BUS bus) {
+            bus.loadEXP();
+            bus.write(Width.WORD, 0x1F02_0018, 0x1);
+            isEX1 = false;
+        }
+
+        public void handleInterrupts(BUS bus) {
             uint I_STAT = bus.load(Width.WORD, 0x1F801070);
             uint I_MASK = bus.load(Width.WORD, 0x1F801074);
-            
+
             if ((I_STAT & I_MASK) != 0) {
                 //Console.WriteLine("I_STAT " + I_STAT.ToString("x8") + " I_MASK " + I_MASK.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
                 CAUSE |= 0x400;
@@ -141,22 +176,21 @@ namespace ProjectPSX {
             byte IP = (byte)((CAUSE >> 8) & 0xFF);
             bool Cop0Interrupt = (IM & IP) != 0;
 
-            if (IEC && Cop0Interrupt){
+            if (IEC && Cop0Interrupt) {
+                //TODO Investigate why this is needed
+                fetchDecode(bus);
                 //disassemble();
                 //PrintRegs();
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write("[EXCEPTION HANDLING] IEC " + IEC + " IM " +IM.ToString("x8") + " IP " +IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
+                //Console.ForegroundColor = ConsoleColor.Red;
+                //Console.Write("[EXCEPTION HANDLING] IEC " + IEC + " IM " +IM.ToString("x8") + " IP " +IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
                 //debug = true;
                 EXCEPTION(EX.INTERRUPT);
                 CAUSE = (uint)(CAUSE & ~0x400);
-                Console.WriteLine(" POST EX CAUSE " + CAUSE.ToString("x8"));
-                Console.ResetColor();
+                //Console.WriteLine(" POST EX CAUSE " + CAUSE.ToString("x8"));
+                //Console.ResetColor();
                 //if (I_STAT != 0)
                 //  bus.write(Width.WORD, 0x1F801070, 0xffff_fffb); //test cd disable
-                return true;
             }
-            return false;
-
         }
 
         private void fetchDecode(BUS bus) {
@@ -178,18 +212,18 @@ namespace ProjectPSX {
         }
 
         private void MemAccess() {
-            if(mem.LoadRegN != mem.LoadRegNPostDelay) { //if loadDelay on same reg it is lost/overwritten (amidog tests)
-                GPR[mem.LoadRegNPostDelay] = mem.LoadValuePostDelay;
+            if (memoryLoad.delayedRegister != memoryLoad.register) { //if loadDelay on same reg it is lost/overwritten (amidog tests)
+                GPR[memoryLoad.register] = memoryLoad.value;
             }
-            mem.LoadRegNPostDelay = mem.LoadRegN;
-            mem.LoadValuePostDelay = mem.LoadValue;
-            mem.LoadRegN = 0;
+            memoryLoad.register = memoryLoad.delayedRegister;
+            memoryLoad.value = memoryLoad.delayedValue;
+            memoryLoad.delayedRegister = 0;
             GPR[0] = 0;
         }
 
         private void WriteBack() {
-            GPR[wb.WriteRegN] = wb.WriteValue;
-            wb.WriteRegN = 0;
+            GPR[writeBack.register] = writeBack.value;
+            writeBack.register = 0;
             GPR[0] = 0;
         }
 
@@ -197,34 +231,34 @@ namespace ProjectPSX {
             switch (instr.opcode) {
                 case 0b00_0000: //R-Type opcodes
                     switch (instr.function) {
-                        case 0b00_0000: SLL();            break;
-                        case 0b00_0010: SRL();            break;
-                        case 0b00_0011: SRA();            break;
-                        case 0b00_0100: SLLV();           break;
-                        case 0b00_0110: SRLV();           break;
-                        case 0b00_0111: SRAV();           break;
-                        case 0b00_1000: JR();             break;
-                        case 0b00_1001: JALR();           break;
-                        case 0b00_1100: SYSCALL();        break;
-                        case 0b00_1101: BREAK();          break;
-                        case 0b01_0000: MFHI();           break;
-                        case 0b01_0001: MTHI();           break;
-                        case 0b01_0010: MFLO();           break;
-                        case 0b01_0011: MTLO();           break;
-                        case 0b01_1000: MULT();           break;
-                        case 0b01_1001: MULTU();          break;
-                        case 0b01_1010: DIV();            break;
-                        case 0b01_1011: DIVU();           break;
-                        case 0b10_0000: ADD();            break;
-                        case 0b10_0001: ADDU();           break;
-                        case 0b10_0010: SUB();            break;
-                        case 0b10_0011: SUBU();           break;
-                        case 0b10_0100: AND();            break;
-                        case 0b10_0101: OR();             break;
-                        case 0b10_0110: XOR();            break;
-                        case 0b10_0111: NOR();            break;
-                        case 0b10_1010: SLT();            break;
-                        case 0b10_1011: SLTU();           break;
+                        case 0b00_0000: SLL(); break;
+                        case 0b00_0010: SRL(); break;
+                        case 0b00_0011: SRA(); break;
+                        case 0b00_0100: SLLV(); break;
+                        case 0b00_0110: SRLV(); break;
+                        case 0b00_0111: SRAV(); break;
+                        case 0b00_1000: JR(); break;
+                        case 0b00_1001: JALR(); break;
+                        case 0b00_1100: SYSCALL(); break;
+                        case 0b00_1101: BREAK(); break;
+                        case 0b01_0000: MFHI(); break;
+                        case 0b01_0001: MTHI(); break;
+                        case 0b01_0010: MFLO(); break;
+                        case 0b01_0011: MTLO(); break;
+                        case 0b01_1000: MULT(); break;
+                        case 0b01_1001: MULTU(); break;
+                        case 0b01_1010: DIV(); break;
+                        case 0b01_1011: DIVU(); break;
+                        case 0b10_0000: ADD(); break;
+                        case 0b10_0001: ADDU(); break;
+                        case 0b10_0010: SUB(); break;
+                        case 0b10_0011: SUBU(); break;
+                        case 0b10_0100: AND(); break;
+                        case 0b10_0101: OR(); break;
+                        case 0b10_0110: XOR(); break;
+                        case 0b10_0111: NOR(); break;
+                        case 0b10_1010: SLT(); break;
+                        case 0b10_1011: SLTU(); break;
                         default:
                             unimplementedWarning();
                             EXCEPTION(EX.ILLEGAL_INSTR);
@@ -237,65 +271,80 @@ namespace ProjectPSX {
                         case 0b01_0001: BGEZAL(); break;
                         default:
                             switch (instr.rt & 0x1) {
-                                //somewhow the psx mips accepts every possible combination of rt as BLTZ/BGEZ
+                                //somehow the psx mips accepts every possible combination of rt as BLTZ/BGEZ
                                 //as long its not 0b1_0000 / 0b1_0001. Example: 0b010111 would be BGEZ
                                 case 0b00_0000: BLTZ(); break;
                                 case 0b00_0001: BGEZ(); break;
-                                //default: unimplementedWarning(); EXCEPTION(EX.ILLEGAL_INSTR); break;
-                                //As it eats wathever opcode it gets, should be impossible to throw Exception here
                             }
                             break;
                     }
                     break;
-                
-                case 0b00_0010: J();                      break;
-                case 0b00_0011: JAL();                    break;
-                case 0b00_0100: BEQ();                    break;
-                case 0b00_0101: BNE();                    break;
-                case 0b00_0110: BLEZ();                   break;
-                case 0b00_0111: BGTZ();                   break;
-                case 0b00_1000: ADDI();                   break;
-                case 0b00_1001: ADDIU();                  break;
-                case 0b00_1010: SLTI();                   break;
-                case 0b00_1011: SLTIU();                  break;
-                case 0b00_1100: ANDI();                   break;
-                case 0b00_1101: ORI();                    break;
-                case 0b00_1110: XORI();                   break;
-                case 0b00_1111: LUI();                    break;
 
-                case 0b01_0000: //CoProcessor opcodes Cop0
+                case 0b00_0010: J(); break;
+                case 0b00_0011: JAL(); break;
+                case 0b00_0100: BEQ(); break;
+                case 0b00_0101: BNE(); break;
+                case 0b00_0110: BLEZ(); break;
+                case 0b00_0111: BGTZ(); break;
+                case 0b00_1000: ADDI(); break;
+                case 0b00_1001: ADDIU(); break;
+                case 0b00_1010: SLTI(); break;
+                case 0b00_1011: SLTIU(); break;
+                case 0b00_1100: ANDI(); break;
+                case 0b00_1101: ORI(); break;
+                case 0b00_1110: XORI(); break;
+                case 0b00_1111: LUI(); break;
+
+                case 0b01_0000: //CoProcessor 0 opcodes
                     switch (instr.format) {
-                        case 0b0_0000: MFC0();            break;
-                        case 0b0_0100: MTC0();            break;
-                        case 0b1_0000: RFE();             break;
-                        default: unimplementedWarning();  break;
+                        case 0b0_0000: MFC0(); break;
+                        case 0b0_0100: MTC0(); break;
+                        case 0b1_0000: RFE(); break;
+                        default: unimplementedWarning(); break;
                     }
                     break;
 
-                case 0b01_0001: COP1();                   break;
-                case 0b01_0010: COP2();                   break;
-                case 0b01_0011: COP3();                   break;
+                case 0b01_0001: COP1(); break;
 
-                case 0b10_0000: LB(bus);                  break;
-                case 0b10_0001: LH(bus);                  break;
-                case 0b10_0010: LWL(bus);                 break;
-                case 0b10_0011: LW(bus);                  break;
-                case 0b10_0100: LBU(bus);                 break;
-                case 0b10_0101: LHU(bus);                 break;
-                case 0b10_0110: LWR(bus);                 break;
-                case 0b10_1000: SB(bus);                  break;
-                case 0b10_1001: SH(bus);                  break;
-                case 0b10_1010: SWL(bus);                 break;
-                case 0b10_1011: SW(bus);                  break;
-                case 0b10_1110: SWR(bus);                 break;
+                case 0b01_0010: //CoProcessor 2 - GTE Opcodes
+                    switch (instr.format & 0x10) {
+                        case 0x0:
+                            switch (instr.format) {
+                                case 0b0_0000: MFC2(); break;
+                                case 0b0_0010: CFC2(); break;
+                                case 0b0_0100: MTC2(); break;
+                                case 0b0_0110: CTC2(); break;
+                                default: unimplementedWarning(); break;
+                            }
+                            break;
+                        case 0x10:
+                            gte.execute(instr.imm);
+                            break;
+                    }
+                    break;
+
+                case 0b01_0011: COP3(); break;
+
+                case 0b10_0000: LB(bus); break;
+                case 0b10_0001: LH(bus); break;
+                case 0b10_0010: LWL(bus); break;
+                case 0b10_0011: LW(bus); break;
+                case 0b10_0100: LBU(bus); break;
+                case 0b10_0101: LHU(bus); break;
+                case 0b10_0110: LWR(bus); break;
+                case 0b10_1000: SB(bus); break;
+                case 0b10_1001: SH(bus); break;
+                case 0b10_1010: SWL(bus); break;
+                case 0b10_1011: SW(bus); break;
+                case 0b10_1110: SWR(bus); break;
                 case 0b11_0000: //LWC0
                 case 0b11_0001: //LWC1
                 case 0b11_0011: //LWC3
                 case 0b11_1000: //SWC0
                 case 0b11_1001: //SWC1
-                case 0b11_1011: UNIMPL_LW_SW_COP0_1_3();  break;
-                case 0b11_0010: LWC2(bus);                break;
-                case 0b11_1010: SWC2(bus);                break;
+                case 0b11_1011: UNIMPL_LW_SW_COP0_1_3(); break;
+                case 0b11_0010: LWC2(bus); break;
+                case 0b11_1010: SWC2(bus); break;
                 //pending lwc0-3 and swc0-3 and illegal opc
                 default:
                     unimplementedWarning();
@@ -304,28 +353,78 @@ namespace ProjectPSX {
             }
         }
 
+        private void CTC2() {
+            gte.writeControl(instr.fs, GPR[instr.ft]);
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            //Console.WriteLine("[GTE] Control Write " + instr.fs + ": " + GPR[instr.ft].ToString("x8"));
+            Console.ResetColor();
+            //disassemble();
+            //PrintRegs();
+            //debug = true;
+        }
+
+        private void MTC2() {
+            gte.writeData(instr.fs, GPR[instr.ft]);
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("[GTE] Data Write " + instr.fs + ": " + GPR[instr.ft].ToString("x8"));
+            Console.ResetColor();
+        }
+
+        private void CFC2() {
+            delayedLoad(instr.ft, gte.loadControl(instr.fs));
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            //Console.WriteLine("[GTE] Control Load " + instr.ft + ": " + gte.loadControl(instr.fs).ToString("x8"));
+            //Console.ReadLine();
+            Console.ResetColor();
+        }
+
+        private void MFC2() {
+            delayedLoad(instr.ft, gte.loadData(instr.fs));
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            //Console.WriteLine("[GTE] Data Load " + instr.ft + ": " + gte.loadData(instr.fs).ToString("x8"));
+            //Console.ReadLine();
+            Console.ResetColor();
+        }
+
         private void BGEZAL() {
-            if (((int)GPR[instr.rs]) >= 0) {
+            bool should_branch = ((int)GPR[instr.rs]) >= 0;
+            GPR[31] = PC_Predictor;
+            if (should_branch) {
                 BRANCH();
             }
-            GPR[31] = PC_Predictor;
         }
 
         private void BLTZAL() {
-            if (((int)GPR[instr.rs]) < 0) {
+            bool should_branch = ((int)GPR[instr.rs]) < 0;
+            GPR[31] = PC_Predictor;
+            if (should_branch) {
                 BRANCH();
             }
-            GPR[31] = PC_Predictor;
         }
 
-        private void SWC2(BUS bus) {
-            Console.WriteLine("Store at GTE");
-            throw new NotImplementedException();
+        private void SWC2(BUS bus) { //TODO WARNING THIS SHOULD HAVE DELAY?
+            Console.WriteLine("Store Data FROM GTE");
+            uint addr = GPR[instr.rs] + instr.imm;
+
+            if ((addr % 4) != 0) {
+                EXCEPTION(EX.LOAD_ADRESS_ERROR);
+            } else {
+                bus.write(Width.WORD, addr, gte.loadData(instr.rt));
+            }
+            //Console.ReadLine();
         }
 
-        private void LWC2(BUS bus) {
-            Console.WriteLine("Load from GTE");
-            throw new NotImplementedException();
+        private void LWC2(BUS bus) { //TODO WARNING THIS SHOULD HAVE DELAY?
+            Console.WriteLine("Load Data TO GTE");
+            uint addr = GPR[instr.rs] + instr.imm;
+
+            if ((addr % 4) != 0) {
+                EXCEPTION(EX.LOAD_ADRESS_ERROR);
+            } else {
+                uint value = bus.load(Width.WORD, addr);
+                gte.writeData(instr.rt, value);
+            }
+            //Console.ReadLine();
         }
 
         private void UNIMPL_LW_SW_COP0_1_3() { //PSX Unimplemented CoProcessor Ops
@@ -377,11 +476,9 @@ namespace ProjectPSX {
             uint value = 0;
             uint LRValue = GPR[instr.rt];
 
-            if (instr.rt == mem.LoadRegNPostDelay) {
-                LRValue = mem.LoadValuePostDelay;
-                //isLRLoadBypass = false;
+            if (instr.rt == memoryLoad.register) {
+                LRValue = memoryLoad.value;
             }
-            //isLROpcode = true;
 
             switch (addr & 0b11) {
                 case 0: value = aligned_load; break;
@@ -405,11 +502,9 @@ namespace ProjectPSX {
             uint value = 0;
             uint LRValue = GPR[instr.rt];
 
-            if (instr.rt == mem.LoadRegNPostDelay) {
-                LRValue = mem.LoadValuePostDelay;
-                //isLRLoadBypass = false;
+            if (instr.rt == memoryLoad.register) {
+                LRValue = memoryLoad.value;
             }
-            //isLROpcode = true;
 
             switch (addr & 0b11) {
                 case 0: value = (LRValue & 0x00FF_FFFF) | (aligned_load << 24); break;
@@ -419,11 +514,6 @@ namespace ProjectPSX {
             }
             //Console.WriteLine("case " + (addr & 0b11) + " LWL Value " + value.ToString("x8"));
             delayedLoad(instr.rt, value);
-        }
-
-        private void COP2() {
-            Console.WriteLine("GTE ACCESS");
-            throw new NotImplementedException();
         }
 
         private void COP3() {
@@ -519,7 +609,7 @@ namespace ProjectPSX {
             //Console.ForegroundColor = ConsoleColor.Yellow;
             //Console.WriteLine("[RFE] PRE SR" + SR.ToString("x8"));
             uint mode = SR & 0x3F;
-            SR = (uint)(SR & ~0xF);////////////
+            SR = (uint)(SR & ~0xF);
             SR |= mode >> 2;
             //Console.WriteLine("[RFE] POST SR" + SR.ToString("x8"));
             //Console.ResetColor();
@@ -536,7 +626,7 @@ namespace ProjectPSX {
 
         private void EXCEPTION(EX cause) {
             uint ExAdress;
-            if((SR & (1 << 22)) != 0) {
+            if ((SR & (1 << 22)) != 0) {
                 ExAdress = 0xBFC0_0180;
             } else {
                 ExAdress = 0x8000_0080;
@@ -562,7 +652,7 @@ namespace ProjectPSX {
 
             if (isDelaySlot) {
                 EPC = EPC - 4;
-                CAUSE = (uint)(CAUSE |(1 << 31));
+                CAUSE = (uint)(CAUSE | (1 << 31));
             }
 
             //Console.WriteLine("[EXCEPTION F] POST EPC " + EPC.ToString("x8"));
@@ -592,7 +682,7 @@ namespace ProjectPSX {
             uint n = GPR[instr.rs];
             uint d = GPR[instr.rt];
 
-            if(d == 0) {
+            if (d == 0) {
                 HI = n;
                 LO = 0xFFFF_FFFF;
             } else {
@@ -618,9 +708,9 @@ namespace ProjectPSX {
             int n = (int)GPR[instr.rs];
             int d = (int)GPR[instr.rt];
 
-            if(d == 0) {
-                HI = (uint) n;
-                if(n >= 0) {
+            if (d == 0) {
+                HI = (uint)n;
+                if (n >= 0) {
                     LO = 0xFFFF_FFFF;
                 } else {
                     LO = 1;
@@ -785,7 +875,7 @@ namespace ProjectPSX {
             int rs = (int)GPR[instr.rs];
             int imm_s = (int)instr.imm_s;
             try {
-                uint addi = (uint) checked(rs + imm_s);
+                uint addi = (uint)checked(rs + imm_s);
                 setGPR(instr.rt, addi);
             } catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW);
@@ -801,14 +891,15 @@ namespace ProjectPSX {
         private void MTC0() {
             Cop0Reg[instr.fs] = GPR[instr.ft];
             if (instr.fs == 12) {
-                Console.WriteLine("[WARNING MTC0 SR] " + GPR[instr.ft].ToString("x8"));
+                //Console.WriteLine("[WARNING MTC0 SR] " + GPR[instr.ft].ToString("x8"));
+                //Console.ReadLine();
                 //disassemble();
                 //PrintRegs();
             } else if (instr.fs == 13) {
-                Console.WriteLine("[WARNING MTC0 CAUSE] " + GPR[instr.ft].ToString("x8"));
-                Console.WriteLine(Cop0Reg[13].ToString("x8"));
-                disassemble();
-                PrintRegs();
+                //Console.WriteLine("[WARNING MTC0 CAUSE] " + GPR[instr.ft].ToString("x8"));
+                //Console.WriteLine(Cop0Reg[13].ToString("x8"));
+                //disassemble();
+                //PrintRegs();
             }
         }
 
@@ -842,7 +933,7 @@ namespace ProjectPSX {
             //else Console.WriteLine("Ignoring Write");
         }
 
-            private void LUI() {
+        private void LUI() {
             setGPR(instr.rt, instr.imm << 16);
         }
 
@@ -851,13 +942,13 @@ namespace ProjectPSX {
         }
 
         private void setGPR(uint regN, uint value) {
-            wb.WriteRegN = regN;
-            wb.WriteValue = value;
+            writeBack.register = regN;
+            writeBack.value = value;
         }
 
         private void delayedLoad(uint regN, uint value) {
-            mem.LoadRegN = regN;
-            mem.LoadValue = value;
+            memoryLoad.delayedRegister = regN;
+            memoryLoad.delayedValue = value;
         }
 
         private void unimplementedWarning() {
@@ -872,7 +963,7 @@ namespace ProjectPSX {
         }
 
         private void TTY() {
-            if (PC == 0x000000B4 && GPR[9] == 0x3D) {
+            if (PC == 0x00000B0 && GPR[9] == 0x3D || PC == 0x00000A0 && GPR[9] == 0x3C) {
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
                 Console.Write((char)GPR[4]);
                 Console.ResetColor();
@@ -889,35 +980,35 @@ namespace ProjectPSX {
                 case 0b00_0000: //R-Type opcodes
                     switch (instr.function) {
                         case 0b00_0000: //SLL(); break;
-                            if(instr.value == 0) output = "NOP";
+                            if (instr.value == 0) output = "NOP";
                             else output = "SLL" + instr.rd;
                             break;
-                        case 0b00_0010: output = "SRL";     break;
-                        case 0b00_0011: output = "SRA";     break;
-                        case 0b00_0100: output = "SLLV";    break;
-                        case 0b00_0110: output = "SRLV";    break;
-                        case 0b00_0111: output = "SRAV";    break;
-                        case 0b00_1000: output = "JR R" + instr.rs + " " + GPR[instr.rs].ToString("x8");      break;
-                        case 0b00_1001: output = "JALR";    break;
+                        case 0b00_0010: output = "SRL"; break;
+                        case 0b00_0011: output = "SRA"; break;
+                        case 0b00_0100: output = "SLLV"; break;
+                        case 0b00_0110: output = "SRLV"; break;
+                        case 0b00_0111: output = "SRAV"; break;
+                        case 0b00_1000: output = "JR R" + instr.rs + " " + GPR[instr.rs].ToString("x8"); break;
+                        case 0b00_1001: output = "JALR"; break;
                         case 0b00_1100: output = "SYSCALL"; break;
-                        case 0b00_1101: output = "BREAK";   break;
-                        case 0b01_0000: output = "MFHI";    break;
-                        case 0b01_0010: output = "MFLO";    break;
-                        case 0b01_0011: output = "MTLO";    break;
-                        case 0b01_1000: output = "MULT";    break;
-                        case 0b01_1001: output = "MULTU";   break;
-                        case 0b01_1010: output = "DIV";     break;
-                        case 0b01_1011: output = "DIVU";    break;
-                        case 0b10_0000: output = "ADD";     break;
-                        case 0b10_0001: output = "ADDU";    break;
-                        case 0b10_0010: output = "SUB";     break;
-                        case 0b10_0011: output = "SUBU";    break;
-                        case 0b10_0100: output = "AND";     break;
+                        case 0b00_1101: output = "BREAK"; break;
+                        case 0b01_0000: output = "MFHI"; break;
+                        case 0b01_0010: output = "MFLO"; break;
+                        case 0b01_0011: output = "MTLO"; break;
+                        case 0b01_1000: output = "MULT"; break;
+                        case 0b01_1001: output = "MULTU"; break;
+                        case 0b01_1010: output = "DIV"; break;
+                        case 0b01_1011: output = "DIVU"; break;
+                        case 0b10_0000: output = "ADD"; break;
+                        case 0b10_0001: output = "ADDU"; break;
+                        case 0b10_0010: output = "SUB"; break;
+                        case 0b10_0011: output = "SUBU"; break;
+                        case 0b10_0100: output = "AND"; break;
                         case 0b10_0101: output = "OR"; values = "R" + instr.rd + "," + (GPR[instr.rs] | GPR[instr.rt]).ToString("x8"); break;
-                        case 0b10_0110: output = "XOR";     break;
-                        case 0b10_0111: output = "NOR";     break;
-                        case 0b10_1010: output = "SLT";     break;
-                        case 0b10_1011: output = "SLTU";    break;
+                        case 0b10_0110: output = "XOR"; break;
+                        case 0b10_0111: output = "NOR"; break;
+                        case 0b10_1010: output = "SLT"; break;
+                        case 0b10_1011: output = "SLTU"; break;
                         default: /*unimplementedWarning();*/ break;
                     }
                     break;
@@ -941,7 +1032,7 @@ namespace ProjectPSX {
                     break;
                 case 0b00_0101: //BNE();
                     output = "BNE";
-                    values = "R" + instr.rs +"[" + GPR[instr.rs].ToString("x8") + "]" +"," + "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], (" + ((PC_Now)+(instr.imm_s << 2)).ToString("x8") +")";
+                    values = "R" + instr.rs + "[" + GPR[instr.rs].ToString("x8") + "]" + "," + "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], (" + ((PC_Now) + (instr.imm_s << 2)).ToString("x8") + ")";
                     break;
                 case 0b00_0110: //BLEZ();
                     output = "BLEZ";
@@ -958,11 +1049,11 @@ namespace ProjectPSX {
                         values = "R" + instr.rs + "," + (addi).ToString("x8") + " R" + instr.rs + "=" + GPR[instr.rs].ToString("x8"); ;
                         //Console.WriteLine("ADDI!");
                     } catch (OverflowException) {
-                        values = "R" + instr.rt + "," + GPR[instr.rs].ToString("x8") + " + "  + instr.imm_s.ToString("x8") + " UNHANDLED OVERFLOW";
+                        values = "R" + instr.rt + "," + GPR[instr.rs].ToString("x8") + " + " + instr.imm_s.ToString("x8") + " UNHANDLED OVERFLOW";
                     }
                     break;
                 case 0b00_1001: //ADDIU();
-                    // setGPR(instr.rt, REG[instr.rs] + instr.imm_s);
+                                // setGPR(instr.rt, REG[instr.rs] + instr.imm_s);
                     output = "ADDIU";
                     values = "R" + instr.rt + "," + (GPR[instr.rs] + instr.imm_s).ToString("x8");
                     break;
@@ -972,17 +1063,17 @@ namespace ProjectPSX {
                 case 0b00_1011: //SLTIU();
                     output = "SLTIU";
                     break;
-                                
+
                 case 0b00_1100: //ANDI();
                     output = "ANDI";
                     break;
                 case 0b00_1101: //ORI();
-                    //setGPR(instr.rt, REG[instr.rs] | instr.imm);
+                                //setGPR(instr.rt, REG[instr.rs] | instr.imm);
                     output = "ORI";
                     values = "R" + instr.rt + "," + (GPR[instr.rs] | instr.imm).ToString("x8");
                     break;
                 case 0b00_1111: //LUI();
-                    //setGPR(instr.rt, instr.imm << 16);
+                                //setGPR(instr.rt, instr.imm << 16);
                     output = "LUI";
                     values = "R" + instr.rt + "," + (instr.imm << 16).ToString("x8");
                     break;
@@ -994,9 +1085,9 @@ namespace ProjectPSX {
                             output = "MFC0";
                             break;
                         case 0b0_0100://MTC0();
-                            // Cop0Reg[instr.fs] = REG[instr.ft];
+                                      // Cop0Reg[instr.fs] = REG[instr.ft];
                             output = "MTC0";
-                            values = "R" + instr.fs + "," + "R" + instr.ft + "["+GPR[instr.ft].ToString("x8")+"]";
+                            values = "R" + instr.fs + "," + "R" + instr.ft + "[" + GPR[instr.ft].ToString("x8") + "]";
                             break;
                         case 0b1_0000: //RFE(); break;
                             output = "RFE";
@@ -1033,11 +1124,11 @@ namespace ProjectPSX {
                     output = "SB";
                     break;
                 case 0b10_1011:// SW(bus);
-                    //if ((SR & 0x10000) == 0)
-                    //    bus.write32(REG[instr.rs] + instr.imm_s, REG[instr.rt]);
+                               //if ((SR & 0x10000) == 0)
+                               //    bus.write32(REG[instr.rs] + instr.imm_s, REG[instr.rt]);
                     output = "SW";
                     if ((SR & 0x10000) == 0)
-                        values = "R" + instr.rt + "["+GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") +")" + "["+ (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
+                        values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
                     else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
                     break;
                 case 0b10_1110: output = "SWR"; break;
@@ -1048,7 +1139,7 @@ namespace ProjectPSX {
         }
 
         private void PrintRegs() {
-            for(int i = 0; i < 32; i++) {
+            for (int i = 0; i < 32; i++) {
                 string padding = (i < 10) ? "0" : "";
                 Console.Write("{0,20}",
                 "R" + padding + i + " " + GPR[i].ToString("x8") + "");
