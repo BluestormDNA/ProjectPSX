@@ -108,22 +108,20 @@ namespace ProjectPSX.Devices {
 
         private uint timer;
 
-        public GPU(InterruptController interruptController) {
-            this.InterruptController = interruptController;
+        public GPU() {
             mode = Mode.COMMAND;
             GP1_Reset();
         }
 
-        private InterruptController InterruptController;
-
-        public void tick(uint cycles) {
+        public bool tick(uint cycles) {
             timer += cycles;
             if (timer >= 564480) {
                 //Console.WriteLine("[GPU] Request Interrupt 0x1 VBLANK");
-                InterruptController.set(Interrupt.VBLANK);
                 timer -= 564480;
                 window.update();
+                return true;
             }
+            return false;
         }
 
         public uint loadGPUSTAT() {
@@ -235,7 +233,8 @@ namespace ProjectPSX.Devices {
                 case 0x00: return (1, GP0_NOP);
                 case 0x01: return (1, GP0_MemClearCache);
                 case 0x02: return (3, GP0_FillRectVRAM);
-                case 0x2C: return (9, GP0_RenderTexturedQuadBlend);
+                case 0x2C: //return (9, GP0_RenderTexturedQuadBlend);
+                case 0x2D: return (9, GP0_RenderTexturedQuadBlend);
                 case 0xA0: return (3, GP0_MemCopyRectCPUtoVRAM);
                 case 0xC0: return (3, GP0_MemCopyRectVRAMtoCPU);
                 case 0xE1: return (1, GP0_SetDrawMode);
@@ -248,6 +247,8 @@ namespace ProjectPSX.Devices {
                 case 0x30: return (6, GP0_RenderShadedTriOpaque);
                 case 0x38: return (8, GP0_RenderShadedQuadOpaque);
 
+                //case 0x48: return ();
+
                 case 0x60:
                 case 0x62: return (3, GP0_RenderMonoRectangle);
                 case 0x68:
@@ -255,9 +256,10 @@ namespace ProjectPSX.Devices {
                 case 0x70:
                 case 0x72:
                 case 0x78:
-                case 0x7A: return (2, GP0_RenderMonoRectangle); // todo hardcode return values and rewrite this
+                case 0x7A: return (2, GP0_RenderMonoRectangle); // todo hardcode return values and rewrite this also semi transp not impl
 
-                default: Console.WriteLine("[GPU] Unsupported Command" + opcode.ToString("x8")); Console.ReadLine(); throw new NotImplementedException();
+
+                default: Console.WriteLine("[GPU] Unsupported Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ return (1, GP0_NOP);// throw new NotImplementedException();
             }
         }
 
@@ -397,7 +399,6 @@ namespace ProjectPSX.Devices {
                 w1_row += B20;
                 w2_row += B01;
             }
-
         }
 
         private void GP0_RenderShadedTriOpaque() { // 0x30

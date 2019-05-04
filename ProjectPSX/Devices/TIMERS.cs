@@ -8,14 +8,11 @@ namespace ProjectPSX.Devices {
     public class TIMERS : Device {
 
         TIMER[] timer = new TIMER[3];
-        InterruptController interruptController = new InterruptController();
 
-        public TIMERS(InterruptController interruptController) {
-            this.interruptController = interruptController;
-
-            timer[0] = new TIMER(0, interruptController);
-            timer[1] = new TIMER(1, interruptController);
-            timer[2] = new TIMER(2, interruptController);
+        public TIMERS() {
+            timer[0] = new TIMER();
+            timer[1] = new TIMER();
+            timer[2] = new TIMER();
         }
 
         public new void write(Width w, uint addr, uint value) {
@@ -30,14 +27,13 @@ namespace ProjectPSX.Devices {
             return timer[timerNumber].load(w, addr);
         }
 
-        public void tick(uint cycles) {
-            timer[0].tick(cycles);
-            timer[1].tick(cycles);
-            timer[2].tick(cycles);
+        public bool tick(int timerNumber, uint cycles) {
+            return timer[timerNumber].tick(cycles);
         }
 
         public class TIMER {
             private int timerNumber;
+            private static int timerCounter;
 
             private ushort counterValue;
             private uint counterTargetValue;
@@ -56,11 +52,8 @@ namespace ProjectPSX.Devices {
             private byte reachedTarget;
             private byte reachedFFFF;
 
-            private InterruptController interruptController;
-
-            public TIMER(int timerNumber, InterruptController interruptController) {
-                this.timerNumber = timerNumber;
-                this.interruptController = interruptController;
+            public TIMER() {
+                this.timerNumber = timerCounter++;
             }
 
             public void write(Width w, uint addr, uint value) {
@@ -80,16 +73,19 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            public void tick(uint cycles) { //todo this needs rework
+            public bool tick(uint cycles) { //todo this needs rework
                 switch (timerNumber) {
                     case 0:
-                        break;
+                        return false;
                     case 1:
-                        break;
+                        return false;
                     case 2:
-                        break;
+                        return false;
+                    default:
+                        return false;
                 }
 
+                /*
                 counter2div8 += (ushort)cycles;
                 if(counter2div8 == 8) {
                     counterValue++;
@@ -102,7 +98,7 @@ namespace ProjectPSX.Devices {
                     }
                 } else if(counterValue == 0xFFFF & irqWhenCounterFFFF == 1) {
                     interruptController.set(Interrupt.TIMER2);
-                }
+                }*/
             }
 
             private void setCounterMode(uint value) {

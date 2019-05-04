@@ -4,8 +4,6 @@ using System.Collections.Generic;
 namespace ProjectPSX.Devices {
     public class CDROM : Device {
 
-        private InterruptController InterruptController;
-
         private Queue<uint> parameterBuffer = new Queue<uint>(16);
         private Queue<uint> responseBuffer = new Queue<uint>(16);
         private Queue<byte> dataBuffer = new Queue<byte>();
@@ -64,15 +62,14 @@ namespace ProjectPSX.Devices {
 
         private CD cd;
 
-        public CDROM(InterruptController InterruptController) {
-            this.InterruptController = InterruptController;
+        public CDROM() {
             cd = new CD();
         }
 
-        public void tick(uint cycles) {
+        public bool tick(uint cycles) {
             counter += cycles;
             if (counter < 10000) {
-                return;
+                return false; ;
             }
 
             if (interruptQueue.Count != 0 && IF == 0) {
@@ -80,29 +77,30 @@ namespace ProjectPSX.Devices {
                 IF |= interruptQueue.Dequeue();
             }
 
-            if ((IF & IE) != 0 && ((InterruptController.loadISTAT() & 0x4) != 0x4)) {
-                Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
-                InterruptController.set(Interrupt.CDROM);
+            if ((IF & IE) != 0 /*&& ((InterruptController.loadISTAT() & 0x4) != 0x4)*/) {
+                //Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
+                //InterruptController.set(Interrupt.CDROM);
+                return true;
             }
 
             switch (mode) {
                 case Mode.Idle:
                     if (counter < 4000 || interruptQueue.Count != 0) { //Await some cycles so interrupts are not triggered instant
-                        return;
+                        return false;
                     }
                     counter = 0;
                     break;
 
                 case Mode.Seek:
                     if (counter < 20000 || interruptQueue.Count != 0) {
-                        return;
+                        return false;
                     }
                     mode = Mode.Read; //???
                     break;
 
                 case Mode.Read:
                     if (counter < 100000 || interruptQueue.Count != 0) {
-                        return;
+                        return false;
                     }
                     //i should trigger here and add loc...
                     responseBuffer.Enqueue(STAT);
@@ -112,7 +110,7 @@ namespace ProjectPSX.Devices {
 
                 case Mode.Transfer:
                     if (counter < 10000 || interruptQueue.Count != 0) {
-                        return;
+                        return false;
                     }
 
                     //if(dataBuffer.Count == 0)
@@ -121,6 +119,7 @@ namespace ProjectPSX.Devices {
 
                     break;
             }
+            return false;
 
         }
 
