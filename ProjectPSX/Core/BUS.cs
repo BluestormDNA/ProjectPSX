@@ -24,9 +24,9 @@ namespace ProjectPSX {
         public BUS() {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
             dma = new DMA();
-            gpu = new GPU(interruptController);
-            cdrom = new CDROM(interruptController);
-            timers = new TIMERS(interruptController);
+            gpu = new GPU();
+            cdrom = new CDROM();
+            timers = new TIMERS();
             joypad = new JOYPAD();
 
             dma.setDMA_Transfer(this);
@@ -48,6 +48,9 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
                 case uint KSEG0 when addr >= 0x9F00_0000 && addr < 0x9F08_0000:
                 case uint KSEG1 when addr >= 0xBF00_0000 && addr < 0xBF08_0000:
+                    if (addr == 0x1F02_0018) {
+                        Console.WriteLine("Load ON SWITCH EX");
+                    }
                     addr &= 0x7_FFFF;
                     return load(w, addr, EX1);
 
@@ -70,8 +73,8 @@ namespace ProjectPSX {
                             return joypad.load(w, addr);
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(w, addr);
-                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            return timers.load(w, addr);
+                        //case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            //return timers.load(w, addr);
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(w, addr);
                         case 0x1F801810:
@@ -96,6 +99,7 @@ namespace ProjectPSX {
 
                 default:
                     Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+                    Console.ReadLine();
                     return 0xFFFF_FFFF;
             }
         }
@@ -112,7 +116,11 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
                 case uint KSEG0 when addr >= 0x9F00_0000 && addr < 0x9F08_0000:
                 case uint KSEG1 when addr >= 0xBF00_0000 && addr < 0xBF08_0000:
+                    if(addr == 0x1F02_0018) {
+                        Console.WriteLine("Write ON SWITCH EX");
+                    }
                     addr &= 0x7_FFFF;
+                    Console.WriteLine("addr" + addr.ToString("x8"));
                     write(w, addr, value, EX1);
                     break;
 
@@ -140,9 +148,9 @@ namespace ProjectPSX {
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(w, addr, value);
                             break;
-                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(w, addr, value);
-                            break;
+                        //case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            //timers.write(w, addr, value);
+                            //break;
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             cdrom.write(w, addr, value);
                             break;
@@ -245,9 +253,12 @@ namespace ProjectPSX {
         }
 
         public void tick(uint cycles) {
-            gpu.tick(cycles);
-            cdrom.tick(cycles);
-            timers.tick(cycles);
+            if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
+            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM);
+            //if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
+            //if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
+            //if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
+            if (joypad.tick(cycles)) interruptController.set(Interrupt.CONTR);
         }
 
         void DMA_Transfer.toGPU(uint value) {
