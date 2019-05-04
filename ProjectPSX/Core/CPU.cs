@@ -23,7 +23,7 @@ namespace ProjectPSX {
         private uint EPC { get { return Cop0Reg[14]; } set { Cop0Reg[14] = value; } }
 
         //GTE
-        private GTE gte = new GTE();
+        private GTE gte;
 
         //Debug
         private long cycle; //current CPU cycle counter for debug
@@ -87,12 +87,13 @@ namespace ProjectPSX {
         private WB writeBack;
         private MEM memoryLoad;
 
-        private bool debug = false;
+        public bool debug = true;
         private bool isEX1 = true;
         private bool exe = true;
 
         public CPU() {
             Cop0Reg[15] = 0x2; //PRID Processor ID
+            gte = new GTE(this); //debug
         }
 
         internal void Run(BUS bus) {
@@ -103,9 +104,13 @@ namespace ProjectPSX {
 
             /*debug*/
             TTY();
-            forceTest(bus);
-            //if (isEX1) forceEX1(bus);
+            //forceTest(bus);
+            if (isEX1) forceEX1(bus);
 
+            //if(PC > 0x1F00_0000 && PC < 0x1F08_0000) { //EX1
+            //    //Console.WriteLine("En Ex" + PC.ToString("x8") + ": " + bus.load(Width.WORD, PC).ToString("x8"));
+            //    //Console.ReadLine();
+            //}
 
             if (debug) {
                 //bios.verbose(PC_Now, GPR);
@@ -120,15 +125,26 @@ namespace ProjectPSX {
 
         int dev;
         StringBuilder str = new StringBuilder();
-        private void output() {
+        public void output() {
             dev++;
-            string debug = PC_Now.ToString("x8") + " " + instr.value.ToString("x8") + "\n";
+            string debug = PC_Now.ToString("x8") + " " + instr.value.ToString("x8");
+            string regs = "";
+            for (int i = 0; i < 32; i++) {
+                string padding = (i < 10) ? "0" : "";
+                regs += "R" + padding + i + ":" + GPR[i].ToString("x8") + "  ";
+                if ((i + 1) % 6 == 0) regs += "\n";
+            };
+            regs += " HI:" + HI.ToString("x8") + "  ";
+            regs += " LO:" + LO.ToString("x8") + "  ";
+            regs += " SR:" + SR.ToString("x8") + "  ";
+            regs += "EPC:" + EPC.ToString("x8") + "\n";
 
-            str.Append(debug);
+            //str.Append(regs);
 
-            if (dev == 1000) {
+            if (dev == 1) {
                 using (StreamWriter writer = new StreamWriter("log.txt", true)) {
-                    writer.WriteLine(str);
+                    writer.WriteLine(debug);
+                    writer.WriteLine(regs);
                 }
                 str.Clear();
                 dev = 0;
@@ -140,8 +156,8 @@ namespace ProjectPSX {
         string tgte = "./psxtest_gte.exe";
         private void forceTest(BUS bus) {
             if (PC == 0x8003_0000 && exe == true) {
-                (uint PC, uint R28, uint R29, uint R30) = bus.loadEXE(tcpx);
-                Console.WriteLine("TEST PC {0} R28 {1} R29 {2} R30 {3}", PC.ToString("x8"), R28.ToString("x8"), R29.ToString("x8"), R30.ToString("x8"));
+                (uint PC, uint R28, uint R29, uint R30) = bus.loadEXE(tgte);
+                Console.WriteLine("SideLoading PSX EXE: PC {0} R28 {1} R29 {2} R30 {3}", PC.ToString("x8"), R28.ToString("x8"), R29.ToString("x8"), R30.ToString("x8"));
                 GPR[29] = R29;//0x801FFF00;//R29;
                 GPR[28] = R28;
                 GPR[30] = R30;//0x801FFF00;//R30;
@@ -149,7 +165,7 @@ namespace ProjectPSX {
                 this.PC = PC;
                 PC_Predictor = PC + 4;
 
-                debug = true;
+                //debug = true;
                 exe = false;
             }
         }
@@ -190,6 +206,7 @@ namespace ProjectPSX {
                 //Console.ResetColor();
                 //if (I_STAT != 0)
                 //  bus.write(Width.WORD, 0x1F801070, 0xffff_fffb); //test cd disable
+
             }
         }
 
@@ -260,7 +277,7 @@ namespace ProjectPSX {
                         case 0b10_1010: SLT(); break;
                         case 0b10_1011: SLTU(); break;
                         default:
-                            unimplementedWarning();
+                            //unimplementedWarning();
                             EXCEPTION(EX.ILLEGAL_INSTR);
                             break;
                     }
@@ -347,7 +364,7 @@ namespace ProjectPSX {
                 case 0b11_1010: SWC2(bus); break;
                 //pending lwc0-3 and swc0-3 and illegal opc
                 default:
-                    unimplementedWarning();
+                    //unimplementedWarning();
                     EXCEPTION(EX.ILLEGAL_INSTR);
                     break;
             }
@@ -355,35 +372,18 @@ namespace ProjectPSX {
 
         private void CTC2() {
             gte.writeControl(instr.fs, GPR[instr.ft]);
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            //Console.WriteLine("[GTE] Control Write " + instr.fs + ": " + GPR[instr.ft].ToString("x8"));
-            Console.ResetColor();
-            //disassemble();
-            //PrintRegs();
-            //debug = true;
         }
 
         private void MTC2() {
             gte.writeData(instr.fs, GPR[instr.ft]);
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("[GTE] Data Write " + instr.fs + ": " + GPR[instr.ft].ToString("x8"));
-            Console.ResetColor();
         }
 
         private void CFC2() {
             delayedLoad(instr.ft, gte.loadControl(instr.fs));
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            //Console.WriteLine("[GTE] Control Load " + instr.ft + ": " + gte.loadControl(instr.fs).ToString("x8"));
-            //Console.ReadLine();
-            Console.ResetColor();
         }
 
         private void MFC2() {
             delayedLoad(instr.ft, gte.loadData(instr.fs));
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            //Console.WriteLine("[GTE] Data Load " + instr.ft + ": " + gte.loadData(instr.fs).ToString("x8"));
-            //Console.ReadLine();
-            Console.ResetColor();
         }
 
         private void BGEZAL() {
@@ -599,6 +599,7 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
                     uint value = bus.load(Width.HALF, addr);
+                    //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
                     delayedLoad(instr.rt, value);
                 }
 
@@ -653,6 +654,7 @@ namespace ProjectPSX {
             if (isDelaySlot) {
                 EPC = EPC - 4;
                 CAUSE = (uint)(CAUSE | (1 << 31));
+                Cop0Reg[6] = PC_Now; // WIP: JUMPDEST
             }
 
             //Console.WriteLine("[EXCEPTION F] POST EPC " + EPC.ToString("x8"));
@@ -889,18 +891,22 @@ namespace ProjectPSX {
         }
 
         private void MTC0() {
-            Cop0Reg[instr.fs] = GPR[instr.ft];
-            if (instr.fs == 12) {
+            uint value = GPR[instr.ft];
+            uint register = instr.fs;
+
+            if (register == 12) {
                 //Console.WriteLine("[WARNING MTC0 SR] " + GPR[instr.ft].ToString("x8"));
                 //Console.ReadLine();
                 //disassemble();
                 //PrintRegs();
-            } else if (instr.fs == 13) {
+            } else if (register == 13) {
                 //Console.WriteLine("[WARNING MTC0 CAUSE] " + GPR[instr.ft].ToString("x8"));
                 //Console.WriteLine(Cop0Reg[13].ToString("x8"));
                 //disassemble();
                 //PrintRegs();
+                value &= 0x300; //only bits 8 and 8 are writable
             }
+            Cop0Reg[instr.fs] = value;
         }
 
         private void OR() {
@@ -970,7 +976,7 @@ namespace ProjectPSX {
             }
         }
 
-        private void disassemble() {
+        public void disassemble() {
             string pc = PC_Now.ToString("x8");
             string load = instr.value.ToString("x8");
             string output = "";
@@ -981,7 +987,7 @@ namespace ProjectPSX {
                     switch (instr.function) {
                         case 0b00_0000: //SLL(); break;
                             if (instr.value == 0) output = "NOP";
-                            else output = "SLL" + instr.rd;
+                            else output = "SLL " + instr.rd;
                             break;
                         case 0b00_0010: output = "SRL"; break;
                         case 0b00_0011: output = "SRA"; break;
@@ -1029,6 +1035,7 @@ namespace ProjectPSX {
                     break;
                 case 0b00_0100: //BEQ();
                     output = "BEQ";
+                    values = "R" + instr.rs + ": " + GPR[instr.rs] + " R" + instr.rt + ": " + GPR[instr.rt] + " " + (GPR[instr.rs] == GPR[instr.rt]);
                     break;
                 case 0b00_0101: //BNE();
                     output = "BNE";
@@ -1066,6 +1073,7 @@ namespace ProjectPSX {
 
                 case 0b00_1100: //ANDI();
                     output = "ANDI";
+                    values = "R" + instr.rt + ", " + (GPR[instr.rs] & instr.imm).ToString("x8");
                     break;
                 case 0b00_1101: //ORI();
                                 //setGPR(instr.rt, REG[instr.rs] | instr.imm);
@@ -1108,6 +1116,7 @@ namespace ProjectPSX {
                     break;
                 case 0b10_0101: //LHU(bus); break;
                     output = "LHU";
+                    values = "cached " + ((SR & 0x10000) == 0) + "addr:" + (GPR[instr.rs] + instr.imm_s).ToString("x8") + "on R" + instr.rt;
                     break;
                 case 0b10_0011:// LW(bus);
                     if ((SR & 0x10000) == 0)
@@ -1138,20 +1147,22 @@ namespace ProjectPSX {
             Console.WriteLine("{0,-8} {1,-8} {2,-8} {3,-8} {4,-20}", cycle, pc, load, output, values);
         }
 
-        private void PrintRegs() {
+        public void PrintRegs() {
+            string regs = "";
             for (int i = 0; i < 32; i++) {
                 string padding = (i < 10) ? "0" : "";
-                Console.Write("{0,20}",
-                "R" + padding + i + " " + GPR[i].ToString("x8") + "");
+                regs += "R" + padding + i + ":" + GPR[i].ToString("x8") + "  ";
+                if ((i + 1) % 6 == 0) regs += "\n";
             }
-            Console.Write("{0,20}", "HI " + HI.ToString("x8"));
-            Console.Write("{0,20}", "LO " + LO.ToString("x8"));
-            Console.Write("{0,20}", "SR " + SR.ToString("x8"));
-            Console.Write("{0,20}", "EPC " + EPC.ToString("x8") + "\n");
-            bool IEC = (SR & 0x1) == 1;
-            byte IM = (byte)((SR >> 8) & 0xFF);
-            byte IP = (byte)((CAUSE >> 8) & 0xFF);
-            Console.WriteLine("[EXCEPTION INFO] IEC " + IEC + " IM " + IM.ToString("x8") + " IP " + IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
+            Console.Write(regs);
+            Console.Write(" HI:" + HI.ToString("x8") + "  ");
+            Console.Write(" LO:" + LO.ToString("x8") + "  ");
+            Console.Write(" SR:" + SR.ToString("x8") + "  ");
+            Console.Write("EPC:" + EPC.ToString("x8") + "\n");
+            //bool IEC = (SR & 0x1) == 1;
+            //byte IM = (byte)((SR >> 8) & 0xFF);
+            //byte IP = (byte)((CAUSE >> 8) & 0xFF);
+            //Console.WriteLine("[EXCEPTION INFO] IEC " + IEC + " IM " + IM.ToString("x8") + " IP " + IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
 
             //
 
