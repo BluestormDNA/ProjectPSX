@@ -229,6 +229,7 @@ namespace ProjectPSX.Devices {
         }
 
         private (int, Command) decode(uint opcode) {
+            Console.WriteLine("GP0 Command: " + opcode.ToString("x2"));
             switch (opcode) {
                 case 0x00: return (1, GP0_NOP);
                 case 0x01: return (1, GP0_MemClearCache);
@@ -345,6 +346,9 @@ namespace ProjectPSX.Devices {
 
             uint palette = (texture[0] >> 16) & 0xFFFF;
             uint texpage = (texture[1] >> 16) & 0xFFFF;
+
+            Console.WriteLine(palette);
+            Console.WriteLine(texpage);
 
             rasterizeTexturedTri(vertex[0], vertex[1], vertex[2], texture[0], texture[1], texture[2], color, palette, texpage);
             rasterizeTexturedTri(vertex[1], vertex[2], vertex[3], texture[1], texture[2], texture[3], color, palette, texpage);

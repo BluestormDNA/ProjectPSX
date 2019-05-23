@@ -1,47 +1,55 @@
 ﻿using ProjectDMG;
-using ProjectPSX.Devices;
+using ProjectPSX.Util;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using static ProjectPSX.Devices.GPU;
 
 namespace ProjectPSX {
     public class Window : Form {
 
-        public DirectBitmap VRAM = new DirectBitmap(1024, 512);
-        private PictureBox pictureBox;
+        public readonly DirectBitmap VRAM = new DirectBitmap(1024, 512);
+        private readonly DirectBitmap buffer = new DirectBitmap(1024, 512);
+        private readonly DoubleBufferedPanel screen = new DoubleBufferedPanel();
+
+        ProjectPSX psx;
 
         public Window() {
             this.Text = "ProjectPSX";
             this.AutoSize = true;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
 
-            pictureBox = new PictureBox();
-            pictureBox.Image = VRAM.Bitmap;
-            pictureBox.SizeMode = PictureBoxSizeMode.AutoSize;
-            pictureBox.Margin = new Padding(0);
+            screen.BackgroundImage = buffer.Bitmap;// TESTING
+            screen.Size = new Size(1024, 512);
+            screen.Margin = new Padding(0);
 
-            Controls.Add(pictureBox);
+            Controls.Add(screen);
+
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint, true);
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+            this.SetStyle(ControlStyles.UserPaint, false);
+            
+            this.UpdateStyles();
 
             //test
-            initVRAM();
+            //initVRAM();
 
-            ProjectPSX psx = new ProjectPSX(this);
+            psx = new ProjectPSX(this);
             psx.POWER_ON();
         }
 
         public void initVRAM() {
             for (int x = 0; x < 1024; x++) {
                 for (int y = 0; y < 512; y++) {
-                    VRAM.SetPixel(x, y, 0x0);
+                    VRAM.SetPixel(x, y, 0x00FFFFFF);
                 }
             }
         }
 
         public void update() {
-            pictureBox.Refresh();
+            //Array.Copy(VRAM.Bits, buffer.Bits, 0x80000); // tests needed to determine fastest
+            Buffer.BlockCopy(VRAM.Bits, 0, buffer.Bits, 0, 0x200000);
+            screen.Invalidate();
         }
-
-
     }
 }

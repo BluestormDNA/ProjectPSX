@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ProjectPSX.Devices {
     public class TIMERS : Device {
@@ -27,7 +23,7 @@ namespace ProjectPSX.Devices {
             return timer[timerNumber].load(w, addr);
         }
 
-        public bool tick(int timerNumber, uint cycles) {
+        public bool tick(int timerNumber, int cycles) {
             return timer[timerNumber].tick(cycles);
         }
 
@@ -38,7 +34,7 @@ namespace ProjectPSX.Devices {
             private ushort counterValue;
             private uint counterTargetValue;
 
-            private ushort counter2div8;
+            int counter2div8;
 
             private byte syncEnable;
             private byte syncMode;
@@ -73,32 +69,101 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            public bool tick(uint cycles) { //todo this needs rework
+            public bool tick(int cycles) { //todo this needs rework
                 switch (timerNumber) {
                     case 0:
+                        //if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
+                        //    return false; // counter stoped
+                        //} //else free run
+
+                        if (clockSource == 0 || clockSource == 2) {
+                            counterValue += (ushort)cycles;
+                        } else {
+                            counterValue += (ushort)(cycles); //todo dotClock
+                        }
+
+                        //Console.WriteLine(counterValue.ToString("x4"));
+
+                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
+                            counterValue = 0;
+                            reachedTarget = 1;
+                            if (irqWhenCounterTarget == 1) {
+                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
+                                //Console.ReadLine();
+                                return true;
+                            }
+                        }
+                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
+                            reachedFFFF = 1;
+                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
+                            //Console.ReadLine();
+                            return true;
+                        }
                         return false;
                     case 1:
+                        //if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
+                        //   return false; // counter stoped
+                        //} //else free run
+
+                        if (clockSource == 0 || clockSource == 2) {
+                            counterValue += (ushort)cycles;
+                        } else {
+                            counterValue += (ushort)(cycles);//todo VBlank
+                        }
+
+                        //Console.WriteLine(counterValue.ToString("x4"));
+
+                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
+                            counterValue = 0;
+                            reachedTarget = 1;
+                            if (irqWhenCounterTarget == 1) {
+                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
+                                //Console.ReadLine();
+                                return true;
+                            }
+                        }
+                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
+                            reachedFFFF = 1;
+                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
+                            //Console.ReadLine();
+                            return true;
+                        }
                         return false;
                     case 2:
+                        if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
+                            return false; // counter stoped
+                        } //else free run
+
+                        if (clockSource == 0 || clockSource == 1) {
+                            counterValue += (ushort)cycles;
+                        } else {
+                            counterValue += (ushort)(cycles / 8);
+                        }
+
+                        //Console.WriteLine(counterValue.ToString("x4"));
+
+                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
+                            counterValue = 0;
+                            reachedTarget = 1;
+                            if (irqWhenCounterTarget == 1) {
+                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
+                                //Console.ReadLine();
+                                return true;
+                            }
+                        }
+                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
+                            reachedFFFF = 1;
+                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
+                            //Console.ReadLine();
+                            return true;
+                        }
                         return false;
                     default:
                         return false;
                 }
 
                 /*
-                counter2div8 += (ushort)cycles;
-                if(counter2div8 == 8) {
-                    counterValue++;
-                }
-
-                if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue){
-                    counterValue = 0;
-                    if (irqWhenCounterTarget == 1) {
-                        interruptController.set(Interrupt.TIMER2);
-                    }
-                } else if(counterValue == 0xFFFF & irqWhenCounterFFFF == 1) {
-                    interruptController.set(Interrupt.TIMER2);
-                }*/
+*/
             }
 
             private void setCounterMode(uint value) {

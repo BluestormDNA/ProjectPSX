@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace ProjectDMG {
     public class DirectBitmap : IDisposable {
-        public Bitmap Bitmap { get; private set; }
+        public Bitmap Bitmap { get; set; }
         public Int32[] Bits { get; private set; }
         public bool Disposed { get; private set; }
         public int Height { get; private set; }

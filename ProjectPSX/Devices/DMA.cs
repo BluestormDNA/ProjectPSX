@@ -6,6 +6,8 @@ namespace ProjectPSX.Devices {
 
         private DMA_Transfer dma_transfer;
 
+        bool edgeInterruptTrigger;
+
         //private uint CONTROL { get { return load(WORD, 0x1F8010F0); } set { write(WORD, 0x1F8010F0, value); } }
         //private uint INTERRUPT { get { return load(WORD, 0x1F8010F4); } set { write(WORD, 0x1F8010F4, value); } }
 
@@ -19,7 +21,21 @@ namespace ProjectPSX.Devices {
 
 
         public new void write(Width w, uint addr, uint value) {
+            if (addr == 0x1F8010F4) {
+                //Console.WriteLine("Write to interrupt handler " + addr.ToString("x8") + " " + value.ToString("x8"));
+                value &= 0x7FFF_FFFF;
+                uint irqFlag = (value >> 24) & 0x7F;
+                value = (uint)(value & ~0x7F008000); //disable force irq investigate this
+
+                //Console.WriteLine(irqFlag);
+                irqFlag ^= irqFlag;
+                //Console.WriteLine(irqFlag);
+                value |= irqFlag << 24;
+                //Console.WriteLine("Write to interrupt handler 2" + addr.ToString("x8") + " " + value.ToString("x8"));
+            }
             base.write(w, addr, value);
+
+
             //Console.WriteLine("[DMA] Write: {0}  Value: {1}", addr.ToString("x8"), value.ToString("x8"));
 
             uint channel = (addr & 0x70) >> 4;
@@ -30,21 +46,74 @@ namespace ProjectPSX.Devices {
                     if (register == 8 && isActive(value)) {
                         //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
                         handleDMA(addr, value);
-                        disableChannel(addr, value);
+                        disable(addr, value);
+                        handleInterrupt((int)channel);
                     }
                     break;
 
                 case 7:
-                    //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
+                    switch (register) {
+                        case 0:
+                            //Console.WriteLine("[DMA] [DPCR - Control Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
+                            //TODO
+                            break;
+                        case 4:
+                            //Console.WriteLine("[DMA] [DICR - Interrupt Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
+                            //TODO
+                            break;
+                    }
+
                     break;
 
                 default:
-                    Console.WriteLine("[DMA] [CHANNEL] WARNING! UNAVAILABLE CHANNEL" + channel);
+                    //Console.WriteLine("[DMA] [CHANNEL] WARNING! UNAVAILABLE CHANNEL" + channel);
                     break;
             }
         }
 
-        private void disableChannel(uint addr, uint value) {
+        public bool tick() {
+            if (edgeInterruptTrigger) {
+                edgeInterruptTrigger = false;
+                //Console.WriteLine("[IRQ] Triggering DMA");
+                return true;
+            }
+            return false;
+        }
+
+        private void handleInterrupt(int channel) {
+            //IRQ flags in Bit(24 + n) are set upon DMAn completion - but caution - they are set ONLY if enabled in Bit(16 + n).
+            //Bit31 is a simple readonly flag that follows the following rules:
+            //IF b15 = 1 OR(b23 = 1 AND(b16 - 22 AND b24 - 30) > 0) THEN b31 = 1 ELSE b31 = 0
+
+            uint interruptRegister = load(WORD, 0x1F8010F4);
+
+            bool forceIRQ = (interruptRegister >> 15) != 0;
+            uint irqEnable = (interruptRegister >> 16) & 0x7F;
+            bool masterEnable = (interruptRegister >> 23) != 0;
+            uint irqFlag = (interruptRegister >> 24) & 0x7F;
+            bool masterFlag = (interruptRegister >> 31) != 0;
+
+            if ((irqEnable & (1 << channel)) != 0) {
+                irqFlag |= (uint)(1 << channel);
+            } else {
+                irqFlag &= (uint)~(1 << channel);
+            }
+
+            masterFlag = /*forceIRQ ||*/ (masterEnable && ((irqEnable & irqFlag) > 0));
+            edgeInterruptTrigger = masterFlag;
+            //Console.WriteLine("MasterFlag" + masterFlag + " irqEnable16" + irqEnable.ToString("x8") + " irqFlag24" + irqFlag.ToString("x8") + masterEnable + ((irqEnable & irqFlag) > 0));
+
+            interruptRegister = 0;
+            interruptRegister |= (forceIRQ ? 1u : 0) << 15;
+            interruptRegister |= irqEnable << 16;
+            interruptRegister |= (masterEnable ? 1u : 0) << 23;
+            interruptRegister |= irqFlag << 24;
+            interruptRegister |= (masterFlag ? 1u : 0) << 31;
+
+            base.write(WORD, 0x1F8010F4, interruptRegister);
+        }
+
+        private void disable(uint addr, uint value) {
             uint disabled = (uint)(value & ~0x11000000);
             write(WORD, addr, disabled);
         }
@@ -69,13 +138,13 @@ namespace ProjectPSX.Devices {
 
             while ((header & 0x800000) == 0) {
                 header = dma_transfer.fromRAM(WORD, dmaAddress);
-                //Console.WriteLine("HEADER addr " + dmaAddress.ToString("x8") + " value: " + header.ToString("x8"));
+                // Console.WriteLine("HEADER addr " + dmaAddress.ToString("x8") + " value: " + header.ToString("x8"));
                 uint size = header >> 24;
 
                 while (size > 0) {
                     dmaAddress = (dmaAddress + 4) & 0x1ffffc;
                     uint load = dma_transfer.fromRAM(WORD, dmaAddress);
-                    //Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
+                    //  Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
                     dma_transfer.toGPU(load);
                     size--;
                 }
@@ -105,10 +174,10 @@ namespace ProjectPSX.Devices {
                                 break;
                             case 3: //CD
                                 data = dma_transfer.fromCD();
-                                //Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                                // Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
                                 break;
                             case 6: //OTC
-                                if(size == 1) {
+                                if (size == 1) {
                                     data = 0xFF_FFFF;
                                 } else {
                                     data = (dmaAddress - 4) & 0xFF_FFFF;
@@ -117,21 +186,26 @@ namespace ProjectPSX.Devices {
                                 break;
                             default:
                                 data = 0;
-                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channel);
+                                //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channel);
                                 break;
                         }
                         dma_transfer.toRAM(WORD, dmaAddress & 0x1F_FFFC, data);
 
                         break;
                     case 1: //From Ram
-                        uint load = dma_transfer.fromRAM(WORD, dmaAddress);
+                        uint load = 0;
+                        try {
+                             load = dma_transfer.fromRAM(WORD, dmaAddress & 0x1F_FFFC);
+                        }catch(Exception e) {
+                            Console.WriteLine(dmaAddress.ToString("x8")); //00253af4
+                        }
 
                         switch (channel) {
                             case 2: //GPU
                                 dma_transfer.toGPU(load);
                                 break;
                             default: //MDECin and SPU
-                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram)" + channel);
+                                     //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channel);
                                 break;
                         }
                         break;

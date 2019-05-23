@@ -70,9 +70,9 @@ namespace ProjectPSX.Devices {
 
         public bool tick(int cycles) {
             counter += cycles;
-            //if (counter < 20000) {
-            //    return false; ;
-            //}
+            if (counter < 20000) {
+                return false; ;
+            }
 
             if (interruptQueue.Count != 0 && IF == 0) {
                 Console.WriteLine("[CD INT] Queue is " + interruptQueue.Count + " Dequeue = IF | " + interruptQueue.Peek());

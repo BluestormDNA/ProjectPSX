@@ -11,9 +11,6 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("ISTAT SET MANUAL FROM DEVICE: " + ISTAT.ToString("x8") + " IMASK " + IMASK.ToString("x8"));
         }
 
-        internal void ack(Interrupt interrupt) {
-            ISTAT &= (uint)~interrupt;
-        }
 
         internal void writeISTAT(uint value) {
             ISTAT &= value & 0x7FF;

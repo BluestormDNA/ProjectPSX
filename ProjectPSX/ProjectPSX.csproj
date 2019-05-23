@@ -66,6 +66,7 @@
   <ItemGroup>
     <Compile Include="Devices\Controller.cs" />
     <Compile Include="Devices\DigitalController.cs" />
+    <Compile Include="Devices\GPUTest.cs" />
     <Compile Include="Util\BIOS_Disassembler.cs" />
     <Compile Include="Core\GTE.cs" />
     <Compile Include="Devices\JOYPAD.cs" />
@@ -74,6 +75,9 @@
     <Compile Include="Devices\GPU.cs" />
     <Compile Include="Devices\InterruptController.cs" />
     <Compile Include="Devices\TIMERS.cs" />
+    <Compile Include="Util\DoubleBufferedPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Window.cs">
       <SubType>Form</SubType>
     </Compile>

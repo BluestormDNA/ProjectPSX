@@ -8,8 +8,13 @@ namespace ProjectPSX {
 
         protected Queue<byte> transferDataFifo = new Queue<byte>();
         protected ushort buttons = 0xFFFF;
+        public bool ack;
 
         public abstract byte process(byte b);
+        public abstract void idle();
+
+        public abstract bool isEnabled();
+
         public bool isReady() {
             //Console.WriteLine("[JOYPAD] Isready: " + (transferDataFifo.Count == 0));
             return transferDataFifo.Count == 0;

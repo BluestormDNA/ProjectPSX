@@ -6,20 +6,25 @@
         protected uint memOffset;
 
         public uint load(Width w, uint addr) {
-            uint load = 0;
             addr -= memOffset;
 
-            for (int i = 0; i < (byte)w; i++) {
-                load |= (uint)(mem[addr + i] << (8 * i));
+            switch (w) {
+                case Width.BYTE: return mem[addr];
+                case Width.HALF: return (uint)(mem[addr + 1] << 8 | mem[addr]);
+                case Width.WORD: return (uint)(mem[addr + 3] << 24 | mem[addr + 2] << 16 | mem[addr + 1] << 8 | mem[addr]);
+                default: return 0xFFFF_FFFF;
             }
-            return load;
         }
 
         public void write(Width w, uint addr, uint value) {
             addr -= memOffset;
 
-            for (int i = 0; i < (byte)w; i++) {
-                mem[addr + i] = (byte)(value >> (8 * i));
+            switch (w) {
+                case Width.BYTE: mem[addr] = (byte)value; break;
+                case Width.HALF: mem[addr] = (byte)value; mem[addr + 1] = (byte)(value >> 8); break;
+                case Width.WORD:
+                    mem[addr] = (byte)value; mem[addr + 1] = (byte)(value >> 8);
+                    mem[addr + 2] = (byte)(value >> 16); mem[addr + 3] = (byte)(value >> 24); break;
             }
         }
     }

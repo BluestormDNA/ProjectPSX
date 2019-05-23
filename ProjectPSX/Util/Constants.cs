@@ -26,8 +26,8 @@
     }
 
     public enum Width {
-        BYTE = 1,
-        HALF = 2,
-        WORD = 4
+        WORD,
+        BYTE,
+        HALF
     }
 }
