@@ -11,17 +11,23 @@ namespace ProjectPSX {
         }
 
         struct Vector3 {
-            public short X;
-            public short Y;
-            public short Z;
+            public short x;
+            public short y;
+            public short z;
+
+            public Vector3(short x, short y, short z) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
 
             public uint XY {
-                get { return ((uint)(ushort)Y << 16) | (uint)(ushort)X; }
-                set { Y = (short)(value >> 16); X = (short)value; }
+                get { return ((uint)(ushort)y << 16) | (uint)(ushort)x; }
+                set { y = (short)(value >> 16); x = (short)value; }
             }
             public uint OZ {
-                get { return (uint)Z; }
-                set { Z = (short)value; }
+                get { return (uint)z; }
+                set { z = (short)value; }
             }
         }
 
@@ -90,24 +96,319 @@ namespace ProjectPSX {
         public GTE(CPU cpu) {//debug purposes
             this.cpu = cpu;
         }
-        internal void execute(uint imm) {
-            //Console.WriteLine("GTE EXECUTE" + (imm & 0x3F).ToString("x8"));
 
-            decodeCommand(imm);
+        private void decodeCommand(uint command) {
+            sf = (int)(command & 0x80_000) >> 19;
+            MVMVA_M_Matrix = (command >> 17) & 0x3;
+            MVMVA_M_Vector = (command >> 15) & 0x3;
+            MVMVA_T_Vector = (command >> 13) & 0x3;
+            lm = ((command >> 10) & 0x1) != 0;
+            opcode = command & 0x3F;
+        }
+        internal void execute(uint command) {
+            //Console.WriteLine("GTE EXECUTE" + (command & 0x3F).ToString("x8"));
+
+            decodeCommand(command);
             FLAG = 0;
 
             switch (opcode) {
                 case 0x01: RTPS(0); break;
                 case 0x06: NCLIP(); break;
                 case 0x0C: OP(); break;
+                case 0x10: DPCS(); break;
+                case 0x11: INTPL(); break;
+                case 0x12: MVMVA(); break;
                 case 0x13: NCDS(0); break;
                 case 0x16: NCDT(); break;
+                case 0x1B: NCCS(0); break;
+                case 0x1E: NCS(0); break;
+                case 0x20: NCT(); break;
                 case 0x28: SQR(); break;
                 case 0x2D: AVSZ3(); break;
                 case 0x2E: AVSZ4(); break;
                 case 0x30: RTPT(); break;
-                default: Console.Write("UNIMPLEMENTED GTE COMMAND"); break;/* throw new NotImplementedException();*/
+                case 0x3D: GPF(); break;
+                case 0x3E: GPL(); break;
+                case 0x3F: NCCT(); break;
+                default: Console.WriteLine("UNIMPLEMENTED GTE COMMAND" + opcode.ToString("x2")); break;/* throw new NotImplementedException();*/
             }
+
+            if ((FLAG & 0x7F87_E000) != 0) {
+                FLAG |= 0x8000_0000;
+            }
+        }
+
+        private void NCCS(int r) {
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;< --- for NCDx / NCCx
+            MAC1 = (int)setMAC(1, (RGBC.r * IR[1]) << 4);
+            MAC2 = (int)setMAC(2, (RGBC.g * IR[2]) << 4);
+            MAC3 = (int)setMAC(3, (RGBC.b * IR[3]) << 4);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
+            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
+            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void NCCT() {
+            NCCS(0);
+            NCCS(1);
+            NCCS(2);
+        }
+
+        private void DPCS() {
+            //[MAC1, MAC2, MAC3] = [R, G, B] SHL 16                     ;<--- for DPCS/DPCT
+            MAC1 = (int)setMAC(1, (long)RGBC.r << 16);
+            MAC2 = (int)setMAC(2, (long)RGBC.g << 16);
+            MAC3 = (int)setMAC(3, (long)RGBC.b << 16);
+
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
+
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
+            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
+            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void INTPL() {
+            // [MAC1, MAC2, MAC3] = [IR1, IR2, IR3] SHL 12               ;<--- for INTPL only
+
+            MAC1 = (int)setMAC(1, (long)IR[1] << 12);
+            MAC2 = (int)setMAC(2, (long)IR[2] << 12);
+            MAC3 = (int)setMAC(3, (long)IR[3] << 12);
+
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
+
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
+            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
+            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void NCT() {
+            NCS(0);
+            NCS(1);
+            NCS(2);
+        }
+
+        private void NCS(int r) {
+            //In: V0 = Normal vector(for triple variants repeated with V1 and V2),
+            //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
+
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void MVMVA() { //WIP
+            //Console.WriteLine("[GTE] MVMVA");
+            //Mx = matrix specified by mx; RT / LLM / LCM - Rotation, light or color matrix
+            //Vx = vector specified by v; V0, V1, V2, or[IR1, IR2, IR3]
+            //Tx = translation vector specified by cv; TR or BK or Bugged / FC, or None
+
+            Matrix mx = getMVMVA_Matrix();
+            Vector3 vx = getMVMVA_Vector();
+            (long tx, long ty, long tz) = getMVMVA_Translation();
+
+            //MAC1 = (Tx1 * 1000h + Mx11 * Vx1 + Mx12 * Vx2 + Mx13 * Vx3) SAR(sf * 12)
+            //MAC2 = (Tx2 * 1000h + Mx21 * Vx1 + Mx22 * Vx2 + Mx23 * Vx3) SAR(sf * 12)
+            //MAC3 = (Tx3 * 1000h + Mx31 * Vx1 + Mx32 * Vx2 + Mx33 * Vx3) SAR(sf * 12)
+            //[IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+
+            MAC1 = (int)setMAC(1, (long)(tx * 0x1000 + mx.v1.x * vx.x + mx.v1.y * vx.y + mx.v1.z * vx.z) >> sf * 12);
+            MAC2 = (int)setMAC(2, (long)(ty * 0x1000 + mx.v2.x * vx.x + mx.v2.y * vx.y + mx.v2.z * vx.z) >> sf * 12);
+            MAC3 = (int)setMAC(3, (long)(tz * 0x1000 + mx.v3.x * vx.x + mx.v3.y * vx.y + mx.v3.z * vx.z) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private (int trX, int trY, int trZ) getMVMVA_Translation() {
+            switch (MVMVA_T_Vector) {
+                case 0: return (TRX, TRY, TRZ);
+                case 1: return (RBK, GBK, BBK);
+                case 2: return (RFC, GFC, BFC);
+                case 3: return (0, 0, 0);
+                default: Console.WriteLine("[GTE] Unhandled MVMVA Translation Vector " + MVMVA_T_Vector); return (0, 0, 0);
+            }
+        }
+
+        private Vector3 getMVMVA_Vector() {
+            switch (MVMVA_M_Vector) {
+                case 0: return V[0];
+                case 1: return V[1];
+                case 2: return V[2];
+                case 3: return new Vector3(IR[1], IR[2], IR[3]);
+                default: Console.WriteLine("[GTE] Unhandled M Vector " + MVMVA_M_Matrix); return new Vector3();
+            }
+        }
+
+        private Matrix getMVMVA_Matrix() {
+            switch (MVMVA_M_Matrix) {
+                case 0: return RT;
+                case 1: return LM;
+                case 2: return LRGB;
+                default: Console.WriteLine("[GTE] Unhandled MVMVA Matrix " + MVMVA_M_Matrix); return new Matrix();
+            }
+        }
+
+        private void GPL() {
+            //[MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SHL(sf*12);<--- for GPL only
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3]) SAR(sf*12)
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            //Note: Although the SHL in GPL is theoretically undone by the SAR, 44bit overflows can occur internally when sf=1.
+
+            MAC1 = MAC1 >> sf * 12;
+            MAC2 = MAC2 >> sf * 12;
+            MAC3 = MAC3 >> sf * 12;
+
+            MAC1 = (int)setMAC(1, (IR[1] * IR[0] + MAC1) >> sf * 12);
+            MAC2 = (int)setMAC(2, (IR[2] * IR[0] + MAC2) >> sf * 12);
+            MAC3 = (int)setMAC(3, (IR[3] * IR[0] + MAC3) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+        }
+
+        private void GPF() {
+            //[MAC1, MAC2, MAC3] = [0,0,0]                            ;<--- for GPF only
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3]) SAR(sf*12)
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            //Note: Although the SHL in GPL is theoretically undone by the SAR, 44bit overflows can occur internally when sf=1.
+
+            MAC1 = (int)setMAC(1, (IR[1] * IR[0]) >> sf * 12);
+            MAC2 = (int)setMAC(2, (IR[2] * IR[0]) >> sf * 12);
+            MAC3 = (int)setMAC(3, (IR[3] * IR[0]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
         }
 
         private void NCDT() {
@@ -119,214 +420,161 @@ namespace ProjectPSX {
         private void OP() {
             //[MAC1, MAC2, MAC3] = [IR3*D2-IR2*D3, IR1*D3-IR3*D1, IR2*D1-IR1*D2] SAR(sf*12)
             //[IR1, IR2, IR3]    = [MAC1, MAC2, MAC3]                        ;copy result
-            short d1 = RT.v1.X;
-            short d2 = RT.v2.Y;
-            short d3 = RT.v3.Z;
+            //Calculates the outer product of two signed 16bit vectors.
+            //Note: D1,D2,D3 are meant to be the RT11,RT22,RT33 elements of the RT matrix "misused" as vector. lm should be usually zero.
 
-            MAC1 = ((IR[3] * d2) - (IR[2] * d3)) >> sf * 12;
-            MAC2 = ((IR[1] * d3) - (IR[3] * d1)) >> sf * 12;
-            MAC3 = ((IR[2] * d1) - (IR[1] * d2)) >> sf * 12;
+            short d1 = RT.v1.x;
+            short d2 = RT.v2.y;
+            short d3 = RT.v3.z;
 
-            IR[1] = (short)MAC1;
-            IR[2] = (short)MAC2;
-            IR[3] = (short)MAC3;
+            MAC1 = (int)setMAC(1, ((IR[3] * d2) - (IR[2] * d3)) >> sf * 12);
+            MAC2 = (int)setMAC(2, ((IR[1] * d3) - (IR[3] * d1)) >> sf * 12);
+            MAC3 = (int)setMAC(3, ((IR[2] * d1) - (IR[1] * d2)) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
-        private int sqr;
         private void SQR() {
-            long mac1 = (long)(IR[1] * IR[1]) >> sf * 12;
-            long mac2 = (long)(IR[2] * IR[2]) >> sf * 12;
-            long mac3 = (long)(IR[3] * IR[3]) >> sf * 12;
-
-            MAC1 = (int)mac1;
-            MAC2 = (int)mac2;
-            MAC3 = (int)mac3;
+            MAC1 = (int)setMAC(1, (IR[1] * IR[1]) >> sf * 12);
+            MAC2 = (int)setMAC(2, (IR[2] * IR[2]) >> sf * 12);
+            MAC3 = (int)setMAC(3, (IR[3] * IR[3]) >> sf * 12);
 
 
-            IR[1] = (short)(MAC1 > 0x7FFF ? 0x7FFF : MAC1);
-            IR[2] = (short)(MAC2 > 0x7FFF ? 0x7FFF : MAC2);
-            IR[3] = (short)(MAC3 > 0x7FFF ? 0x7FFF : MAC3);
-
-            if(MAC1 > 0x7FFF) {  //todo mac to array and loop here
-                IR[1] = 0x7FFF;
-                FLAG |= (1 << 24);
-            }
-
-            if (MAC2 > 0x7FFF) {
-                IR[2] = 0x7FFF;
-                FLAG |= (1 << 23);
-            }
-            if (MAC3 > 0x7FFF) {
-                IR[3] = 0x7FFF;
-                FLAG |= (1 << 22);
-            }
-
-            if (mac1 < -0x800_0000_0000) { //TODO FLAGS
-                FLAG |= (1 << 27);
-            }
-            if (mac1 > 0x7FF_FFFF_FFFF) {
-                FLAG |= (1 << 30);
-            }
-
-            if ((mac2 < -0x800_0000_0000)) {
-                FLAG |= (1 << 26);
-            }
-            if (mac2 > 0x7FF_FFFF_FFFF) {
-                FLAG |= (1 << 29);
-            }
-            
-            if (mac3 < -0x800_0000_0000) {
-                FLAG |= (1 << 25);
-            }
-            if (mac3 > 0x7FF_FFFF_FFFF) {
-                FLAG |= (1 << 28);
-            }
-            //if(sqr > 4094) {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(">SQR< " + sqr);
-                //Console.ReadLine();
-                Console.ResetColor();
-            //}
-            sqr++;
-
-            //Console.WriteLine("FLAG " + FLAG.ToString("x8"));
-            //Console.WriteLine(MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8"));
-            //Console.WriteLine(IR[1].ToString("x8") + " " + IR[2].ToString("x8") + " " + IR[3].ToString("x8"));
-            //if(sqr == 4094) {
-            //cpu.disassemble();
-            //cpu.PrintRegs();
-            //cpu.output();
-            //}
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
-        private void decodeCommand(uint imm) {
-            sf = (int)(imm & 0x1 << 19);
-            MVMVA_M_Matrix = imm >> 17 & 0x3;
-            MVMVA_M_Vector = imm >> 15 & 0x3;
-            MVMVA_T_Vector = imm >> 13 & 0x3;
-            lm = (imm >> 10 & 0x1) != 0;
-            opcode = imm & 0x3F;
-        }
-        int avsz3test;
         private void AVSZ3() {
             //MAC0 = ZSF3 * (SZ1 + SZ2 + SZ3); for AVSZ3
             //OTZ = MAC0 / 1000h;for both(saturated to 0..FFFFh)
             long avsz3 = (long)ZSF3 * (SZ[1] + SZ[2] + SZ[3]);
-            MAC0 = (int)avsz3;
-
-            long div = avsz3 / 0x1000;
-            if (div < 0) {
-                div = 0;
-            } else if (div > 0xFFFF) {
-                div = 0xFFFF;
-            }
-            OTZ = (ushort)div;
-
-            Console.WriteLine("avsz3 " + avsz3test++ + " ZSF3: " + ZSF3.ToString("x4") + " MAC0: " + MAC0.ToString("x8") + " Mac0: " + MAC0 + " div: " + div + " divAnd: " + (div & 0x7FFF_FFFF) + " OTZ: " + OTZ.ToString("x4"));
-            //Console.ReadLine();
+            MAC0 = (int)setMAC0(avsz3);
+            OTZ = setSZ3(avsz3 >> 12);
         }
 
         private void AVSZ4() {
             //MAC0 = ZSF4 * (SZ0 + SZ1 + SZ2 + SZ3);for AVSZ4
             //OTZ = MAC0 / 1000h;for both(saturated to 0..FFFFh)
             long avsz4 = (long)ZSF4 * (SZ[0] + SZ[1] + SZ[2] + SZ[3]);
-            MAC0 = (int)avsz4;
-
-            long div = avsz4 / 0x1000;
-            if (div < 0) {
-                div = 0;
-            } else if (div > 0xFFFF) {
-                div = 0xFFFF;
-            }
-            OTZ = (ushort)div;
+            MAC0 = (int)setMAC0(avsz4);
+            OTZ = setSZ3(avsz4 >> 12);
         }
 
         private void NCDS(int r) { //Normal color depth cue (single vector)
             //In: V0 = Normal vector(for triple variants repeated with V1 and V2),
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
+
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
+            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
             // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;< --- for NCDx / NCCx
+            MAC1 = (int)setMAC(1, (RGBC.r * IR[1]) << 4);
+            MAC2 = (int)setMAC(2, (RGBC.g * IR[2]) << 4);
+            MAC3 = (int)setMAC(3, (RGBC.b * IR[3]) << 4);
+
             // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
+
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
+            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
+            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
-            MAC1 = (LM.v1.X * V[r].X + LM.v1.Y * V[r].Y + LM.v1.Z * V[r].Z) >> sf * 12;
-            MAC2 = (LM.v2.X * V[r].X + LM.v2.Y * V[r].Y + LM.v2.Z * V[r].Z) >> sf * 12;
-            MAC3 = (LM.v3.X * V[r].X + LM.v3.Y * V[r].Y + LM.v3.Z * V[r].Z) >> sf * 12;
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
 
-            IR[1] = (short)MAC1;
-            IR[2] = (short)MAC2;
-            IR[3] = (short)MAC3;
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
 
-            //MAC1 = RBK + LRGB.v1.X 
-
-
-
-            RGB[0].set((uint)(MAC1 / 16));
-            RGB[1].set((uint)(MAC2 / 16));
-            RGB[2].set((uint)(MAC3 / 16));
-
-
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
-        int nclipTest;
         private void NCLIP() { //Normal clipping
             // MAC0 =   SX0*SY1 + SX1*SY2 + SX2*SY0 - SX0*SY2 - SX1*SY0 - SX2*SY1
-            long nclip = (long)(SXY[0].x * SXY[1].y + SXY[1].x * SXY[2].y + SXY[2].x * SXY[0].y - SXY[0].x * SXY[2].y - SXY[1].x * SXY[0].y - SXY[2].x * SXY[1].y);
-            MAC0 = (int)nclip;
-
-            Console.WriteLine(nclipTest++ + " " + nclip.ToString("x16"));  //OJO VALIDO !
-            if ((nclip & 0xFFFF_FFFF) <= 0x7FFF_FFFF && nclip < 0) {
-                FLAG |= (1 << 15);
-                //Console.WriteLine("Under VALUE");
-                //Console.WriteLine(FLAG.ToString("x8"));
-                //Console.ReadLine();
-            } else if (nclip > 0x7FFF_FFFF && nclip < 0xFFFF_FFFF) {
-                FLAG |= (1 << 16);
-                //Console.WriteLine("Over VALUE");
-                //Console.WriteLine(FLAG.ToString("x8"));
-                //Console.ReadLine();
+            MAC0 = (int)setMAC0((long)SXY[0].x * SXY[1].y + SXY[1].x * SXY[2].y + SXY[2].x * SXY[0].y - SXY[0].x * SXY[2].y - SXY[1].x * SXY[0].y - SXY[2].x * SXY[1].y);
+        }
+        private long setMAC0(long value) {
+            if (value < -0x8000_0000) {
+                FLAG |= 0x8000;
+            } else if (value > 0x7FFF_FFFF) {
+                FLAG |= 0x1_0000;
             }
+            return value;
         }
 
         private void RTPT() { //Perspective Transformation Triple
             RTPS(0);
             RTPS(1);
             RTPS(2);
-            //debug();
         }
 
         private void RTPS(int r) {
             //IR1 = MAC1 = (TRX*1000h + RT11*VX0 + RT12*VY0 + RT13*VZ0) SAR (sf*12)
             //IR2 = MAC2 = (TRY*1000h + RT21*VX0 + RT22*VY0 + RT23*VZ0) SAR (sf*12)
             //IR3 = MAC3 = (TRZ*1000h + RT31*VX0 + RT32*VY0 + RT33*VZ0) SAR (sf*12)
-            //SZ3 = MAC3 SAR ((1-sf)*12)                           ;ScreenZ FIFO 0..+FFFFh
-            //MAC0=(((H*20000h/SZ3)+1)/2)*IR1+OFX, SX2=MAC0/10000h ;ScrX FIFO -400h..+3FFh
-            //MAC0=(((H*20000h/SZ3)+1)/2)*IR2+OFY, SY2=MAC0/10000h ;ScrY FIFO -400h..+3FFh
-            //MAC0=(((H*20000h/SZ3)+1)/2)*DQA+DQB, IR0=MAC0/1000h  ;Depth cueing 0..+1000h
 
-            MAC1 = (TRX * 0x1000 + RT.v1.X * V[r].X + RT.v1.Y * V[r].Y + RT.v1.Z * V[r].Z) >> (sf * 12);
-            IR[1] = (short)MAC1;
-            MAC2 = (TRY * 0x1000 + RT.v2.X * V[r].X + RT.v2.Y * V[r].Y + RT.v2.Z * V[r].Z) >> (sf * 12);
-            IR[2] = (short)MAC2;
-            MAC3 = (TRZ * 0x1000 + RT.v3.X * V[r].X + RT.v3.Y * V[r].Y + RT.v3.Z * V[r].Z) >> (sf * 12);
-            IR[3] = (short)MAC3;
+            MAC1 = (int)setMAC(1, (TRX * 0x1000 + RT.v1.x * V[r].x + RT.v1.y * V[r].y + RT.v1.z * V[r].z) >> (sf * 12));
+            MAC2 = (int)setMAC(2, (TRY * 0x1000 + RT.v2.x * V[r].x + RT.v2.y * V[r].y + RT.v2.z * V[r].z) >> (sf * 12));
+            MAC3 = (int)setMAC(3, (TRZ * 0x1000 + RT.v3.x * V[r].x + RT.v3.y * V[r].y + RT.v3.z * V[r].z) >> (sf * 12));
+
+            IR[1] = setIR(1, MAC1, false);
+            IR[2] = setIR(2, MAC2, false);
+            IR[3] = setIR(3, MAC3, false);
+
+            //SZ3 = MAC3 SAR ((1-sf)*12)                           ;ScreenZ FIFO 0..+FFFFh
 
             SZ[0] = SZ[1];
             SZ[1] = SZ[2];
             SZ[2] = SZ[3];
-            int mac3 = MAC3 >> (1 - (sf * 12));
-            SZ[3] = (ushort)mac3;
+            SZ[3] = setSZ3(MAC3 >> ((1 - sf) * 12));
+
+            //MAC0=(((H*20000h/SZ3)+1)/2)*IR1+OFX, SX2=MAC0/10000h ;ScrX FIFO -400h..+3FFh
+            //MAC0=(((H*20000h/SZ3)+1)/2)*IR2+OFY, SY2=MAC0/10000h ;ScrY FIFO -400h..+3FFh
+            //MAC0=(((H*20000h/SZ3)+1)/2)*DQA+DQB, IR0=MAC0/1000h  ;Depth cueing 0..+1000h
 
             SXY[0] = SXY[1];
             SXY[1] = SXY[2];
 
-            int result;
-            int div = 0;
+            long result;
+            long div = 0;
             if (SZ[3] == 0) {
                 result = 0x1FFFF;
             } else {
-                div = (int)(((H * 0x20000 / SZ[3]) + 1) / 2);
+                div = (long)(((H * 0x20000 / SZ[3]) + 1) / 2);
 
                 if (div > 0x1FFFF) {
                     result = 0x1FFFF;
@@ -336,12 +584,120 @@ namespace ProjectPSX {
                 }
             }
 
-            MAC0 = 0; //(int)(result * IR[1] + OFX);
-            SXY[2].x = 0;//(short)(MAC0 / 0x10000);
-            MAC0 = 0;//(int)(result * IR[2] + OFY);
-            SXY[2].y = 0;//(short)(MAC0 / 0x10000);
-            MAC0 = 0;//(int)(result * DQA + OFX);
-            IR[0] = 0;//(short)(MAC0 / 0x1000);
+            MAC0 = (int)(long)(result * IR[1] + OFX);
+            SXY[2].x = setSXY(2, MAC0 / 0x10000);
+            MAC0 = (int)(long)(result * IR[2] + OFY);
+            SXY[2].y = setSXY(2, MAC0 / 0x10000);
+            MAC0 = (int)(long)(result * DQA + DQB);
+            IR[0] = setIR0(MAC0 / 0x1000);
+
+
+            // Console.WriteLine("RTPS " + ++rtpsTest + " FLAG " + FLAG.ToString("x8") + " SXY2 " + SXY[2].get().ToString("x8") + " SZ3 " + SZ[3].ToString("x8"));
+            // Console.WriteLine(((uint)MAC0).ToString("x8") + " " + ((uint)MAC1).ToString("x8") + " " + ((uint)MAC2).ToString("x8") + " " + ((uint)MAC3).ToString("x8"));
+            // Console.WriteLine(((uint)IR[0]).ToString("x8") + " " + ((uint)IR[1]).ToString("x8") + " " + ((uint)IR[2]).ToString("x8") + " " + ((uint)IR[3]).ToString("x8"));
+            //Console.ReadLine();
+        }
+        private short setIR0(long value) {
+            if (value < 0) {
+                FLAG |= 0x1000;
+                return 0;
+            }
+
+            if (value > 0x1000) {
+                FLAG |= 0x1000;
+                return 0x1000;
+            }
+
+            return (short)value;
+        }
+        private short setSXY(int i, int value) { //this is wrong as values are pased individually! i is x y not 1 2 3
+            if (value < -0x400) {
+                FLAG |= (uint)(0x4000 >> (i - 1));
+                return -0x400;
+            }
+
+            if (value > 0x3ff) {
+                FLAG |= (uint)(0x4000 >> (i - 1));
+                return 0x3ff;
+            }
+
+            return (short)value;
+        }
+        private ushort setSZ3(long value) {
+            if (value < 0) {
+                FLAG |= 0x4_0000;
+                return 0;
+            } else
+
+            if (value > 0xffff) {
+                FLAG |= 0x4_0000;
+                return 0xffff;
+            }
+
+            return (ushort)value;
+        }
+
+        private byte setRGB(int i, int value) {
+            if (value < 0) {
+                FLAG |= (uint)0x20_0000 >> (i - 1);
+                return 0;
+            }
+
+            if (value > 0xFF) {
+                FLAG |= (uint)0x20_0000 >> (i - 1);
+                return 0xFF;
+            }
+
+            return (byte)value;
+        }
+
+        private short setIR(int i, int value, bool lm) {
+            if (lm && value < 0) {
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
+                return 0;
+            }
+
+            if (!lm && (value < -0x8000)) {
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
+                return -0x8000;
+            }
+
+            if (value > 0x7FFF) {
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
+                return 0x7FFF;
+            }
+            return (short)value;
+        }
+
+        private long setMAC(int i, long value) {
+            if (value < -0x800_0000_0000) {
+                FLAG |= (uint)0x800_0000 >> (i - 1);
+            }
+
+            if (value > 0x7FF_FFFF_FFFF) {
+                FLAG |= (uint)0x4000_0000 >> (i - 1);
+            }
+
+            return (value << 20) >> 20;
+        }
+
+        private short saturateRGB(int v) {
+            short saturate = (short)v;
+            if (saturate < 0x00) return 0x00;
+            else if (saturate > 0x1F) return 0x1F;
+            else return saturate;
+        }
+
+        private int leadingCount(uint v) {
+            int sign = (int)((v & 0x80000000) >> 31);
+            int leadingCount = 0;
+            int n = (int)v;
+            for (int i = 0; i < 32; i++) {
+                if ((n & 0x80000000) >> 31 != sign) break;
+                leadingCount++;
+                n <<= 1;
+            }
+            return leadingCount;
         }
 
         internal uint loadData(uint fs) {
@@ -387,13 +743,6 @@ namespace ProjectPSX {
             //Console.WriteLine("GTE Load Data R" + fs + ": " + value.ToString("x8"));
             //Console.WriteLine(value.ToString("x8"));
             return value;
-        }
-
-        private short saturateRGB(int v) {
-            short saturate = (short)v;
-            if (saturate < 0x00) return 0x00;
-            else if (saturate > 0x1F) return 0x1F;
-            else return saturate;
         }
 
         private int test;
@@ -442,40 +791,28 @@ namespace ProjectPSX {
             }
         }
 
-        private int leadingCount(uint v) {
-            int sign = (int)((v & 0x80000000) >> 31);
-            int leadingCount = 0;
-            int n = (int)v;
-            for (int i = 0; i < 32; i++) {
-                if ((n & 0x80000000) >> 31 != sign) break;
-                leadingCount++;
-                n <<= 1;
-            }
-            return leadingCount;
-        }
-
         internal uint loadControl(uint fs) {
             uint value;
             switch (fs) {
                 case 00: value = RT.v1.XY; break;
-                case 01: value = (uint)(ushort)RT.v1.Z | (uint)(RT.v2.X << 16); break;
-                case 02: value = (uint)(ushort)RT.v2.Y | (uint)(RT.v2.Z << 16); break;
+                case 01: value = (uint)(ushort)RT.v1.z | (uint)(RT.v2.x << 16); break;
+                case 02: value = (uint)(ushort)RT.v2.y | (uint)(RT.v2.z << 16); break;
                 case 03: value = RT.v3.XY; break;
                 case 04: value = RT.v3.OZ; break;
                 case 05: value = (uint)TRX; break;
                 case 06: value = (uint)TRY; break;
                 case 07: value = (uint)TRZ; break;
                 case 08: value = LM.v1.XY; break;
-                case 09: value = (uint)(ushort)LM.v1.Z | (uint)(LM.v2.X << 16); break;
-                case 10: value = (uint)(ushort)LM.v2.Y | (uint)(LM.v2.Z << 16); break;
+                case 09: value = (uint)(ushort)LM.v1.z | (uint)(LM.v2.x << 16); break;
+                case 10: value = (uint)(ushort)LM.v2.y | (uint)(LM.v2.z << 16); break;
                 case 11: value = LM.v3.XY; break;
                 case 12: value = LM.v3.OZ; break;
                 case 13: value = (uint)RBK; break;
                 case 14: value = (uint)GBK; break;
                 case 15: value = (uint)BBK; break;
                 case 16: value = LRGB.v1.XY; break;
-                case 17: value = (uint)(ushort)LRGB.v1.Z | (uint)(LRGB.v2.X << 16); break;
-                case 18: value = (uint)(ushort)LRGB.v2.Y | (uint)(LRGB.v2.Z << 16); break;
+                case 17: value = (uint)(ushort)LRGB.v1.z | (uint)(LRGB.v2.x << 16); break;
+                case 18: value = (uint)(ushort)LRGB.v2.y | (uint)(LRGB.v2.z << 16); break;
                 case 19: value = LRGB.v3.XY; break;
                 case 20: value = LRGB.v3.OZ; break;
                 case 21: value = (uint)RFC; break;
@@ -504,24 +841,24 @@ namespace ProjectPSX {
             //Console.WriteLine(v.ToString("x8"));
             switch (fs) {
                 case 00: RT.v1.XY = v; break;
-                case 01: RT.v1.Z = (short)v; RT.v2.X = (short)(v >> 16); break;
-                case 02: RT.v2.Y = (short)v; RT.v2.Z = (short)(v >> 16); break;
+                case 01: RT.v1.z = (short)v; RT.v2.x = (short)(v >> 16); break;
+                case 02: RT.v2.y = (short)v; RT.v2.z = (short)(v >> 16); break;
                 case 03: RT.v3.XY = v; break;
                 case 04: RT.v3.OZ = v; break;
                 case 05: TRX = (int)v; break;
                 case 06: TRY = (int)v; break;
                 case 07: TRZ = (int)v; break;
                 case 08: LM.v1.XY = v; break;
-                case 09: LM.v1.Z = (short)v; LM.v2.X = (short)(v >> 16); break;
-                case 10: LM.v2.Y = (short)v; LM.v2.Z = (short)(v >> 16); break;
+                case 09: LM.v1.z = (short)v; LM.v2.x = (short)(v >> 16); break;
+                case 10: LM.v2.y = (short)v; LM.v2.z = (short)(v >> 16); break;
                 case 11: LM.v3.XY = v; break;
                 case 12: LM.v3.OZ = v; break;
                 case 13: RBK = (int)v; break;
                 case 14: GBK = (int)v; break;
                 case 15: BBK = (int)v; break;
                 case 16: LRGB.v1.XY = v; break;
-                case 17: LRGB.v1.Z = (short)v; LRGB.v2.X = (short)(v >> 16); break;
-                case 18: LRGB.v2.Y = (short)v; LRGB.v2.Z = (short)(v >> 16); break;
+                case 17: LRGB.v1.z = (short)v; LRGB.v2.x = (short)(v >> 16); break;
+                case 18: LRGB.v2.y = (short)v; LRGB.v2.z = (short)(v >> 16); break;
                 case 19: LRGB.v3.XY = v; break;
                 case 20: LRGB.v3.OZ = v; break;
                 case 21: RFC = (int)v; break;
