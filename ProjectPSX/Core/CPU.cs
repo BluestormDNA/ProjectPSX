@@ -1,11 +1,13 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace ProjectPSX {
     internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
 
-        private BUS bus;
+        //private BUS bus;
+        private BUSTest bus;
 
         private uint PC = 0xbfc0_0000; // Bios Entry Point
         private uint PC_Predictor = 0xbfc0_0004; //next op for branch delay slot emulation
@@ -22,13 +24,12 @@ namespace ProjectPSX {
         private bool tookBranch;
 
         //CoPro Regs
-        private uint[] Cop0Reg = new uint[16];
-        private uint SR { get { return Cop0Reg[12]; } set { Cop0Reg[12] = value; } }
-        private uint CAUSE { get { return Cop0Reg[13]; } set { Cop0Reg[13] = value; } }
-        private uint EPC { get { return Cop0Reg[14]; } set { Cop0Reg[14] = value; } }
-        private uint BADA { get { return Cop0Reg[8]; } set { Cop0Reg[8] = value; } }
-
-        private uint JUMPDEST { get { return Cop0Reg[6]; } set { Cop0Reg[6] = value; } }
+        private uint[] COP0 = new uint[16];
+        private const int SR = 12;
+        private const int CAUSE = 13;
+        private const int EPC = 14;
+        private const int BADA = 8;
+        private const int JUMPDEST = 6;
 
         //GTE
         private GTE gte;
@@ -36,6 +37,8 @@ namespace ProjectPSX {
         //Debug
         private long cycle; //current CPU cycle counter for debug
         private BIOS_Disassembler bios;
+
+        private bool interruptDelay;
 
         private struct MEM {
             public uint register;
@@ -50,25 +53,22 @@ namespace ProjectPSX {
         }
 
         private struct Instr {
-            public uint value;          //debug
-            public uint opcode { get { return value >> 26; } }         //Instr opcode
+            public uint value;                     //debug
+            public uint opcode => value >> 26;     //Instr opcode
 
             //I-Type
-            public uint rs { get { return (value >> 21) & 0x1F; } }            //Register Source
-            public uint rt { get { return (value >> 16) & 0x1F; } }             //Register Target
-            public uint imm { get { return value & 0xFFFF; } }           //Immediate value
-            public uint imm_s { get { return (uint)(short)imm; } }         //Immediate value sign extended
+            public uint rs => (value >> 21) & 0x1F;//Register Source
+            public uint rt => (value >> 16) & 0x1F;//Register Target
+            public uint imm => value & 0xFFFF;     //Immediate value
+            public uint imm_s => (uint)(short)imm; //Immediate value sign extended
+
             //R-Type
-            public uint rd { get { return (value >> 11) & 0x1F; } }
-            public uint sa { get { return (value >> 6) & 0x1F; } }           //Shift Amount
-            public uint function { get { return value & 0x3F; } }      //Function
-            //J-Type
-            public uint addr { get { return value & 0x3FFFFFF; } }           //Target Address
-            //CoProcessor
-            public uint format { get { return rs; } }
-            public uint ft { get { return rt; } }
-            public uint fs { get { return rd; } }
-            public uint fd { get { return rd; } }
+            public uint rd => (value >> 11) & 0x1F;
+            public uint sa => (value >> 6) & 0x1F;  //Shift Amount
+            public uint function => value & 0x3F;   //Function
+
+            //J-Type                                       
+            public uint addr => value & 0x3FFFFFF;  //Target Address
 
             public void Decode(uint instr) {
                 value = instr;
@@ -83,22 +83,24 @@ namespace ProjectPSX {
         private bool isEX1 = true;
         private bool exe = true;
 
-        public CPU(BUS bus) {
+        public CPU(BUSTest bus) {
+            interruptDelay = true;
             this.bus = bus;
-            bios = new BIOS_Disassembler(bus);
-            Cop0Reg[15] = 0x2; //PRID Processor ID
+            //bios = new BIOS_Disassembler(bus);
+            COP0[15] = 0x2; //PRID Processor ID
             gte = new GTE(this); //debug
         }
 
         internal void Run() {
             fetchDecode();
+            if (handleInterrupts()) return;
             Execute();
             MemAccess();
             WriteBack();
 
             /*debug*/
-            //TTY();
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
+            TTY();
+            //if (exe) forceTest(tcpx); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
             //if (isEX1) forceEX1();
 
             //if(cycle > 150000000) {
@@ -106,10 +108,10 @@ namespace ProjectPSX {
             //}
 
             //if (debug) {
-                //bios.verbose(PC_Now, GPR);
-                //disassemble();
-                //PrintRegs();
-                //output();
+            //bios.verbose(PC_Now, GPR);
+            //disassemble();
+            //PrintRegs();
+            //output();
             //}
         }
 
@@ -126,8 +128,8 @@ namespace ProjectPSX {
             };
             regs += " HI:" + HI.ToString("x8") + "  ";
             regs += " LO:" + LO.ToString("x8") + "  ";
-            regs += " SR:" + SR.ToString("x8") + "  ";
-            regs += "EPC:" + EPC.ToString("x8") + "\n";
+            regs += " SR:" + COP0[SR].ToString("x8") + "  ";
+            regs += "EPC:" + COP0[EPC].ToString("x8") + "\n";
 
             //str.Append(regs);
 
@@ -163,44 +165,61 @@ namespace ProjectPSX {
 
         private void forceEX1() {
             bus.loadEXP();
-            bus.write(Width.WORD, 0x1F02_0018, 0x1);
+            bus.write32(0x1F02_0018, 0x1);
             isEX1 = false;
         }
 
-        public void handleInterrupts() {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool handleInterrupts() {
+           //if (interruptDelay)
+           //{
+           //    interruptDelay = false;
+           //    return false;
+           //}
             uint I_STAT = bus.interruptController.loadISTAT();
             uint I_MASK = bus.interruptController.loadIMASK();
 
             if ((I_STAT & I_MASK) != 0) {
                 //Console.WriteLine("I_STAT " + I_STAT.ToString("x8") + " I_MASK " + I_MASK.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
-                CAUSE |= 0x400;
+                COP0[CAUSE] |= 0x400;
             } else {
-                CAUSE = (uint)(CAUSE & ~0x400);
+                COP0[CAUSE] = (uint)(COP0[CAUSE] & ~0x400);
             }
 
-            bool IEC = (SR & 0x1) == 1;
-            byte IM = (byte)((SR >> 8) & 0xFF);
-            byte IP = (byte)((CAUSE >> 8) & 0xFF);
+            bool IEC = (COP0[SR] & 0x1) == 1;
+            byte IM = (byte)((COP0[SR] >> 8) & 0xFF);
+            byte IP = (byte)((COP0[CAUSE] >> 8) & 0xFF);
             bool Cop0Interrupt = (IM & IP) != 0;
 
             if (IEC && Cop0Interrupt) {
                 //TODO Investigate why this is needed
-                fetchDecode();
+                //if (((IP & IM)& 0x3) != 0)
+                //{
+                    //Console.WriteLine("IM & IP:" + ((IP & IM)));
+                    //fetchDecode();
+                //}
+
+                //instr.Decode(PC_Now);
                 //disassemble();
                 //PrintRegs();
                 //Console.ForegroundColor = ConsoleColor.Red;
                 //Console.Write("[EXCEPTION HANDLING] IEC " + IEC + " IM " +IM.ToString("x8") + " IP " +IP.ToString("x8") + " CAUSE " + CAUSE.ToString("x8"));
                 //debug = true;
                 EXCEPTION(EX.INTERRUPT);
-                CAUSE = (uint)(CAUSE & ~0x400);
+                COP0[CAUSE] = (uint)(COP0[CAUSE] & ~0x400);
                 //fetchDecode(bus);
                 //Console.WriteLine(" POST EX CAUSE " + CAUSE.ToString("x8"));
                 //Console.ResetColor();
+                interruptDelay = true;
+                return true;
             }
+
+            return false;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void fetchDecode() {
-            uint load = bus.load(Width.WORD, PC);
+            uint load = bus.load32(PC);
             PC_Now = PC;
             PC = PC_Predictor;
             PC_Predictor += 4;
@@ -212,15 +231,16 @@ namespace ProjectPSX {
             branch = false;
 
             if ((PC_Now & 0x3) != 0) { // faster than PC_Now % 4 != 0
-                BADA = PC_Now; //TODO check this
+                COP0[BADA] = PC_Now; //TODO check this
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 return;
             }
 
             instr.Decode(load);
-            cycle++;
+            //cycle++;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MemAccess() {
             if (memoryLoad.delayedRegister != memoryLoad.register) { //if loadDelay on same reg it is lost/overwritten (amidog tests)
                 GPR[memoryLoad.register] = memoryLoad.value;
@@ -231,12 +251,14 @@ namespace ProjectPSX {
             GPR[0] = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteBack() {
             GPR[writeBack.register] = writeBack.value;
             writeBack.register = 0;
             GPR[0] = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute() {
             switch (instr.opcode) {
                 case 0b00_0000: //R-Type opcodes
@@ -306,25 +328,25 @@ namespace ProjectPSX {
                 case 0b00_1111: LUI(); break;
 
                 case 0b01_0000: //CoProcessor 0 opcodes
-                    switch (instr.format) {
+                    switch (instr.rs) {
                         case 0b0_0000: MFC0(); break;
                         case 0b0_0100: MTC0(); break;
                         case 0b1_0000: RFE(); break;
-                        default: unimplementedWarning(); break;
+                        default: EXCEPTION(EX.ILLEGAL_INSTR); break;
                     }
                     break;
 
                 case 0b01_0001: COP1(); break;
 
                 case 0b01_0010: //CoProcessor 2 - GTE Opcodes
-                    switch (instr.format & 0x10) {
+                    switch (instr.rs & 0x10) {
                         case 0x0:
-                            switch (instr.format) {
+                            switch (instr.rs) {
                                 case 0b0_0000: MFC2(); break;
                                 case 0b0_0010: CFC2(); break;
                                 case 0b0_0100: MTC2(); break;
                                 case 0b0_0110: CTC2(); break;
-                                default: unimplementedWarning(); break;
+                                default: EXCEPTION(EX.ILLEGAL_INSTR); break;
                             }
                             break;
                         case 0x10:
@@ -358,27 +380,31 @@ namespace ProjectPSX {
                 //pending lwc0-3 and swc0-3 and illegal opc
                 default:
                     //unimplementedWarning();
-                    EXCEPTION(EX.ILLEGAL_INSTR);
+                    EXCEPTION(EX.ILLEGAL_INSTR, instr.opcode & 0x3);
                     break;
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void CTC2() {
-            gte.writeControl(instr.fs, GPR[instr.ft]);
+            gte.writeControl(instr.rd, GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MTC2() {
-            gte.writeData(instr.fs, GPR[instr.ft]);
+            gte.writeData(instr.rd, GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void CFC2() {
-            delayedLoad(instr.ft, gte.loadControl(instr.fs));
+            delayedLoad(instr.rt, gte.loadControl(instr.rd));
         }
 
         private void MFC2() {
-            delayedLoad(instr.ft, gte.loadData(instr.fs));
+            delayedLoad(instr.rt, gte.loadData(instr.rd));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BGEZAL() {
             opcodeIsBranch = true;
             bool should_branch = ((int)GPR[instr.rs]) >= 0;
@@ -388,6 +414,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BLTZAL() {
             opcodeIsBranch = true;
             bool should_branch = ((int)GPR[instr.rs]) < 0;
@@ -397,42 +424,47 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             //Console.WriteLine("Store Data FROM GTE");
             uint addr = GPR[instr.rs] + instr.imm;
 
-            if ((addr % 4) != 0) {
-                BADA = addr;
+            if ((addr & 0x3) != 0) {
+                COP0[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
             } else {
-                bus.write(Width.WORD, addr, gte.loadData(instr.rt));
+                bus.write32(addr, gte.loadData(instr.rt));
             }
             //Console.ReadLine();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             //Console.WriteLine("Load Data TO GTE");
             uint addr = GPR[instr.rs] + instr.imm;
 
-            if ((addr % 4) != 0) {
-                BADA = addr;
+            if ((addr & 0x3) != 0) {
+                COP0[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
             } else {
-                uint value = bus.load(Width.WORD, addr);
+                uint value = bus.load32(addr);
                 gte.writeData(instr.rt, value);
             }
             //Console.ReadLine();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UNIMPL_LW_SW_COP0_1_3() { //PSX Unimplemented CoProcessor Ops
-            EXCEPTION(EX.COPROCESSOR_ERROR);
+            //EXCEPTION(EX.COPROCESSOR_ERROR);
+            //this should throw the CoPro Exception but somehow it doesn't on real hw
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWR() {
             uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -442,14 +474,15 @@ namespace ProjectPSX {
                 case 3: value = (aligned_load & 0x00FF_FFFF) | (GPR[instr.rt] << 24); break;
             }
 
-            bus.write(Width.WORD, addr & 0xFFFF_FFFC, value);
+            bus.write32(addr & 0xFFFF_FFFC, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWL() {
             uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -459,14 +492,15 @@ namespace ProjectPSX {
                 case 3: value = GPR[instr.rt]; break;
             }
 
-            bus.write(Width.WORD, addr & 0xFFFF_FFFC, value);
+            bus.write32(addr & 0xFFFF_FFFC, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWR() {
             uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
 
             //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
 
@@ -488,11 +522,12 @@ namespace ProjectPSX {
             delayedLoad(instr.rt, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWL() {
             uint addr = GPR[instr.rs] + instr.imm_s;
             uint aligned_addr = (uint)(addr & ~0b11);
 
-            uint aligned_load = bus.load(Width.WORD, aligned_addr & 0xFFFF_FFFC);
+            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
 
             //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
 
@@ -521,10 +556,12 @@ namespace ProjectPSX {
             //EXCEPTION(EX.COPROCESSOR_ERROR);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void XORI() {
             setGPR(instr.rt, GPR[instr.rs] ^ instr.imm);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SUB() {
             int rs = (int)GPR[instr.rs];
             int rt = (int)GPR[instr.rt];
@@ -536,6 +573,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MULT() {
             long value = (long)(int)GPR[instr.rs] * (long)(int)GPR[instr.rt]; //sign extend to pass amidog cpu test
 
@@ -543,14 +581,17 @@ namespace ProjectPSX {
             LO = (uint)value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BREAK() {
             EXCEPTION(EX.BREAK);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void XOR() {
             setGPR(instr.rd, GPR[instr.rs] ^ GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MULTU() {
             ulong value = (ulong)GPR[instr.rs] * (ulong)GPR[instr.rt]; //sign extend to pass amidog cpu test
 
@@ -558,46 +599,52 @@ namespace ProjectPSX {
             LO = (uint)value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SRLV() {
             setGPR(instr.rd, GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SRAV() {
             setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F)));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void NOR() {
             setGPR(instr.rd, ~(GPR[instr.rs] | GPR[instr.rt]));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LH() {
-            if ((SR & 0x10000) == 0) {
+            if ((COP0[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr % 2) != 0) {
-                    BADA = addr;
+                if ((addr & 0x1) != 0) {
+                    COP0[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
-                    uint value = (uint)(short)bus.load(Width.HALF, addr);
+                    uint value = (uint)(short)bus.load16(addr);
                     delayedLoad(instr.rt, value);
                 }
 
             } //else Console.WriteLine("Ignoring Load");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLLV() {
             setGPR(instr.rd, GPR[instr.rt] << (int)(GPR[instr.rs] & 0x1F));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LHU() {
-            if ((SR & 0x10000) == 0) {
+            if ((COP0[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr % 2) != 0) {
-                    BADA = addr;
+                if ((addr & 0x1) != 0) {
+                    COP0[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 } else {
-                    uint value = bus.load(Width.HALF, addr);
+                    uint value = bus.load16(addr);
                     //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
                     delayedLoad(instr.rt, value);
                 }
@@ -605,29 +652,34 @@ namespace ProjectPSX {
             } //else Console.WriteLine("Ignoring Load");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RFE() {
             //Console.ForegroundColor = ConsoleColor.Yellow;
             //Console.WriteLine("[RFE] PRE SR" + SR.ToString("x8"));
-            uint mode = SR & 0x3F;
-            SR = (uint)(SR & ~0xF);
-            SR |= mode >> 2;
+            uint mode = COP0[SR] & 0x3F;
+            COP0[SR] = (uint)(COP0[SR] & ~0xF);
+            COP0[SR] |= mode >> 2;
             //Console.WriteLine("[RFE] POST SR" + SR.ToString("x8"));
             //Console.ResetColor();
             //Console.ReadLine();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MTHI() {
             HI = GPR[instr.rs];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MTLO() {
             LO = GPR[instr.rs];
         }
 
         int exCounter;
-        private void EXCEPTION(EX cause) {;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void EXCEPTION(EX cause, uint coprocessor = 0) {
+            //Console.WriteLine(cause + " " + coprocessor);
             uint ExAdress;
-            if ((SR & (1 << 22)) != 0) {
+            if ((COP0[SR] & (1 << 22)) != 0) {
                 ExAdress = 0xBFC0_0180;
             } else {
                 ExAdress = 0x8000_0080;
@@ -636,32 +688,37 @@ namespace ProjectPSX {
             //Console.ForegroundColor = ConsoleColor.Yellow;
             //Console.WriteLine("[EXCEPTION F] PRE SR" + SR.ToString("x8"));
 
-            uint mode = SR & 0x3F;
-            SR = (uint)(SR & ~0x3F);
-            SR |= (mode << 2) & 0x3F;
+            uint mode = COP0[SR] & 0x3F;
+            COP0[SR] = (uint)(COP0[SR] & ~0x3F);
+            COP0[SR] |= (mode << 2) & 0x3F;
 
             //Console.WriteLine("[EXCEPTION F] POST SR" + SR.ToString("x8"));
 
-            uint OldCause = CAUSE & 0x3000ff00;
+            uint OldCause = COP0[CAUSE] & 0xff00;
 
-            CAUSE = (uint)cause << 2;
-            CAUSE |= OldCause;
+            COP0[CAUSE] = (uint)cause << 2;
+            COP0[CAUSE] |= OldCause;
+
+            COP0[CAUSE] |= coprocessor << 28;
 
             //Console.WriteLine("[EXCEPTION F] PRE EPC " + EPC.ToString("x8"));
+            //Console.WriteLine(((COP0[CAUSE] >> 8) & 0x3));
 
-            //if(cause == EX.INTERRUPT) {
-            //    EPC = PC;
-            //} else {
-            EPC = PC_Now;
+
+            COP0[EPC] = PC_Now;
+            //if (((COP0[CAUSE] >> 8) & 0x3) != 0) {
+            //    COP0[EPC] = PC;
             //}
 
             if (opcodeIsInDelaySlot) {
-                EPC = EPC - 4;
-                CAUSE = (uint)(CAUSE | (1 << 31));
-                JUMPDEST = PC_Now;
+                //Console.WriteLine("isDelaySlot");
+                COP0[EPC] = COP0[EPC] - 4;
+                COP0[CAUSE] = (uint)(COP0[CAUSE] | (1 << 31));
+                COP0[JUMPDEST] = PC;
 
                 if (tookBranch) {
-                    CAUSE = (uint)(CAUSE | (1 << 30));
+                    //Console.WriteLine("tookBranch");
+                    COP0[CAUSE] = (uint)(COP0[CAUSE] | (1 << 30));
                 }
             }
 
@@ -675,19 +732,23 @@ namespace ProjectPSX {
             PC_Predictor = PC + 4;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SYSCALL() {
             EXCEPTION(EX.SYSCALL);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLT() {
             bool condition = (int)GPR[instr.rs] < (int)GPR[instr.rt];
             setGPR(instr.rd, condition ? 1u : 0u);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MFHI() {
             setGPR(instr.rd, HI);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DIVU() {
             uint n = GPR[instr.rs];
             uint d = GPR[instr.rt];
@@ -701,19 +762,23 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLTIU() {
             bool condition = GPR[instr.rs] < instr.imm_s;
             setGPR(instr.rt, condition ? 1u : 0u);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SRL() {
             setGPR(instr.rd, GPR[instr.rt] >> (int)instr.sa);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MFLO() {
             setGPR(instr.rd, LO);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DIV() {
             int n = (int)GPR[instr.rs];
             int d = (int)GPR[instr.rt];
@@ -734,25 +799,30 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SRA() {
             setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)instr.sa));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SUBU() {
             setGPR(instr.rd, GPR[instr.rs] - GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLTI() {
             bool condition = (int)GPR[instr.rs] < (int)instr.imm_s;
             setGPR(instr.rt, condition ? 1u : 0u);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BRANCH() {
             branch = true;
             PC_Predictor -= 4;
             PC_Predictor += instr.imm_s << 2;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BGEZ() {
             opcodeIsBranch = true;
             if (((int)GPR[instr.rs]) >= 0) {
@@ -760,6 +830,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BLTZ() {
             opcodeIsBranch = true;
             if (((int)GPR[instr.rs]) < 0) {
@@ -767,18 +838,21 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void JALR() {
             setGPR(instr.rd, PC_Predictor);
             JR();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LBU() {
-            if ((SR & 0x10000) == 0) {
-                uint value = bus.load(Width.BYTE, GPR[instr.rs] + instr.imm_s);
+            if ((COP0[SR] & 0x10000) == 0) {
+                uint value = bus.load8(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Load");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BLEZ() {
             opcodeIsBranch = true;
             if (((int)GPR[instr.rs]) <= 0) {
@@ -786,6 +860,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BGTZ() {
             opcodeIsBranch = true;
             if (((int)GPR[instr.rs]) > 0) {
@@ -793,28 +868,47 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ADD() {
             int rs = (int)GPR[instr.rs];
             int rt = (int)GPR[instr.rt];
             try {
                 uint add = (uint)checked(rs + rt);
                 setGPR(instr.rd, add);
-                //if(rs + rt != 2408)
-                //Console.WriteLine("ADD NO OVERLOW -- " + rs.ToString("x8") + " + " + rt.ToString("x8") + " " + (rs + rt) );
             } catch (OverflowException) {
-                //Console.WriteLine("ADD OVERLOW -- " + rs.ToString("x8") + " + " + rt.ToString("x8"));
                 EXCEPTION(EX.OVERFLOW);
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AND() {
             setGPR(instr.rd, GPR[instr.rs] & GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MFC0() {
-            delayedLoad(instr.ft, Cop0Reg[instr.fs]);
+            switch (instr.rd) {
+                case 3:
+                case 5:
+                case 6:
+                case 7:
+                case 8:
+                case 9:
+                case 11:
+                case 12:
+                case 13:
+                case 14:
+                case 15:
+                    delayedLoad(instr.rt, COP0[instr.rd]);
+                    break;
+                default:
+                    EXCEPTION(EX.ILLEGAL_INSTR);
+                    break;
+            }
+
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BEQ() {
             opcodeIsBranch = true;
             if (GPR[instr.rs] == GPR[instr.rt]) {
@@ -822,72 +916,82 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LB() { //todo redo this as it unnecesary load32
-            if ((SR & 0x10000) == 0) {
-                uint value = (uint)(sbyte)bus.load(Width.BYTE, GPR[instr.rs] + instr.imm_s);
+            if ((COP0[SR] & 0x10000) == 0) {
+                uint value = (uint)(sbyte)bus.load8(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Write");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void JR() {
             opcodeIsBranch = true;
             branch = true;
             PC_Predictor = GPR[instr.rs];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SB() {
-            if ((SR & 0x10000) == 0)
-                bus.write(Width.BYTE, GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
+            if ((COP0[SR] & 0x10000) == 0)
+                bus.write8(GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
             //else Console.WriteLine("Ignoring Write");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ANDI() {
             setGPR(instr.rt, GPR[instr.rs] & instr.imm);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void JAL() {
             setGPR(31, PC_Predictor);
             J();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SH() {
-            if ((SR & 0x10000) == 0) {
+            if ((COP0[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr % 2) != 0) {
-                    BADA = addr;
+                if ((addr & 0x1) != 0) {
+                    COP0[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write(Width.HALF, addr, (ushort)GPR[instr.rt]);
+                    bus.write16(addr, (ushort)GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ADDU() {
             setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLTU() {
             bool condition = GPR[instr.rs] < GPR[instr.rt];
             setGPR(instr.rd, condition ? 1u : 0u);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LW() {
-            if ((SR & 0x10000) == 0) {
+            if ((COP0[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr % 4) != 0) {
-                    BADA = addr;
-                    EXCEPTION(EX.LOAD_ADRESS_ERROR);
+                if ((addr & 0x3) != 0) {
+                    COP0[BADA] = addr;
+                    EXCEPTION(EX.LOAD_ADRESS_ERROR, 3);
                 } else {
-                    uint value = bus.load(Width.WORD, addr);
+                    uint value = bus.load32(addr);
                     delayedLoad(instr.rt, value);
                 }
 
             } //else Console.WriteLine("Ignoring Load");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ADDI() {
             int rs = (int)GPR[instr.rs];
             int imm_s = (int)instr.imm_s;
@@ -899,6 +1003,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BNE() {
             opcodeIsBranch = true;
             if (GPR[instr.rs] != GPR[instr.rt]) {
@@ -906,9 +1011,10 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MTC0() {
-            uint value = GPR[instr.ft];
-            uint register = instr.fs;
+            uint value = GPR[instr.rt];
+            uint register = instr.rd;
 
             if (register == 12) {
                 //Console.WriteLine("[WARNING MTC0 SR] " + GPR[instr.ft].ToString("x8"));
@@ -917,59 +1023,68 @@ namespace ProjectPSX {
                 //PrintRegs();
             } else if (register == 13) {
                 //Console.WriteLine("[WARNING MTC0 CAUSE] " + GPR[instr.ft].ToString("x8"));
-                //Console.WriteLine(Cop0Reg[13].ToString("x8"));
+                //Console.WriteLine(COP0[13].ToString("x8"));
                 //disassemble();
                 //PrintRegs();
                 value &= 0x300; //only bits 8 and 8 are writable
             }
-            Cop0Reg[instr.fs] = value;
+            COP0[instr.rd] = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void OR() {
             setGPR(instr.rd, GPR[instr.rs] | GPR[instr.rt]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void J() {
             opcodeIsBranch = true;
             branch = true;
             PC_Predictor = (PC_Predictor & 0xF000_0000) | (instr.addr << 2);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ADDIU() {
             setGPR(instr.rt, GPR[instr.rs] + instr.imm_s);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLL() {
             setGPR(instr.rd, GPR[instr.rt] << (int)instr.sa);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SW() {
-            if ((SR & 0x10000) == 0) {
+            if ((COP0[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr % 4) != 0) {
-                    BADA = addr;
+                if ((addr & 0x3) != 0) {
+                    COP0[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
                 } else {
-                    bus.write(Width.WORD, addr, GPR[instr.rt]);
+                    bus.write32(addr, GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LUI() {
             setGPR(instr.rt, instr.imm << 16);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ORI() {
             setGPR(instr.rt, GPR[instr.rs] | instr.imm);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void setGPR(uint regN, uint value) {
             writeBack.register = regN;
             writeBack.value = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void delayedLoad(uint regN, uint value) {
             memoryLoad.delayedRegister = regN;
             memoryLoad.delayedValue = value;
@@ -978,7 +1093,7 @@ namespace ProjectPSX {
         private void unimplementedWarning() {
             Console.WriteLine("[CPU] Unimplemented instruction: ");
             string funct_string = instr.opcode == 0 ? " Function: " + instr.function.ToString("x8") : "";
-            string format_string = instr.opcode == 0b01_0000 ? " Function: " + instr.format.ToString("x8") : "";
+            string format_string = instr.opcode == 0b01_0000 ? " Function: " + instr.rs.ToString("x8") : "";
             Console.WriteLine("Cycle: " + cycle + " PC: " + PC_Now.ToString("x8") + " Load32: " + instr.value.ToString("x8")
                 + " Instr: " + instr.opcode.ToString("x8") + funct_string + format_string);
             disassemble();
@@ -1106,14 +1221,14 @@ namespace ProjectPSX {
 
 
                 case 0b01_0000: //CoProcessor opcodes
-                    switch (instr.format) {
+                    switch (instr.rs) {
                         case 0b0_0000://MFC0();
                             output = "MFC0";
                             break;
                         case 0b0_0100://MTC0();
-                                      // Cop0Reg[instr.fs] = REG[instr.ft];
+                                      // COP0[instr.fs] = REG[instr.ft];
                             output = "MTC0";
-                            values = "R" + instr.fs + "," + "R" + instr.ft + "[" + GPR[instr.ft].ToString("x8") + "]";
+                            values = "R" + instr.rd + "," + "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "]";
                             break;
                         case 0b1_0000: //RFE(); break;
                             output = "RFE";
@@ -1134,10 +1249,10 @@ namespace ProjectPSX {
                     break;
                 case 0b10_0101: //LHU(bus); break;
                     output = "LHU";
-                    values = "cached " + ((SR & 0x10000) == 0) + "addr:" + (GPR[instr.rs] + instr.imm_s).ToString("x8") + "on R" + instr.rt;
+                    values = "cached " + ((COP0[SR] & 0x10000) == 0) + "addr:" + (GPR[instr.rs] + instr.imm_s).ToString("x8") + "on R" + instr.rt;
                     break;
                 case 0b10_0011:// LW(bus);
-                    if ((SR & 0x10000) == 0)
+                    if ((COP0[SR] & 0x10000) == 0)
                         values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
                     else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED LOAD";
                     output = "LW";
@@ -1154,7 +1269,7 @@ namespace ProjectPSX {
                                //if ((SR & 0x10000) == 0)
                                //    bus.write32(REG[instr.rs] + instr.imm_s, REG[instr.rt]);
                     output = "SW";
-                    if ((SR & 0x10000) == 0)
+                    if ((COP0[SR] & 0x10000) == 0)
                         values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]";
                     else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
                     break;
@@ -1175,8 +1290,8 @@ namespace ProjectPSX {
             Console.Write(regs);
             Console.Write(" HI:" + HI.ToString("x8") + "  ");
             Console.Write(" LO:" + LO.ToString("x8") + "  ");
-            Console.Write(" SR:" + SR.ToString("x8") + "  ");
-            Console.Write("EPC:" + EPC.ToString("x8") + "\n");
+            Console.Write(" SR:" + COP0[SR].ToString("x8") + "  ");
+            Console.Write("EPC:" + COP0[EPC].ToString("x8") + "\n");
             //bool IEC = (SR & 0x1) == 1;
             //byte IM = (byte)((SR >> 8) & 0xFF);
             //byte IP = (byte)((CAUSE >> 8) & 0xFF);
