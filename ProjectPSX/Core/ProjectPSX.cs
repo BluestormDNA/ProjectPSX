@@ -11,7 +11,6 @@ namespace ProjectPSX {
 
         private Window window;
 
-        private long cycle;
         private long counter;
         Stopwatch watch = new Stopwatch();
 
@@ -30,34 +29,54 @@ namespace ProjectPSX {
             Task t = Task.Factory.StartNew(EXECUTE, TaskCreationOptions.LongRunning);
         }
 
-        public void EXECUTE() {
+        public void executeFps() {
+            for (int i = 0; i < 2822; i++) {
+                for (int j = 0; j < 100; j++) {
+                    cpu.Run();
+                }
+                //cpu.handleInterrupts();
+                bus.tick(200);
+            }
+        }
+        private void EXECUTE() {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
-
+            watch.Start();
             try {
                 while (true) {
-                    if(cycle == 1) {
-                        watch.Restart();
-                    }
-
-                    for(int i = 0; i < 50; i++) {
+                //for (int i = 0; i < 100; i++) {
+                //    cpu.Run();
+                //    counter++;
+                //}
+                //
+                //bus.tick(200); //2 ticks per opcode
+                //cpu.handleInterrupts();
+                for (int i = 0; i < 2822; i++)
+                {
+                    for (int j = 0; j < 100; j++)
+                    {
                         cpu.Run();
-                        cpu.handleInterrupts();
                         counter++;
                     }
-
-                    bus.tick(150); //2 ticks per opcode
-
-
-
-                    if (counter >= PSX_MHZ) {
-                        counter = 0;
-                        cycle = 0;
-                        window.Text = "ProjectPSX | Fps: " + (60 / ((float)watch.ElapsedMilliseconds / 1000)).ToString();
+                    bus.tick(200);
+                    cpu.handleInterrupts();
                     }
-                    cycle++;
+
+
+                if (watch.ElapsedMilliseconds > 1000) {
+                        //window.Text = " ProjectPSX | Speed % " + 1000 / (float)watch.ElapsedMilliseconds * 100;
+                        window.Text = " ProjectPSX | Speed % " + (((float)counter / (PSX_MHZ / 2)) * 100);
+                        watch.Restart();
+                        counter = 0;
+                        //fpsCounter = 0;
+                    }
+                    //if (counter >= PSX_MHZ) {
+                    //    counter = 0;
+                    //    window.Text = "ProjectPSX | Fps: " + (60 / ((float)watch.ElapsedMilliseconds / 1000)).ToString();
+                    //    watch.Restart();
+                    //}
                 }
-            } catch(Exception e) {
+            } catch (Exception e) {
                 Console.WriteLine(e.ToString());
             }
         }
