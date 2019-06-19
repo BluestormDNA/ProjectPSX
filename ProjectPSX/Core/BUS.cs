@@ -1,8 +1,13 @@
 ﻿using ProjectPSX.Devices;
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
+    //TODO:
+    //Do loadX and WriteX simple functions that return a value based on a generic load and write giant switch pointer return
+    //like the test loadRAM and get rid of the multiple giant switchs
     public class BUS : DMA_Transfer {
 
         //Memory
@@ -13,10 +18,15 @@ namespace ProjectPSX {
         private byte[] BIOS = new byte[512 * 1024];
         private byte[] IO = new byte[512];
 
+        //ram tests
+        GCHandle ramHandle;
+        private unsafe byte* ramPtr;
+
+
         //Other Subsystems
         public InterruptController interruptController;
         private DMA dma;
-        private GPUTest gpu;
+        private GPU gpu;
         private CDROM cdrom;
         private TIMERS timers;
         private JOYPAD joypad;
@@ -24,12 +34,24 @@ namespace ProjectPSX {
         public BUS() {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
             dma = new DMA();
-            gpu = new GPUTest();
+            gpu = new GPU();
             cdrom = new CDROM();
             timers = new TIMERS();
             joypad = new JOYPAD();
 
             dma.setDMA_Transfer(this);
+
+            try {
+                initMem();
+            } finally {
+                ramHandle.Free();
+            }
+
+        }
+
+        private unsafe void initMem() {
+            ramHandle = GCHandle.Alloc(RAM, GCHandleType.Pinned);
+            ramPtr = (byte*)ramHandle.AddrOfPinnedObject().ToPointer();
         }
 
         internal void setWindow(Window window) {
@@ -37,52 +59,193 @@ namespace ProjectPSX {
             joypad.setWindow(window);
         }
 
-        internal uint load(Width w, uint addr) {
-            addr &= RegionMask[addr >> 29];
+        internal uint load32(uint address) {
+            //addr &= RegionMask[addr >> 29]; 
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
+
+            if (addr < 0x1F00_0000) {
+                return loadRAM32(addr, RAM);
+            } else if (addr < 0x1F08_0000) {
+                return load32(addr & 0x7_FFFF, EX1);
+            } else if (addr >= 0x1f80_0000 && addr < 0x1f80_0400) {
+                return load32(addr & 0xFFF, SCRATHPAD);
+            } else if (addr >= 0x1F80_1000 && addr < 0x1F80_2000) {
+                if (addr == 0x1F801070) {
+                    return interruptController.loadISTAT();
+                } else if (addr == 0x1F801074) {
+                    return interruptController.loadIMASK();
+                } else if (addr >= 0x1F80_1040 && addr <= 0x1F80_104F) {
+                    return joypad.load(Width.WORD, addr);
+                } else if (addr >= 0x1F80_1080 && addr <= 0x1F80_10FF) {
+                    return dma.load(addr);
+                } else if (addr >= 0x1F80_1100 && addr <= 0x1F80_112B) {
+                    return timers.load(Width.WORD, addr);
+                } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
+                    return cdrom.load(Width.WORD, addr);
+                } else if (addr == 0x1F801810) {
+                    return gpu.loadGPUREAD();
+                } else if (addr == 0x1F801814) {
+                    return gpu.loadGPUSTAT();
+                } else {
+                    return load32(addr & 0xFFF, REGISTERS);
+                }
+            } else if (addr >= 0x1FC0_0000 && addr < 0x1FC8_0000) {
+                return load32(addr & 0x7_FFFF, BIOS);
+            } else if (addr >= 0xFFFE_0000 && addr < 0xFFFE_0200) {
+                return load32(addr & 0x1FF, IO);
+            } else {
+                return 0xFFFF_FFFF;
+            }
+
+
+            //switch (addr) {
+            //    case uint _ when addr < 0x1F00_0000:
+            //        return loadRAM32(addr/* & 0x1F_FFFF*/, RAM);
+            //
+            //    case uint _ when addr < 0x1F08_0000:
+            //        return load32(addr & 0x7_FFFF, EX1);
+            //
+            //    case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+            //        return load32(addr & 0xFFF, SCRATHPAD);
+            //
+            //    case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+            //        switch (addr) {
+            //            case 0x1F801070:
+            //                return interruptController.loadISTAT();
+            //            case 0x1F801074:
+            //                return interruptController.loadIMASK();
+            //            case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+            //                return joypad.load(Width.WORD, addr);
+            //            case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+            //                return dma.load(addr);
+            //            case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+            //                //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
+            //                return timers.load(Width.WORD, addr);
+            //            case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+            //                return cdrom.load(Width.WORD, addr);
+            //            case 0x1F801810:
+            //                return gpu.loadGPUREAD();
+            //            case 0x1F801814:
+            //                return gpu.loadGPUSTAT();
+            //            default:
+            //                return load32(addr & 0xFFF, REGISTERS);
+            //        }
+            //
+            //    //case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
+            //    //    return 0; //nocash bios tests
+            //
+            //    case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
+            //        return load32(addr & 0x7_FFFF, BIOS);
+            //
+            //    case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
+            //        return load32(addr & 0x1FF, IO);
+            //
+            //    default:
+            //        Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+            //        return 0xFFFF_FFFF;
+            //}
+        }
+
+
+        internal uint load16(uint address) {
+            //uint addr = address & RegionMask[address >> 29];
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
             switch (addr) {
-                case uint KUSEG when addr < 0x1F00_0000:
-                    return load(w, addr & 0x1F_FFFF, RAM);
+                case uint _ when addr < 0x1F00_0000:
+                    return load16(addr/* & 0x1F_FFFF*/, RAM);
 
-                case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
-                    if (addr == 0x1F02_0018) {
-                        Console.WriteLine("Load ON SWITCH EX");
-                    }
-                    return load(w, addr & 0x7_FFFF, EX1);
+                case uint _ when addr < 0x1F08_0000:
+                    return load16(addr & 0x7_FFFF, EX1);
 
-                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    return load(w, addr & 0xFFF, SCRATHPAD);
+                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                    return load16(addr & 0xFFF, SCRATHPAD);
 
-                case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                     switch (addr) {
                         case 0x1F801070:
                             return interruptController.loadISTAT();
                         case 0x1F801074:
                             return interruptController.loadIMASK();
-                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            return joypad.load(w, addr);
-                        case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            return dma.load(w, addr);
-                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            return joypad.load(Width.HALF, addr);
+                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                            return dma.load(Width.HALF, addr);
+                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
-                            return timers.load(w, addr);
-                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            return cdrom.load(w, addr);
+                            return timers.load(Width.HALF, addr);
+                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            return cdrom.load(Width.HALF, addr);
                         case 0x1F801810:
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
                         default:
-                            return load(w, addr & 0xFFF, REGISTERS);
+                            return load16(addr & 0xFFF, REGISTERS);
                     }
 
-                case uint KUSEG when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
+                case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
                     return 0; //nocash bios tests
 
-                case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    return load(w, addr & 0x7_FFFF, BIOS);
+                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
+                    return load16(addr & 0x7_FFFF, BIOS);
 
-                case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    return load(w, addr & 0x1FF, IO);
+                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
+                    return load16(addr & 0x1FF, IO);
+
+                default:
+                    Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+                    return 0xFFFF_FFFF;
+            }
+        }
+
+
+        internal uint load8(uint address) {
+            //addr &= RegionMask[addr >> 29];
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
+            switch (addr) {
+                case uint _ when addr < 0x1F00_0000:
+                    return load8(addr/* & 0x1F_FFFF*/, RAM);
+
+                case uint _ when addr < 0x1F08_0000:
+                    return load8(addr & 0x7_FFFF, EX1);
+
+                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                    return load8(addr & 0xFFF, SCRATHPAD);
+
+                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                    switch (addr) {
+                        case 0x1F801070:
+                            return interruptController.loadISTAT();
+                        case 0x1F801074:
+                            return interruptController.loadIMASK();
+                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            return joypad.load(Width.BYTE, addr);
+                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                            return dma.load(Width.BYTE, addr);
+                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
+                            return timers.load(Width.BYTE, addr);
+                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            return cdrom.load(Width.BYTE, addr);
+                        case 0x1F801810:
+                            return gpu.loadGPUREAD();
+                        case 0x1F801814:
+                            return gpu.loadGPUSTAT();
+                        default:
+                            return load8(addr & 0xFFF, REGISTERS);
+                    }
+
+                case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
+                    return 0; //nocash bios tests
+
+                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
+                    return load8(addr & 0x7_FFFF, BIOS);
+
+                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
+                    return load8(addr & 0x1FF, IO);
 
                 default:
                     Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
@@ -95,23 +258,88 @@ namespace ProjectPSX {
             return addr & RegionMask[i];
         }
 
-        internal void write(Width w, uint addr, uint value) {
-            addr &= RegionMask[addr >> 29];
+        internal void write32(uint address, uint value) {
+            //Console.WriteLine(addr.ToString("x8"));
+            //addr &= RegionMask[addr >> 29];
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
             switch (addr) {
-                case uint KUSEG when addr < 0x1F00_0000:
-                    write(w, addr & 0x1F_FFFF, value, RAM);
+                case uint _ when addr < 0x1F00_0000:
+                    write32(addr/* & 0x1F_FFFF*/, value, RAM);
                     break;
 
-                case uint KUSEG when addr >= 0x1F00_0000 && addr < 0x1F08_0000:
-                    if (addr == 0x1F02_0018) {
-                        Console.WriteLine("Write ON SWITCH EX");
+                case uint _ when addr < 0x1F08_0000:
+                    write32(addr & 0x7_FFFF, value, EX1);
+                    break;
+
+                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                    write32(addr & 0xFFF, value, SCRATHPAD);
+                    break;
+
+                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                    switch (addr) {
+                        case 0x1F801070:
+                            interruptController.writeISTAT(value);
+                            break;
+                        case 0x1F801074:
+                            interruptController.writeIMASK(value);
+                            break;
+                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            joypad.write(Width.WORD, addr, value);
+                            break;
+                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                            dma.write(addr, value);
+                            break;
+                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
+                            timers.write(Width.WORD, addr, value);
+                            break;
+                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            cdrom.write(Width.WORD, addr, value);
+                            break;
+                        case 0x1F801810:
+                            gpu.writeGP0(value);
+                            break;
+                        case 0x1F801814:
+                            gpu.writeGP1(value);
+                            break;
+
+                        default:
+                            addr &= 0xFFF;
+                            write32(addr, value, REGISTERS);
+                            break;
                     }
-                    //Console.WriteLine("addr" + addr.ToString("x8")); //CAETLA DEBUG
-                    write(w, addr & 0x7_FFFF, value, EX1);
+                    break;
+
+                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
+                    Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
+                    break;
+
+                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
+                    write32(addr & 0x1FF, value, IO);
+                    break;
+
+                default:
+                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    break;
+            }
+        }
+
+        internal void write16(uint address, uint value) {
+            //addr &= RegionMask[addr >> 29];
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
+            switch (addr) {
+                case uint KUSEG when addr < 0x1F00_0000:
+                    write16(addr/* & 0x1F_FFFF*/, value, RAM);
+                    break;
+
+                case uint KUSEG when addr < 0x1F08_0000:
+                    write16(addr & 0x7_FFFF, value, EX1);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write(w, addr & 0xFFF, value, SCRATHPAD);
+                    write16(addr & 0xFFF, value, SCRATHPAD);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
@@ -123,17 +351,17 @@ namespace ProjectPSX {
                             interruptController.writeIMASK(value);
                             break;
                         case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(w, addr, value);
+                            joypad.write(Width.HALF, addr, value);
                             break;
                         case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            dma.write(w, addr, value);
+                            dma.write(addr, value);
                             break;
                         case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
-                            timers.write(w, addr, value);
+                            timers.write(Width.HALF, addr, value);
                             break;
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(w, addr, value);
+                            cdrom.write(Width.HALF, addr, value);
                             break;
                         case 0x1F801810:
                             gpu.writeGP0(value);
@@ -144,7 +372,7 @@ namespace ProjectPSX {
 
                         default:
                             addr &= 0xFFF;
-                            write(w, addr, value, REGISTERS);
+                            write16(addr, value, REGISTERS);
                             break;
                     }
                     break;
@@ -154,7 +382,7 @@ namespace ProjectPSX {
                     break;
 
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write(w, addr & 0x1FF, value, IO);
+                    write16(addr & 0x1FF, value, IO);
                     break;
 
                 default:
@@ -163,23 +391,91 @@ namespace ProjectPSX {
             }
         }
 
-        internal uint load(Width w, uint addr, byte[] memory) {
-            switch (w) {
-                case Width.WORD: return (uint)(memory[addr + 3] << 24 | memory[addr + 2] << 16 | memory[addr + 1] << 8 | memory[addr]);
-                case Width.BYTE: return memory[addr];
-                case Width.HALF: return (uint)(memory[addr + 1] << 8 | memory[addr]);
-                default: return 0xFFFF_FFFF;
+        internal void write8(uint address, uint value) {
+            //addr &= RegionMask[addr >> 29];
+            uint i = address >> 29;
+            uint addr = address & RegionMask[i];
+            switch (addr) {
+                case uint KUSEG when addr < 0x1F00_0000:
+                    write8(addr/* & 0x1F_FFFF*/, value, RAM);
+                    break;
+
+                case uint KUSEG when addr < 0x1F08_0000:
+                    write8(addr & 0x7_FFFF, value, EX1);
+                    break;
+
+                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                    write8(addr & 0xFFF, value, SCRATHPAD);
+                    break;
+
+                case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                    switch (addr) {
+                        case 0x1F801070:
+                            interruptController.writeISTAT(value);
+                            break;
+                        case 0x1F801074:
+                            interruptController.writeIMASK(value);
+                            break;
+                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                            joypad.write(Width.BYTE, addr, value);
+                            break;
+                        case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                            dma.write(addr, value);
+                            break;
+                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
+                            //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
+                            timers.write(Width.BYTE, addr, value);
+                            break;
+                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                            cdrom.write(Width.BYTE, addr, value);
+                            break;
+                        case 0x1F801810:
+                            gpu.writeGP0(value);
+                            break;
+                        case 0x1F801814:
+                            gpu.writeGP1(value);
+                            break;
+
+                        default:
+                            addr &= 0xFFF;
+                            write8(addr, value, REGISTERS);
+                            break;
+                    }
+                    break;
+
+                case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
+                    Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
+                    break;
+
+                case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
+                    write8(addr & 0x1FF, value, IO);
+                    break;
+
+                default:
+                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    break;
             }
         }
 
-        internal void write(Width w, uint addr, uint value, byte[] memory) {
-            switch (w) {
-                case Width.WORD:
-                    memory[addr] = (byte)value; memory[addr + 1] = (byte)(value >> 8);
-                    memory[addr + 2] = (byte)(value >> 16); memory[addr + 3] = (byte)(value >> 24); break;
-                case Width.BYTE: memory[addr] = (byte)value; break;
-                case Width.HALF: memory[addr] = (byte)value; memory[addr + 1] = (byte)(value >> 8); break;
-            }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal uint load16(uint addr, byte[] memory) {
+            return (uint)(memory[addr + 1] << 8 | memory[addr]);
+            //return Unsafe.As<byte, ushort>(ref memory[addr]);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal uint load8(uint addr, byte[] memory) {
+            return memory[addr];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void write16(uint addr, uint value, byte[] memory) {
+            memory[addr] = (byte)value; memory[addr + 1] = (byte)(value >> 8);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void write8(uint addr, uint value, byte[] memory) {
+            memory[addr] = (byte)value;
         }
 
         string psx = "./SCPH1001.BIN";
@@ -215,13 +511,13 @@ namespace ProjectPSX {
 
         internal (uint, uint, uint, uint) loadEXE(String test) {
             byte[] exe = File.ReadAllBytes(test);
-            uint PC = load(Width.WORD, 0x10, exe);
-            uint R28 = load(Width.WORD, 0x14, exe);
-            uint R29 = load(Width.WORD, 0x30, exe);
+            uint PC = load32(0x10, exe);
+            uint R28 = load32(0x14, exe);
+            uint R29 = load32(0x30, exe);
             uint R30 = R29; //base
-            R30 += load(Width.WORD, 0x34, exe); //offset
+            R30 += load32(0x34, exe); //offset
 
-            uint DestAdress = load(Width.WORD, 0x18, exe);
+            uint DestAdress = load32(0x18, exe);
             Array.Copy(exe, 0x800, RAM, DestAdress & 0xFFFFFFF, exe.Length - 0x800);
 
             return (PC, R28, R29, R30);
@@ -233,37 +529,108 @@ namespace ProjectPSX {
             Array.Copy(exe, 0, EX1, 0, exe.Length);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void tick(int cycles) {
             if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
-            if (cdrom.tick(cycles/3)) interruptController.set(Interrupt.CDROM);
+            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM); // /2 this breaks the PS Logo as it gets "bad hankakus" on TTY but makes FF7 work.
             if (dma.tick()) interruptController.set(Interrupt.DMA);
-            if (timers.tick(0, cycles/3)) interruptController.set(Interrupt.TIMER0);
-            if (timers.tick(1, cycles/3)) interruptController.set(Interrupt.TIMER1);
-            if (timers.tick(2, cycles/3)) interruptController.set(Interrupt.TIMER2);
+            if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
+            if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
+            if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
             if (joypad.tick(cycles)) interruptController.set(Interrupt.CONTR);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void DMA_Transfer.toGPU(uint value) {
             gpu.writeGP0(value);
         }
 
-        uint DMA_Transfer.fromRAM(Width w, uint addr) {
-            return load(w, addr, RAM);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        uint DMA_Transfer.fromRAM(uint addr) {
+            //return load32(addr, RAM);
+            return loadRAM32(addr, RAM);
         }
 
-        void DMA_Transfer.toRAM(Width w, uint addr, uint value) {
-            write(w, addr, value, RAM);
+
+        private unsafe uint loadRAM32(uint addr, byte[] rAM) {
+            return *(uint*)(ramPtr + addr);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private unsafe uint load32(uint addr, byte[] memory) {
+            //1: Naive Approach
+            //return (uint)(memory[addr + 3] << 24 | memory[addr + 2] << 16 | memory[addr + 1] << 8 | memory[addr]);
+            //2: Pointer Magic Approach
+            fixed (void* ptr = &memory[addr]) {
+                // p is pinned as well as object, so create another pointer to show incrementing it.
+                return *(uint*)ptr;
+            }
+            //3: fastest approach (it appears that even with the overhead it avoids the pinning and can be inlined)
+            //return Unsafe.As<byte, uint>(ref memory[addr]);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void write32(uint addr, uint value, byte[] memory) {
+            //memory[addr] = (byte)value; memory[addr + 1] = (byte)(value >> 8);
+            //memory[addr + 2] = (byte)(value >> 16); memory[addr + 3] = (byte)(value >> 24);
+            unsafe {
+                fixed (byte* ptr = &memory[addr]) {
+                    // p is pinned as well as object, so create another pointer to show incrementing it.
+                    uint* ptrValue = (uint*)ptr;
+                    *ptrValue = value;
+                }
+            }
+            //unsafe {
+            //    var ptr = Unsafe.AsPointer(ref memory[addr]);
+            //    Unsafe.Write(ptr, value);
+            //}
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void DMA_Transfer.toRAM(uint addr, uint value) {
+            write32(addr, value, RAM);
+            //unsafe {
+            //    var ptr = Unsafe.AsPointer(ref RAM[addr]);
+            //    Unsafe.Write(ptr, value);
+            //}
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void DMA_Transfer.toRAM(uint addr, byte[] buffer, uint size) {
+            //Console.WriteLine("cdToRam " + addr.ToString("x8") + " bufferLength " + buffer.Length + " size " + size);
+            Buffer.BlockCopy(buffer, 0, RAM, (int)addr, (int)size * 4);
+            //Console.WriteLine(load32(addr).ToString("x8"));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         uint DMA_Transfer.fromGPU() {
             return gpu.loadGPUREAD();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         uint DMA_Transfer.fromCD() {
             return cdrom.getData();
         }
 
-        private readonly uint[] RegionMask = {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void toGPU(uint[] buffer) {
+            gpu.writeGP0(buffer);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public uint[] fromRAM(uint addr, uint size) {
+            uint[] buffer = new uint[size];
+            Buffer.BlockCopy(RAM, (int)(addr & 0x1F_FFFF), buffer, 0, (int)size * 4);
+            return buffer;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte[] fromCD(uint size) { //test
+            return cdrom.getDataBuffer();
+        }
+
+        private static uint[] RegionMask = {
         0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, // KUSEG: 2048MB
         0x7FFF_FFFF,                                        // KSEG0:  512MB
         0x1FFF_FFFF,                                        // KSEG1:  512MB
