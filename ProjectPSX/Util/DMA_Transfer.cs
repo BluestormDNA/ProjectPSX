@@ -4,12 +4,20 @@
 
         void toGPU(uint value);
 
-        uint fromRAM(Width w, uint addr);
+        void toGPU(uint[] buffer);
 
-        void toRAM(Width w, uint addr, uint value);
+        uint fromRAM(uint addr);
+
+        uint[] fromRAM(uint addr, uint size);
+
+        void toRAM(uint addr, uint value);
+
+        void toRAM(uint addr, byte[] buffer, uint size);
 
         uint fromGPU();
 
         uint fromCD();
+
+        byte[] fromCD(uint size);
     }
 }
