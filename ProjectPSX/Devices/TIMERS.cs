@@ -1,7 +1,7 @@
 ﻿using System;
 
 namespace ProjectPSX.Devices {
-    public class TIMERS : Device {
+    public class TIMERS {
 
         TIMER[] timer = new TIMER[3];
 
@@ -11,13 +11,13 @@ namespace ProjectPSX.Devices {
             timer[2] = new TIMER();
         }
 
-        public new void write(Width w, uint addr, uint value) {
+        public void write(Width w, uint addr, uint value) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
             timer[timerNumber].write(w, addr, value);
             //Console.WriteLine("[TIMER] Write on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + value.ToString("x8"));
         }
 
-        public new uint load(Width w, uint addr) {
+        public uint load(Width w, uint addr) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
             //Console.WriteLine("[TIMER] load on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + timer[timerNumber].load(w, addr).ToString("x4"));
             return timer[timerNumber].load(w, addr);
@@ -33,8 +33,6 @@ namespace ProjectPSX.Devices {
 
             private ushort counterValue;
             private uint counterTargetValue;
-
-            int counter2div8;
 
             private byte syncEnable;
             private byte syncMode;
@@ -162,8 +160,6 @@ namespace ProjectPSX.Devices {
                         return false;
                 }
 
-                /*
-*/
             }
 
             private void setCounterMode(uint value) {

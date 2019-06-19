@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 
 namespace ProjectPSX {
-    internal class JOYPAD : Device {
+    internal class JOYPAD {
 
         private Queue<byte> JOY_TX_DATA = new Queue<byte>(8); //1F801040h JOY_TX_DATA(W)
         private Queue<byte> JOY_RX_DATA = new Queue<byte>(8); //1F801040h JOY_RX_DATA(R) FIFO
@@ -76,7 +76,7 @@ namespace ProjectPSX {
             baudrateTimer = (int)(JOY_BAUD * baudrateReloadFactor) & ~0x1;
         }
 
-        public new void write(Width w, uint addr, uint value) {
+        public void write(Width w, uint addr, uint value) {
             switch (addr & 0xFF) {
                 case 0x40:
                     //Console.WriteLine("[JOYPAD] TX DATA ENQUEUE " + value.ToString("x2"));
@@ -139,7 +139,7 @@ namespace ProjectPSX {
             clkOutputPolarity = ((value >> 8) & 0x1) != 0;
         }
 
-        public new uint load(Width w, uint addr) {
+        public uint load(Width w, uint addr) {
             switch (addr & 0xFF) {
                 case 0x40:
                     if (JOY_RX_DATA.Count == 0) {
