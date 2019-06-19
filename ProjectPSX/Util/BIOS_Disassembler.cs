@@ -380,13 +380,14 @@ namespace ProjectPSX {
         }
 
         private string biosOutput(uint addr) {
-            string output = "";
-            char c = (char)bus.load(Width.BYTE, addr++);
-            while (c != '\0') {
-                output += c;
-                c = (char)bus.load(Width.BYTE, addr++);
-            }
-            return output;
+            // string output = "";
+            // //char c = (char)bus.load(Width.BYTE, addr++);
+            // while (c != '\0') {
+            //     output += c;
+            //     //c = (char)bus.load(Width.BYTE, addr++);
+            // }
+            // return output;
+            return null;
         }
     }
 }
