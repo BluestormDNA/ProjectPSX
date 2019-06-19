@@ -2,6 +2,11 @@
 using static ProjectPSX.Width;
 
 namespace ProjectPSX.Devices {
+    //TODO
+    //This class was one of the first to be write and needs to be rewrited to not use "Device" and to address all those load and writes
+    //and use variables for the channels maybe something like the timers a Channel inner class...
+    //Also I think CD reads are overkill word per word so DMA chunks should be handled as a whole but this causes issues on the cd itseld
+    //as it can read random values can be handled with a little pointer variable like the GPU transfers (doable but low priority)
     public class DMA : Device {
 
         private DMA_Transfer dma_transfer;
@@ -16,11 +21,11 @@ namespace ProjectPSX.Devices {
             memOffset = 0x1F801080;
 
             //CONTROL = 0x07654321;
-            write(WORD, 0x1F8010F0, 0x07654321);
+            write(0x1F8010F0, 0x07654321);
         }
 
 
-        public new void write(Width w, uint addr, uint value) {
+        public void write(uint addr, uint value) {
             if (addr == 0x1F8010F4) {
                 //Console.WriteLine("Write to interrupt handler " + addr.ToString("x8") + " " + value.ToString("x8"));
                 value &= 0x7FFF_FFFF;
@@ -33,7 +38,7 @@ namespace ProjectPSX.Devices {
                 value |= irqFlag << 24;
                 //Console.WriteLine("Write to interrupt handler 2" + addr.ToString("x8") + " " + value.ToString("x8"));
             }
-            base.write(w, addr, value);
+            base.write32(addr, value);
 
 
             //Console.WriteLine("[DMA] Write: {0}  Value: {1}", addr.ToString("x8"), value.ToString("x8"));
@@ -42,7 +47,7 @@ namespace ProjectPSX.Devices {
             uint register = addr & 0xF;
 
             switch (channel) {
-                case uint CHANNELS when channel >= 0 && channel <= 6:
+                case uint channels when channel <= 6:
                     if (register == 8 && isActive(value)) {
                         //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
                         handleDMA(addr, value);
@@ -115,7 +120,7 @@ namespace ProjectPSX.Devices {
 
         private void disable(uint addr, uint value) {
             uint disabled = (uint)(value & ~0x11000000);
-            write(WORD, addr, disabled);
+            write32(addr, disabled);
         }
 
         private void handleDMA(uint addr, uint control) {
@@ -123,34 +128,34 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[DMA] SyncMode: " + syncMode);
             switch (syncMode) {
                 case 2:
-                    linkedList(addr, control);
+                    linkedList(addr);
                     break;
                 default:
                     blockCopy(syncMode, addr, control);
                     break;
             }
-
         }
 
-        private void linkedList(uint addr, uint control) {
+        private void linkedList(uint addr) {
             uint header = 0;
             uint dmaAddress = getStartAdress(addr);
 
             while ((header & 0x800000) == 0) {
-                header = dma_transfer.fromRAM(WORD, dmaAddress);
-                // Console.WriteLine("HEADER addr " + dmaAddress.ToString("x8") + " value: " + header.ToString("x8"));
+                header = dma_transfer.fromRAM(dmaAddress);
+                //Console.WriteLine("HEADER addr " + dmaAddress.ToString("x8") + " value: " + header.ToString("x8"));
                 uint size = header >> 24;
 
-                while (size > 0) {
+                if (size > 0) {
                     dmaAddress = (dmaAddress + 4) & 0x1ffffc;
-                    uint load = dma_transfer.fromRAM(WORD, dmaAddress);
-                    //  Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
-                    dma_transfer.toGPU(load);
-                    size--;
+                    //uint load = dma_transfer.fromRAM(dmaAddress);
+                    // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
+                    //dma_transfer.toGPU(load);
+                    uint[] bufferTest = dma_transfer.fromRAM(dmaAddress, size);
+                    dma_transfer.toGPU(bufferTest);
                 }
-
                 dmaAddress = header & 0x1ffffc;
             }
+
         }
 
         private void blockCopy(uint syncMode, uint addr, uint control) {
@@ -165,6 +170,7 @@ namespace ProjectPSX.Devices {
                 switch (direction) {
                     case 0: //To Ram
                         uint data = 0;
+                        //byte[] cdTest = null;
 
                         switch (channel) {
 
@@ -174,7 +180,17 @@ namespace ProjectPSX.Devices {
                                 break;
                             case 3: //CD
                                 data = dma_transfer.fromCD();
-                                // Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                                //if(step == -4) {
+                                //    Console.WriteLine("WARNING !!! UNHANDLED REVERSE ON BUFFER CD TRANSFER");
+                                //    Console.ReadLine();
+                                //}
+                                //cdTest = dma_transfer.fromCD(size);
+                                //for (int i = 0; i < cdTest.Length; i++) {
+                                //    Console.WriteLine(cdTest[i].ToString("x2"));
+                                //}
+                                //dma_transfer.toRAM(dmaAddress & 0x1F_FFFC, cdTest, size);
+                                //return;
+                                 //Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (dmaAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
                                 break;
                             case 6: //OTC
                                 if (size == 1) {
@@ -189,26 +205,21 @@ namespace ProjectPSX.Devices {
                                 //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channel);
                                 break;
                         }
-                        dma_transfer.toRAM(WORD, dmaAddress & 0x1F_FFFC, data);
+                        dma_transfer.toRAM(dmaAddress & 0x1F_FFFC, data);
 
                         break;
                     case 1: //From Ram
-                        uint load = 0;
-                        try {
-                             load = dma_transfer.fromRAM(WORD, dmaAddress & 0x1F_FFFC);
-                        }catch(Exception e) {
-                            Console.WriteLine(dmaAddress.ToString("x8")); //00253af4
-                        }
+                        //Console.WriteLine("Size " + size);
+                        uint[] load = dma_transfer.fromRAM(dmaAddress & 0x1F_FFFC, size);
 
                         switch (channel) {
                             case 2: //GPU
                                 dma_transfer.toGPU(load);
-                                break;
+                                return;
                             default: //MDECin and SPU
-                                     //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channel);
-                                break;
+                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channel);
+                                return;
                         }
-                        break;
                 }
 
                 dmaAddress += (uint)step;
@@ -255,9 +266,9 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        public new uint load(Width w, uint addr) {
+        public uint load(uint addr) {
             //Console.WriteLine("[DMA] Load: {0}  Value: {1}", addr.ToString("x8"), base.load(w, addr).ToString("x8"));
-            return base.load(w, addr);
+            return base.load(Width.WORD, addr);
         }
 
         public void setDMA_Transfer(DMA_Transfer dma_transfer) {
