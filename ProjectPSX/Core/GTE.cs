@@ -1,8 +1,7 @@
-﻿using ProjectPSX.Devices;
-using System;
+﻿using System;
 
 namespace ProjectPSX {
-    class GTE : Device { //PSX MIPS Coprocessor 02 - Geometry Transformation Engine
+    class GTE { //PSX MIPS Coprocessor 02 - Geometry Transformation Engine
 
         struct Matrix {
             public Vector3 v1;
@@ -93,7 +92,7 @@ namespace ProjectPSX {
         bool lm;                     //Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
         uint opcode;                 //GTE opcode
         CPU cpu;
-        public GTE(CPU cpu) {//debug purposes
+        public GTE(CPU cpu) {//this is only needed for temporary debug purposes till TGTE passes
             this.cpu = cpu;
         }
 
@@ -115,15 +114,19 @@ namespace ProjectPSX {
                 case 0x01: RTPS(0); break;
                 case 0x06: NCLIP(); break;
                 case 0x0C: OP(); break;
-                case 0x10: DPCS(); break;
+                case 0x10: DPCS(false); break;
                 case 0x11: INTPL(); break;
                 case 0x12: MVMVA(); break;
                 case 0x13: NCDS(0); break;
+                case 0x14: CDP(); break;
                 case 0x16: NCDT(); break;
                 case 0x1B: NCCS(0); break;
+                case 0x1C: CC(); break;
                 case 0x1E: NCS(0); break;
                 case 0x20: NCT(); break;
                 case 0x28: SQR(); break;
+                case 0x29: DCPL(); break;
+                case 0x2A: DCPT(); break;
                 case 0x2D: AVSZ3(); break;
                 case 0x2E: AVSZ4(); break;
                 case 0x30: RTPT(); break;
@@ -138,20 +141,150 @@ namespace ProjectPSX {
             }
         }
 
+        private void CDP() {
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
+            // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;
+            MAC1 = (int)(setMAC(1, (long)RGBC.r * IR[1]) << 4);
+            MAC2 = (int)(setMAC(2, (long)RGBC.g * IR[2]) << 4);
+            MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
+
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
+
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, (long)IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, (long)IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, (long)IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void CC() {
+            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
+            // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+
+            // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;
+            MAC1 = (int)(setMAC(1, (long)RGBC.r * IR[1]) << 4);
+            MAC2 = (int)(setMAC(2, (long)RGBC.g * IR[2]) << 4);
+            MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
+        private void DCPT() {
+            DPCS(true);
+            DPCS(true);
+            DPCS(true);
+        }
+
+        private void DCPL() {
+            //[MAC1, MAC2, MAC3] = [R*IR1, G*IR2, B*IR3] SHL 4          ;<--- for DCPL only
+            MAC1 = (int)(setMAC(1, RGBC.r * IR[1]) << 4);
+            MAC2 = (int)(setMAC(2, RGBC.g * IR[2]) << 4);
+            MAC3 = (int)(setMAC(3, RGBC.b * IR[3]) << 4);
+
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
+
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
+            RGB[0] = RGB[1];
+            RGB[1] = RGB[2];
+
+            RGB[2].r = setRGB(1, MAC1 >> 4);
+            RGB[2].g = setRGB(2, MAC2 >> 4);
+            RGB[2].b = setRGB(3, MAC3 >> 4);
+            RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
+        }
+
         private void NCCS(int r) {
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+            // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -187,11 +320,21 @@ namespace ProjectPSX {
             NCCS(2);
         }
 
-        private void DPCS() {
+        private void DPCS(bool dpct) {
+            byte r = RGBC.r;
+            byte g = RGBC.g;
+            byte b = RGBC.b;
+
+            // WHEN DCPT it uses RGB FIFO instead RGBC
+            if (dpct) {
+                r = RGB[0].r;
+                g = RGB[0].g;
+                b = RGB[0].b;
+            }
             //[MAC1, MAC2, MAC3] = [R, G, B] SHL 16                     ;<--- for DPCS/DPCT
-            MAC1 = (int)setMAC(1, (long)RGBC.r << 16);
-            MAC2 = (int)setMAC(2, (long)RGBC.g << 16);
-            MAC3 = (int)setMAC(3, (long)RGBC.b << 16);
+            MAC1 = (int)(setMAC(1, r) << 16);
+            MAC2 = (int)(setMAC(2, g) << 16);
+            MAC3 = (int)(setMAC(3, b) << 16);
 
             // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
             // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
@@ -208,9 +351,9 @@ namespace ProjectPSX {
             MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
 
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
-            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
-            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
-            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
 
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
@@ -277,18 +420,19 @@ namespace ProjectPSX {
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+            // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -367,13 +511,13 @@ namespace ProjectPSX {
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             //Note: Although the SHL in GPL is theoretically undone by the SAR, 44bit overflows can occur internally when sf=1.
 
-            MAC1 = MAC1 >> sf * 12;
-            MAC2 = MAC2 >> sf * 12;
-            MAC3 = MAC3 >> sf * 12;
+            long mac1 = (long)MAC1 << sf * 12;
+            long mac2 = (long)MAC2 << sf * 12;
+            long mac3 = (long)MAC3 << sf * 12;
 
-            MAC1 = (int)setMAC(1, (IR[1] * IR[0] + MAC1) >> sf * 12);
-            MAC2 = (int)setMAC(2, (IR[2] * IR[0] + MAC2) >> sf * 12);
-            MAC3 = (int)setMAC(3, (IR[3] * IR[0] + MAC3) >> sf * 12);
+            MAC1 = (int)(setMAC(1, IR[1] * IR[0] + mac1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, IR[2] * IR[0] + mac2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, IR[3] * IR[0] + mac3) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -392,11 +536,10 @@ namespace ProjectPSX {
             //[MAC1, MAC2, MAC3] = [0,0,0]                            ;<--- for GPF only
             //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3]) SAR(sf*12)
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
-            //Note: Although the SHL in GPL is theoretically undone by the SAR, 44bit overflows can occur internally when sf=1.
 
-            MAC1 = (int)setMAC(1, (IR[1] * IR[0]) >> sf * 12);
-            MAC2 = (int)setMAC(2, (IR[2] * IR[0]) >> sf * 12);
-            MAC3 = (int)setMAC(3, (IR[3] * IR[0]) >> sf * 12);
+            MAC1 = (int)setMAC(1, IR[1] * IR[0]) >> sf * 12;
+            MAC2 = (int)setMAC(2, IR[2] * IR[0]) >> sf * 12;
+            MAC3 = (int)setMAC(3, IR[3] * IR[0]) >> sf * 12;
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -463,32 +606,45 @@ namespace ProjectPSX {
             OTZ = setSZ3(avsz4 >> 12);
         }
 
-        private void NCDS(int r) { //Normal color depth cue (single vector)
+        //private int ncdsTest;
+        private void NCDS(int r) { //Normal color depth cue (single vector) //329048 WIP FLAGS
             //In: V0 = Normal vector(for triple variants repeated with V1 and V2),
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
+            //ncdsTest++;
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+                          //    + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)setMAC(2, (LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)setMAC(3, (LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
+
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+                 //             + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
-            MAC1 = (int)setMAC(1, (RBK * 0x1000 + LRGB.v1.x * IR[1] + LRGB.v1.y * IR[2] + LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)setMAC(2, (GBK * 0x1000 + LRGB.v2.x * IR[1] + LRGB.v2.y * IR[2] + LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)setMAC(3, (BBK * 0x1000 + LRGB.v3.x * IR[1] + LRGB.v3.y * IR[2] + LRGB.v3.z * IR[3]) >> sf * 12);
+            // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
 
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+            //                  + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
+
+            //FLAG CALC FAILS FROM HERE
+
             // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;< --- for NCDx / NCCx
-            MAC1 = (int)setMAC(1, (RGBC.r * IR[1]) << 4);
-            MAC2 = (int)setMAC(2, (RGBC.g * IR[2]) << 4);
-            MAC3 = (int)setMAC(3, (RGBC.b * IR[3]) << 4);
+            MAC1 = (int)(setMAC(1, (long)RGBC.r * IR[1]) << 4);
+            MAC2 = (int)(setMAC(2, (long)RGBC.g * IR[2]) << 4);
+            MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
 
             // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
             // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
@@ -500,14 +656,14 @@ namespace ProjectPSX {
             IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
             IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
 
-            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
-            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
-            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+            MAC1 = (int)setMAC(1, (long)IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, (long)IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, (long)IR[3] * IR[0] + MAC3);
 
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
-            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
-            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
-            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
 
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
@@ -521,6 +677,9 @@ namespace ProjectPSX {
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
+
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+                  //            + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
         }
 
         private void NCLIP() { //Normal clipping
@@ -616,9 +775,9 @@ namespace ProjectPSX {
                 return -0x400;
             }
 
-            if (value > 0x3ff) {
+            if (value > 0x3FF) {
                 FLAG |= (uint)(0x4000 >> (i - 1));
-                return 0x3ff;
+                return 0x3FF;
             }
 
             return (short)value;
@@ -629,9 +788,9 @@ namespace ProjectPSX {
                 return 0;
             } else
 
-            if (value > 0xffff) {
+            if (value > 0xFFFF) {
                 FLAG |= 0x4_0000;
-                return 0xffff;
+                return 0xFFFF;
             }
 
             return (ushort)value;
@@ -670,15 +829,33 @@ namespace ProjectPSX {
         }
 
         private long setMAC(int i, long value) {
+            //Console.WriteLine((i-1) + " " + value.ToString("x16"));
             if (value < -0x800_0000_0000) {
-                FLAG |= (uint)0x800_0000 >> (i - 1);
+                //Console.WriteLine("under");
+                FLAG |= (uint)(0x800_0000 >> (i - 1));
             }
 
             if (value > 0x7FF_FFFF_FFFF) {
-                FLAG |= (uint)0x4000_0000 >> (i - 1);
+                //Console.WriteLine("over");
+                FLAG |= (uint)(0x4000_0000 >> (i - 1));
             }
 
             return (value << 20) >> 20;
+        }
+
+        private long setM(int i, long value) {
+            //Console.WriteLine("M" + (i - 1) + " " + value.ToString("x16"));
+            if (value < -0x800_0000_0000) {
+                //Console.WriteLine("under");
+                FLAG |= (uint)(0x800_0000 >> (i - 1));
+            }
+
+            if (value > 0x7FF_FFFF_FFFF) {
+                //Console.WriteLine("over");
+                FLAG |= (uint)(0x4000_0000 >> (i - 1));
+            }
+
+            return value;
         }
 
         private short saturateRGB(int v) {
