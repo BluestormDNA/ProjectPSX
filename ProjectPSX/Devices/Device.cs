@@ -27,5 +27,16 @@
                     mem[addr + 2] = (byte)(value >> 16); mem[addr + 3] = (byte)(value >> 24); break;
             }
         }
+
+        public uint load32(uint addr) {
+            addr -= memOffset;
+            return (uint)(mem[addr + 3] << 24 | mem[addr + 2] << 16 | mem[addr + 1] << 8 | mem[addr]);
+        }
+
+        public void write32(uint addr, uint value) {
+            addr -= memOffset;
+            mem[addr] = (byte)value; mem[addr + 1] = (byte)(value >> 8);
+            mem[addr + 2] = (byte)(value >> 16); mem[addr + 3] = (byte)(value >> 24);
+        }
     }
 }
