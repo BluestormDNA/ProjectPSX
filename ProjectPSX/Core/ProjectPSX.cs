@@ -42,7 +42,7 @@ namespace ProjectPSX {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             watch.Start();
-            try {
+            //try {
                 while (true) {
                 //for (int i = 0; i < 100; i++) {
                 //    cpu.Run();
@@ -60,25 +60,23 @@ namespace ProjectPSX {
                     }
                     bus.tick(200);
                     cpu.handleInterrupts();
-                    }
+                }
 
 
-                if (watch.ElapsedMilliseconds > 1000) {
-                        //window.Text = " ProjectPSX | Speed % " + 1000 / (float)watch.ElapsedMilliseconds * 100;
+                    if (watch.ElapsedMilliseconds > 1000) {
                         window.Text = " ProjectPSX | Speed % " + (((float)counter / (PSX_MHZ / 2)) * 100);
                         watch.Restart();
                         counter = 0;
-                        //fpsCounter = 0;
                     }
-                    //if (counter >= PSX_MHZ) {
+                    //if (counter >= PSX_MHZ/2) {
                     //    counter = 0;
                     //    window.Text = "ProjectPSX | Fps: " + (60 / ((float)watch.ElapsedMilliseconds / 1000)).ToString();
                     //    watch.Restart();
                     //}
                 }
-            } catch (Exception e) {
-                Console.WriteLine(e.ToString());
-            }
+            //} catch (Exception e) {
+            //    Console.WriteLine(e.ToString());
+            //}
         }
 
     }
