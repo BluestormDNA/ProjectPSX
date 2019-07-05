@@ -79,6 +79,7 @@ namespace ProjectPSX.Devices {
             if (interruptQueue.Count != 0 && IF == 0) {
                 //Console.WriteLine("[CD INT] Queue is " + interruptQueue.Count + " Dequeue = IF | " + interruptQueue.Peek());
                 IF |= interruptQueue.Dequeue();
+                //return false;
             }
 
             //if (edgeTrigger) {
@@ -125,11 +126,12 @@ namespace ProjectPSX.Devices {
                     //i should trigger here and add loc...
 
                     //if (dataBuffer.Count == 0) {
-                       testCDBuffer = cd.Read(isSectorSizeRAW, Loc++);
+                    //Console.ForegroundColor = ConsoleColor.DarkGreen;
+                    //Console.WriteLine("Reading Loc: " + (Loc - 1));
+                    //Console.ResetColor();
+                    testCDBuffer = cd.Read(isSectorSizeRAW, Loc++);
                         cdBuffer = new Queue<byte>(testCDBuffer);
-                        //Console.ForegroundColor = ConsoleColor.DarkGreen;
-                        //Console.WriteLine("Reading Loc: " + (Loc - 1));
-                        //Console.ResetColor();
+
                    // }
 
                     responseBuffer.Enqueue(STAT);
@@ -199,15 +201,15 @@ namespace ProjectPSX.Devices {
                 case 0x1F801802:
                     switch (INDEX) {
                         case 0:
-                           // Console.WriteLine("[CDROM] [W02.0] Parameter: {0}", value.ToString("x8"));
+                            //Console.WriteLine("[CDROM] [W02.0] Parameter: {0}", value.ToString("x8"));
                             parameterBuffer.Enqueue(value);
                             break;
                         case 1:
-                           // Console.WriteLine("[CDROM] [W02.1] Set IE: {0}", value.ToString("x8"));
+                            //Console.WriteLine("[CDROM] [W02.1] Set IE: {0}", value.ToString("x8"));
                             IE = (byte)(value & 0x1F);
                             break;
                         default:
-                           // Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                            //Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
                             break;
                     }
                     break;
@@ -242,7 +244,7 @@ namespace ProjectPSX.Devices {
                             break;
 
                         default:
-                           // Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                            //Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
                             break;
                     }
                     break;
@@ -260,6 +262,7 @@ namespace ProjectPSX.Devices {
                 case 0x06: readN(); break;
                 case 0x08: stop(); break;
                 case 0x09: pause(); break;
+                case 0x12: setSession(); break;
                 case 0x13: getTN(); break;
                 case 0x14: getTD(); break;
                 case 0x16: seekP(); break;
@@ -273,6 +276,19 @@ namespace ProjectPSX.Devices {
                 case 0x19: test(); break;
                 default: UnimplementedCDCommand(value); break;
             }
+        }
+
+        private void setSession() //broken
+        {
+            parameterBuffer.Clear();
+
+            STAT = 0x42;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
         }
 
         private void setFilter() { // broken re asks for it
@@ -306,7 +322,7 @@ namespace ProjectPSX.Devices {
 
 
         private void play() { //broken hardcoded to push puzzle bubble 2 to play
-            STAT = 0x80;
+            STAT = 0x82;
 
             //int track = BcdToDec((byte)parameterBuffer.Dequeue());
            // Console.WriteLine("Track " + track);
@@ -330,15 +346,15 @@ namespace ProjectPSX.Devices {
         }
 
         //hardcoded track values for puzzle bobble 2 as we miss a cue parser yet
-        byte[] mm = { 32, 0, 2, 2, 4, 5, 8, 11, 15, 18, 21, 21, 24, 25, 26, 29 };
-        byte[] ss = { 46, 2, 46, 57, 12, 25, 37, 56, 07, 25, 39, 49, 13, 10, 24, 48 };
+        //byte[] mm = { 32, 0, 2, 2, 4, 5, 8, 11, 15, 18, 21, 21, 24, 25, 26, 29 };
+        //byte[] ss = { 46, 2, 46, 57, 12, 25, 37, 56, 07, 25, 39, 49, 13, 10, 24, 48 };
         private void getTD() { //todo
             int track = BcdToDec((byte)parameterBuffer.Dequeue());
             Console.WriteLine("Track " + track);
             responseBuffer.Enqueue(STAT);
 
-            responseBuffer.Enqueue(mm[track]);
-            responseBuffer.Enqueue(ss[track]);
+            //responseBuffer.Enqueue(mm[track]);
+            //responseBuffer.Enqueue(ss[track]);
 
             interruptQueue.Enqueue(0x3);
         }
@@ -512,7 +528,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void getStat() {
-            STAT = 0x2;
+            //STAT = 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
