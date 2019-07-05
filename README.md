@@ -33,21 +33,16 @@ Once power on, Input is mapped as:
 * D-Pad Left: **Left**
 * D-Pad Down: **Down**
 * D-Pad Right: **Right**
-
 * Triangle: **W**
 * Square: **A**
 * X: **S**
 * Circle: **D**
-
 * Start: **Enter**
 * Select: **Space**
-
 * L1: **Q**
 * R1: **E**
 * L2: **1**
 * R2: **2**
-
-
 
 ## Screenshots
 
