@@ -16,7 +16,7 @@ At the moment the following is implemented:
 
 ## Compability
 
-The emulator is in very early development and there are constant rewrites. Somehow and although with some there are some games that already work like:
+The emulator is in very early development and there are constant rewrites. Somehow and although with some limitations there are some games that already work like:
 Ridge Racer Ace Combat, Final Fantasy 7, Time Crisis, Ace Combat...
 
 > **Note:**  Memory Card files are unsupported so any progress will be lost upon exit.
