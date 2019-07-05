@@ -65,7 +65,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
 
             if (addr < 0x1F00_0000) {
-                return loadRAM32(addr, RAM);
+                return loadRAM32(addr & 0x1F_FFFF, RAM);
             } else if (addr < 0x1F08_0000) {
                 return load32(addr & 0x7_FFFF, EX1);
             } else if (addr >= 0x1f80_0000 && addr < 0x1f80_0400) {
@@ -154,7 +154,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    return load16(addr/* & 0x1F_FFFF*/, RAM);
+                    return load16(addr & 0x1F_FFFF, RAM);
 
                 case uint _ when addr < 0x1F08_0000:
                     return load16(addr & 0x7_FFFF, EX1);
@@ -207,7 +207,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    return load8(addr/* & 0x1F_FFFF*/, RAM);
+                    return load8(addr & 0x1F_FFFF, RAM);
 
                 case uint _ when addr < 0x1F08_0000:
                     return load8(addr & 0x7_FFFF, EX1);
@@ -265,7 +265,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    write32(addr/* & 0x1F_FFFF*/, value, RAM);
+                    write32(addr & 0x1F_FFFF, value, RAM);
                     break;
 
                 case uint _ when addr < 0x1F08_0000:
@@ -331,7 +331,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint KUSEG when addr < 0x1F00_0000:
-                    write16(addr/* & 0x1F_FFFF*/, value, RAM);
+                    write16(addr & 0x1F_FFFF, value, RAM);
                     break;
 
                 case uint KUSEG when addr < 0x1F08_0000:
@@ -397,7 +397,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint KUSEG when addr < 0x1F00_0000:
-                    write8(addr/* & 0x1F_FFFF*/, value, RAM);
+                    write8(addr & 0x1F_FFFF, value, RAM);
                     break;
 
                 case uint KUSEG when addr < 0x1F08_0000:
@@ -541,12 +541,12 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void DMA_Transfer.toGPU(uint value) {
+        public override void toGPU(uint value) {
             gpu.writeGP0(value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        uint DMA_Transfer.fromRAM(uint addr) {
+        public override uint fromRAM(uint addr) {
             //return load32(addr, RAM);
             return loadRAM32(addr, RAM);
         }
@@ -588,7 +588,7 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void DMA_Transfer.toRAM(uint addr, uint value) {
+        public override void toRAM(uint addr, uint value) {
             write32(addr, value, RAM);
             //unsafe {
             //    var ptr = Unsafe.AsPointer(ref RAM[addr]);
@@ -597,36 +597,36 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void DMA_Transfer.toRAM(uint addr, byte[] buffer, uint size) {
+        public override void toRAM(uint addr, byte[] buffer, uint size) {
             //Console.WriteLine("cdToRam " + addr.ToString("x8") + " bufferLength " + buffer.Length + " size " + size);
             Buffer.BlockCopy(buffer, 0, RAM, (int)addr, (int)size * 4);
             //Console.WriteLine(load32(addr).ToString("x8"));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        uint DMA_Transfer.fromGPU() {
+        public override uint fromGPU() {
             return gpu.loadGPUREAD();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        uint DMA_Transfer.fromCD() {
+        public override uint fromCD() {
             return cdrom.getData();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void toGPU(uint[] buffer) {
+        public override void toGPU(uint[] buffer) {
             gpu.writeGP0(buffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public uint[] fromRAM(uint addr, uint size) {
+        public override uint[] fromRAM(uint addr, uint size) {
             uint[] buffer = new uint[size];
             Buffer.BlockCopy(RAM, (int)(addr & 0x1F_FFFF), buffer, 0, (int)size * 4);
             return buffer;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public byte[] fromCD(uint size) { //test
+        public override byte[] fromCD(uint size) { //test
             return cdrom.getDataBuffer();
         }
 
