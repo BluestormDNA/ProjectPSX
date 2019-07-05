@@ -45,12 +45,18 @@ namespace ProjectPSX {
 
         public bool tick(int cycles) {
             if (JoyOutput && JOY_TX_DATA.Count != 0) {
+                TXreadyFlag2 = true;
+
+                //if (desiredSlotNumber == 1) {
+                //    JOY_TX_DATA.Dequeue();
+                //    JOY_RX_DATA.Enqueue(0xFF);
+                //    return false;
+                //}
+
                 JOY_RX_DATA.Enqueue(controller.process(JOY_TX_DATA.Dequeue()));
                 //Console.WriteLine("[JOYPAD] TICK Enqueued RX response " + JOY_RX_DATA.Peek().ToString("x2"));
                 //Console.ReadLine();
                 ackInputLevel = controller.ack;
-
-                TXreadyFlag2 = true;
                 counter = 500;
                 
             }
