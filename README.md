@@ -12,7 +12,7 @@ At the moment the following is implemented:
 - Partial GPU
 ...
 
-> **Note:**  A valid PSX Bios (SCPH1001.BIN) is needed to run the emulator. 
+> **Note:**  A valid SCPH1001.BIN PlayStation Bios is needed to run the emulator. 
 
 ## Compability
 
