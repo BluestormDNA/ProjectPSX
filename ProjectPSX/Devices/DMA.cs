@@ -26,54 +26,53 @@ namespace ProjectPSX.Devices {
 
 
         public void write(uint addr, uint value) {
-            if (addr == 0x1F8010F4) {
-                //Console.WriteLine("Write to interrupt handler " + addr.ToString("x8") + " " + value.ToString("x8"));
-                value &= 0x7FFF_FFFF;
-                uint irqFlag = (value >> 24) & 0x7F;
-                value = (uint)(value & ~0x7F008000); //disable force irq investigate this
 
-                //Console.WriteLine(irqFlag);
-                irqFlag ^= irqFlag;
-                //Console.WriteLine(irqFlag);
-                value |= irqFlag << 24;
-                //Console.WriteLine("Write to interrupt handler 2" + addr.ToString("x8") + " " + value.ToString("x8"));
-            }
-            base.write32(addr, value);
-
-
+            base.write32(addr, value); //this needs to go away...
             //Console.WriteLine("[DMA] Write: {0}  Value: {1}", addr.ToString("x8"), value.ToString("x8"));
 
             uint channel = (addr & 0x70) >> 4;
             uint register = addr & 0xF;
 
-            switch (channel) {
-                case uint channels when channel <= 6:
-                    if (register == 8 && isActive(value)) {
-                        //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
-                        handleDMA(addr, value);
-                        disable(addr, value);
-                        handleInterrupt((int)channel);
+            if(channel <= 6) {
+                if (register == 8 && isActive(value))
+                {
+                    //Console.WriteLine("[DMA] [CHANNEL] " + channel + " " + addr.ToString("x8"));
+                    //handleDMA(addr, value);
+                    uint syncMode = (value >> 9) & 3;
+                    //Console.WriteLine("[DMA] SyncMode: " + syncMode);
+                    if (syncMode == 2)
+                    {
+                        linkedList(addr);
                     }
-                    break;
-
-                case 7:
-                    switch (register) {
-                        case 0:
-                            //Console.WriteLine("[DMA] [DPCR - Control Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
-                            //TODO
-                            break;
-                        case 4:
-                            //Console.WriteLine("[DMA] [DICR - Interrupt Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
-                            //TODO
-                            break;
+                    else
+                    {
+                        blockCopy(syncMode, addr, value);
                     }
+                    disable(addr, value);
+                    handleInterrupt((int)channel);
+                }
+            } else if (channel == 7) {
+                if(register == 0) {
+                    //Console.WriteLine("[DMA] [DPCR - Control Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
+                    //TODO
+                }
+                else if(register == 4) {
+                    //Console.WriteLine("[DMA] [DICR - Interrupt Register] " + channel + " " + addr.ToString("x8") + " " + value.ToString("x8"));
+                    //TODO
+                    //Console.WriteLine("Write to interrupt handler " + addr.ToString("x8") + " " + value.ToString("x8"));
+                    value &= 0x7FFF_FFFF;
+                    uint irqFlag = (value >> 24) & 0x7F;
+                    value = (uint)(value & ~0x7F008000); //disable force irq investigate this
 
-                    break;
-
-                default:
-                    //Console.WriteLine("[DMA] [CHANNEL] WARNING! UNAVAILABLE CHANNEL" + channel);
-                    break;
+                    //Console.WriteLine(irqFlag);
+                    irqFlag ^= irqFlag;
+                    //Console.WriteLine(irqFlag);
+                    value |= irqFlag << 24;
+                    //Console.WriteLine("Write to interrupt handler 2" + addr.ToString("x8") + " " + value.ToString("x8"));
+                    base.write32(addr, value);
+                }
             }
+
         }
 
         public bool tick() {
@@ -126,13 +125,10 @@ namespace ProjectPSX.Devices {
         private void handleDMA(uint addr, uint control) {
             uint syncMode = (control >> 9) & 3;
             //Console.WriteLine("[DMA] SyncMode: " + syncMode);
-            switch (syncMode) {
-                case 2:
-                    linkedList(addr);
-                    break;
-                default:
-                    blockCopy(syncMode, addr, control);
-                    break;
+            if (syncMode == 2) {
+                linkedList(addr);
+            } else {
+                blockCopy(syncMode, addr, control);
             }
         }
 
@@ -150,8 +146,7 @@ namespace ProjectPSX.Devices {
                     //uint load = dma_transfer.fromRAM(dmaAddress);
                     // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
                     //dma_transfer.toGPU(load);
-                    uint[] bufferTest = dma_transfer.fromRAM(dmaAddress, size);
-                    dma_transfer.toGPU(bufferTest);
+                    dma_transfer.toGPU(dma_transfer.fromRAM(dmaAddress, size));
                 }
                 dmaAddress = header & 0x1ffffc;
             }
