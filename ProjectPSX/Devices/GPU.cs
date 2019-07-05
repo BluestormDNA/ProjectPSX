@@ -539,14 +539,21 @@ namespace ProjectPSX.Devices {
             //TEST
             area = w0_row + w1_row + w2_row;
             int depth = (int)(texpage >> 7) & 0x3;
-            int clutX = (int)(palette & 0x3f) << 4;
-            int clutY = (int)(palette >> 6) & 0x1FF;
 
-            int XBase = (int)(texpage & 0xF) << 6;
-            int YBase = (int)((texpage >> 4) & 0x1) << 8;
+            Point2D clut = new Point2D();
+            clut.x = (short)((palette & 0x3f) << 4);
+            clut.y = (short)((palette >> 6) & 0x1FF);
+            //int clutX = (int)(palette & 0x3f) << 4;
+            //int clutY = (int)(palette >> 6) & 0x1FF;
+
+            Point2D textureBase = new Point2D();
+            textureBase.x = (short)((texpage & 0xF) << 6);
+            textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
+            //int XBase = (int)(texpage & 0xF) << 6;
+            //int YBase = (int)((texpage >> 4) & 0x1) << 8;
 
             int col = GetRgbColor(c0);
-            loadClut(clutX, clutY, depth);
+            //loadClut(clutX, clutY, depth);
             //TESTING END
 
 
@@ -571,7 +578,7 @@ namespace ProjectPSX.Devices {
                                 VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
                                 break;
                             case Type.textured:
-                                col = getTextureColor(w0, w1, w2, t0, t1, t2, clutX, clutY, XBase, YBase, depth, clut);
+                                col = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth/*, clut*/);
                                 if (col != 0)
                                     VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
                                 break;
@@ -795,17 +802,17 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTextureColor(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int clutX, int clutY, int XBase, int YBase, int depth, int[] clut) {
+        private int getTextureColor(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2,Point2D clut, Point2D textureBase, int depth/*, int[] clut*/) {
             switch (depth) {
-                case 0: return get4bppTexel(w0, w1, w2, t0, t1, t2, clutX, clutY, XBase, YBase, clut);
-                case 1: return get8bppTexel(w0, w1, w2, t0, t1, t2, clutX, clutY, XBase, YBase);
-                case 2: return get16bppTexel(w0, w1, w2, t0, t1, t2, clutX, clutY, XBase, YBase);
+                case 0: return get4bppTexel(w0, w1, w2, t0, t1, t2, clut, textureBase/*, clut*/);
+                case 1: return get8bppTexel(w0, w1, w2, t0, t1, t2, clut, textureBase);
+                case 2: return get16bppTexel(w0, w1, w2, t0, t1, t2, textureBase);
                 default: Console.WriteLine("CLUT ERROR WAS " + textureDepth); Console.ReadLine(); return 0x00FF00FF;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get8bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int clutX, int clutY, int XBase, int YBase) {
+        private int get8bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase) {
             //https://codeplea.com/triangular-interpolation
             //int w = w0 + w1 + w2;
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
@@ -820,7 +827,7 @@ namespace ProjectPSX.Devices {
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
 
             //window.VRAM.SetPixel(x / 2 + XBase, y + YBase, 0x000000FF);
-            ushort index = VRAM.GetPixel16(x / 2 + XBase, y + YBase);
+            ushort index = VRAM.GetPixel16(x / 2 + textureBase.x, y + textureBase.y);
 
             int p = 0;
             switch (x & 1) { //way faster than x % 2
@@ -828,20 +835,20 @@ namespace ProjectPSX.Devices {
                 case 1: p = index >> 8; break;
             }
 
-            return VRAM.GetPixel(clutX + p, clutY);
+            return VRAM.GetPixel(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get16bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int clutX, int clutY, int XBase, int YBase) {
+        private int get16bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D textureBase) {
             //int w = w0 + w1 + w2;
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
             int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
 
-            return VRAM.GetPixel(x + XBase, y + YBase);
+            return VRAM.GetPixel(x + textureBase.x, y + textureBase.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get4bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int clutX, int clutY, int XBase, int YBase, int[] clut) {
+        private int get4bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase/*, int[] clut*/) {
             //int w = w0 + w1 + w2;
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
             int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
@@ -856,17 +863,18 @@ namespace ProjectPSX.Devices {
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
 
             //window.VRAM.SetPixel(x / 4 + XBase, y + YBase, 0x000000FF);
-            ushort index = VRAM.GetPixel16(x / 4 + XBase, y + YBase);
+            ushort index = VRAM.GetPixel16(x / 4 + textureBase.x, y + textureBase.y);
 
-            int p = 0;
-            switch (x & 3) { //way faster than x % 4
-                case 0: p = index & 0xF; break;
-                case 2: p = index >> 8 & 0xF; break;
-                case 1: p = index >> 4 & 0xF; break;
-                case 3: p = index >> 12; break;
-            }
+            //int p = 0;
+            //switch (x & 3) { //way faster than x % 4
+            //    case 0: p = index & 0xF; break;
+            //    case 2: p = index >> 8 & 0xF; break;
+            //    case 1: p = index >> 4 & 0xF; break;
+            //    case 3: p = index >> 12; break;
+            //}
+            int p = (index >> (x & 3) * 4) & 0xF; 
 
-            return clut[p]; //VRAM.GetPixel(clutX + p, clutY);
+            return /*clut[p]; //*/VRAM.GetPixel(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1096,7 +1104,7 @@ namespace ProjectPSX.Devices {
         //GP0 DMA buffer write already doesn't use this.
         //TODO: Rework the direct GP0 Write as if they were GP0 DMA and execute the buffer.
         //Maybe fake a 16/32 buffer and draw then. Maybe is faster this?
-        private readonly int[] CommandSize = {
+        private static readonly int[] CommandSize = {
         //0  1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
          1,  1,  3,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //0
          1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //1
