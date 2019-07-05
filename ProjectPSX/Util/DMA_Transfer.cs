@@ -1,23 +1,23 @@
 ﻿namespace ProjectPSX {
 
-    public interface DMA_Transfer {
+    public abstract class DMA_Transfer {
 
-        void toGPU(uint value);
+        public abstract void toGPU(uint value);
 
-        void toGPU(uint[] buffer);
+        public abstract void toGPU(uint[] buffer);
 
-        uint fromRAM(uint addr);
+        public abstract uint fromRAM(uint addr);
 
-        uint[] fromRAM(uint addr, uint size);
+        public abstract uint[] fromRAM(uint addr, uint size);
 
-        void toRAM(uint addr, uint value);
+        public abstract void toRAM(uint addr, uint value);
 
-        void toRAM(uint addr, byte[] buffer, uint size);
+        public abstract void toRAM(uint addr, byte[] buffer, uint size);
 
-        uint fromGPU();
+        public abstract uint fromGPU();
 
-        uint fromCD();
+        public abstract uint fromCD();
 
-        byte[] fromCD(uint size);
+        public abstract byte[] fromCD(uint size);
     }
 }
