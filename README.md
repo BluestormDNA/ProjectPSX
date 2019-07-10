@@ -56,5 +56,19 @@ Once power on, Input is mapped as:
 
 ## Quick Faq
 
-TODO
+- What's up with all the weird colors and double screen?
+
+As the emulator is early on development theres no "screen" what you see is the Playstation whole VRAM. It includes all the textures and color lockup tables used by the games. Also the PSX used double buffering so that's why theres 2 "screens" the VRAM.
+
+- Why "insert game here" game dont work?
+
+Probably due not implemented hardware. Also CDROM timmings needs to be reworked.
+
+- How can i get console TTY or BIOS output?
+
+Uncomment the bios() and tty() functions on the CPU main loop.
+
+- Why there's green squares as textures on Ridge Racer or Magic in Final Fantasy is solid?
+
+At the moment there's no texture blending neither transparency implemented.
 
