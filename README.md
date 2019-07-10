@@ -77,5 +77,12 @@ At the moment there's no texture blending or transparency support implemented.
 At the moment i just use common division where the original PSX uses a fastest, but less accurate division mechanism (based on Unsigned Newton-Raphson (UNR) algorithm.
 
 - Why you did this?
-I have been interested in emulating hardware for some time. I started doing Chip8 and Intel8080 cpu (space invaders). Later i did Nintendo Gameboy and i wanted to keep forward to do some 3D so i ended with the PSX...
+
+I have been interested in emulating hardware for some time. I started doing a Java [Chip8](https://github.com/BluestormDNA/Chip8) and a C# [Intel 8080 CPU](https://github.com/BluestormDNA/i8080-Space-Invaders) (used on the classic arcade Space Invaders). Later i did [Nintendo Gameboy](https://github.com/BluestormDNA/ProjectDMG) and i wanted to keep forward to do some 3D so i ended with the PSX...
+
+
+- How you did this?
+
+I  mainly used Martin Korth PSX-SPX documentation about the Playstation hardware at https://problemkaputt.de/psx-spx.htm
+Also the people at the #playstation channel on the emudev discord at https://discord.gg/dkmJAes was very helpfull.
 
