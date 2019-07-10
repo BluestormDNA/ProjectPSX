@@ -56,22 +56,26 @@ Once power on, Input is mapped as:
 
 ## Quick Faq
 
-- What's up with all the weird colors and double screen?
+- What's up with that window with all the weird colors and the double game screen?
 
-As the emulator is early on development theres no "screen" what you see is the Playstation whole VRAM. It includes all the textures and color lockup tables used by the games. Also the PSX used double buffering so that's why theres 2 "screens" the VRAM.
+As the emulator is early on development theres no real tv output "screen". What you see is the Playstation whole VRAM. It includes all the textures and color lockup tables used by the games. Also almost all games on the PSX used double buffering, that's why there's 2 game screens on the VRAM as the hardware draws on one and outputs the other.
 
-- Why "insert game here" game dont work?
+- Why "insert game here" doesn't work?
 
-Probably due not implemented hardware. Also CDROM timmings needs to be reworked.
+Probably due to not implemented hardware. Per example Parasite Eve loads but main screen looks awful as 24bpp is not supported yet. Castlevania Symphony of the Night and Gran Turismo crash after some loading or main screen because CDROM timmings needs to be reworked.
 
 - How can i get console TTY or BIOS output?
 
-Uncomment the bios() and tty() functions on the CPU main loop.
+Uncomment the bios.verbose() or TTY() functions on the CPU main loop. You can also dissasemble() the MIPS CPU instructions and printRegs() on the current opcode.
 
-- Why there's green squares as textures on Ridge Racer or Magic in Final Fantasy is solid?
+- Why there's green squares as textures on Ridge Racer or magic looks solid in Final Fantasy 7?
 
-At the moment there's no texture blending neither transparency implemented.
+At the moment there's no texture blending or transparency support implemented.
 
 - Why both RTPS and RTPT Geometry Transformation Engine Coprocessor commands give wrong values on tests?
 
 At the moment i just use common division where the original PSX uses a fastest, but less accurate division mechanism (based on Unsigned Newton-Raphson (UNR) algorithm.
+
+- Why you did this?
+I have been interested in emulating hardware for some time. I started doing Chip8 and Intel8080 cpu (space invaders). Later i did Nintendo Gameboy and i wanted to keep forward to do some 3D so i ended with the PSX...
+
