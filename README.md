@@ -72,3 +72,6 @@ Uncomment the bios() and tty() functions on the CPU main loop.
 
 At the moment there's no texture blending neither transparency implemented.
 
+- Why both RTPS and RTPT Geometry Transformation Engine Coprocessor commands give wrong values on tests?
+
+At the moment i just use common division where the original PSX uses a fastest, but less accurate division mechanism (based on Unsigned Newton-Raphson (UNR) algorithm.
