@@ -139,8 +139,8 @@ namespace ProjectPSX {
             WriteBack();
 
             /*debug*/
-           // TTY();
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
+            //TTY();
+            //if (exe) forceTest(tcpu); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
             //if (isEX1) forceEX1();
 
             //if(cycle > 150000000) {
@@ -148,7 +148,7 @@ namespace ProjectPSX {
             //}
 
             //if (debug) {
-           //bios.verbose(PC_Now, GPR);
+            //bios.verbose(PC_Now, GPR);
             //disassemble();
             //PrintRegs();
             //output();
@@ -187,7 +187,7 @@ namespace ProjectPSX {
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./padtest.exe";
+        string demo = "./oxy.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
@@ -871,14 +871,13 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MFC0() {
-            uint mfc = instr.rd & 0xF;
-            if(mfc != 0 || mfc != 1 || mfc != 2 || mfc != 4 || mfc != 10)
-            {
+            uint mfc = instr.rd;
+            if(mfc == 3 || mfc >= 5 && mfc <= 9 || mfc >= 11 && mfc <= 15) {
                 delayedLoad(instr.rt, COP0_GPR[mfc]);
-            } else
-            {
+            } else {
                 EXCEPTION(EX.ILLEGAL_INSTR);
             }
+            //Inline analyzer says this dosnt get inline so the rewrite...
             //switch (instr.rd) {
             //    case 3:
             //    case 5:
