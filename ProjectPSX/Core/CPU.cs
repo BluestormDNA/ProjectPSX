@@ -126,8 +126,7 @@ namespace ProjectPSX {
         //
         //private void NAE() { }
 
-        //private void Execute2()
-        //{
+        //private void Execute2() {
         //    opTable[instr.opcode]();
         //}
 
@@ -649,14 +648,6 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void EXCEPTION(EX cause, uint coprocessor = 0) {
             //Console.WriteLine(cause + " " + coprocessor);
-            //uint ExAdress;
-            //if ((COP0_GPR[SR] & (1 << 22)) == 0) {
-            //    ExAdress = 0x8000_0080;
-            //} else {
-            //    ExAdress = 0xBFC0_0180;
-            //}
-            //uint ExAdress = COP0_GPR[SR] & 0x400000 >> 22;
-
             //Console.ForegroundColor = ConsoleColor.Yellow;
             //Console.WriteLine("[EXCEPTION F] PRE SR" + SR.ToString("x8"));
 
@@ -695,8 +686,8 @@ namespace ProjectPSX {
             }
 
             //Console.WriteLine("[EXCEPTION F] POST EPC " + EPC.ToString("x8"));
-            //disassemble();
-            //PrintRegs();
+            //mips.disassemble();
+            //mips.PrintRegs();
             //Console.ResetColor();
             //Console.ReadLine();
 
@@ -848,26 +839,6 @@ namespace ProjectPSX {
             } else {
                 EXCEPTION(EX.ILLEGAL_INSTR);
             }
-            //Inline analyzer says this dosnt get inline so the rewrite...
-            //switch (instr.rd) {
-            //    case 3:
-            //    case 5:
-            //    case 6:
-            //    case 7:
-            //    case 8:
-            //    case 9:
-            //    case 11:
-            //    case 12:
-            //    case 13:
-            //    case 14:
-            //    case 15:
-            //        delayedLoad(instr.rt, COP0_GPR[instr.rd]);
-            //        break;
-            //    default:
-            //        EXCEPTION(EX.ILLEGAL_INSTR);
-            //        break;
-            //}
-
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -916,11 +887,11 @@ namespace ProjectPSX {
             if ((COP0_GPR[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr & 0x1) != 0) {
+                if ((addr & 0x1) == 0) {
+                    bus.write16(addr, (ushort)GPR[instr.rt]);
+                } else {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
-                } else {
-                    bus.write16(addr, (ushort)GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
@@ -1010,11 +981,11 @@ namespace ProjectPSX {
             if ((COP0_GPR[SR] & 0x10000) == 0) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr & 0x3) != 0) {
+                if ((addr & 0x3) == 0) {
+                    bus.write32(addr, GPR[instr.rt]);
+                } else {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR);
-                } else {
-                    bus.write32(addr, GPR[instr.rt]);
                 }
             }
             //else Console.WriteLine("Ignoring Write");
