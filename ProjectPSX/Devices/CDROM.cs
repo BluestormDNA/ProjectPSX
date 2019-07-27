@@ -12,7 +12,7 @@ namespace ProjectPSX.Devices {
         private Queue<byte> cdBuffer = new Queue<byte>();
 
         byte[] testDataBuffer = null;
-        byte[] testCDBuffer =null;
+        byte[] testCDBuffer = null;
 
         private bool isBusy;
 
@@ -72,39 +72,20 @@ namespace ProjectPSX.Devices {
 
         public bool tick(int cycles) {
             counter += cycles;
-            if (counter < 20000) {
-                return false; ;
-            }
 
             if (interruptQueue.Count != 0 && IF == 0) {
                 //Console.WriteLine("[CD INT] Queue is " + interruptQueue.Count + " Dequeue = IF | " + interruptQueue.Peek());
                 IF |= interruptQueue.Dequeue();
-                //return false;
             }
 
-            //if (edgeTrigger) {
-                if ((IF & IE) != 0 /*&& ((InterruptController.loadISTAT() & 0x4) != 0x4)*/) {
-                    //Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
-                    return true;
-                }
-            //}
-
-
-
-            //if (interruptQueue.Count != 0 && IF == 0) {
-            //    Console.WriteLine("[CD INT] Queue is " + interruptQueue.Count + " Dequeue = IF | " + interruptQueue.Peek());
-            //    IF |= interruptQueue.Dequeue();
-            //}
-            //
-            //if ((IF & IE) != 0 /*&& ((InterruptController.loadISTAT() & 0x4) != 0x4)*/) {
-            //    Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
-            //    return true;
-            //}
-
+            if ((IF & IE) != 0) {
+                //Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
+                return true;
+            }
 
             switch (mode) {
                 case Mode.Idle:
-                    if (counter < 4000 || interruptQueue.Count != 0) { //Await some cycles so interrupts are not triggered instant
+                    if (interruptQueue.Count != 0) { //Await some cycles so interrupts are not triggered instant
                         return false;
                     }
                     counter = 0;
@@ -112,27 +93,26 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case Mode.Seek:
-                    if (counter < 20000 || interruptQueue.Count != 0) {
-                      //return false;
+                    if (interruptQueue.Count != 0) {
+                        return false;
                     }
+                    counter = 0;
                     mode = Mode.Read; //??? GET RID OF THIS
                     //Console.WriteLine("[CDROM] MODE SEEK");
                     break;
 
                 case Mode.Read:
-                    if (counter < 200000 || interruptQueue.Count != 0) {
+                    if (counter < 33868800 / (isDoubleSpeed ? 150 : 75) || interruptQueue.Count != 0) {
                         return false;
                     }
-                    //i should trigger here and add loc...
-
                     //if (dataBuffer.Count == 0) {
                     //Console.ForegroundColor = ConsoleColor.DarkGreen;
                     //Console.WriteLine("Reading Loc: " + (Loc - 1));
                     //Console.ResetColor();
                     testCDBuffer = cd.Read(isSectorSizeRAW, Loc++);
-                        cdBuffer = new Queue<byte>(testCDBuffer);
+                    cdBuffer = new Queue<byte>(testCDBuffer);
 
-                   // }
+                    // }
 
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
@@ -142,7 +122,7 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case Mode.Transfer:
-                    if (counter < 10000 || interruptQueue.Count != 0) {
+                    if (/*counter < 10000 ||*/ interruptQueue.Count != 0) {
                         return false;
                     }
                     counter = 0;
@@ -192,7 +172,7 @@ namespace ProjectPSX.Devices {
                     break;
                 case 0x1F801801:
                     if (INDEX == 0) {
-                       //Console.WriteLine("[CDROM] [W01.0]     -------     COMMAND: {0}", value.ToString("x8"));
+                        //Console.WriteLine("[CDROM] [W01.0]     -------     COMMAND: {0}", value.ToString("x8"));
                         ExecuteCommand(value);
                     } else {
                         //Console.WriteLine("[CDROM] [Unhandled Write] Index: {0} Access: {1} Value: {2}", INDEX.ToString("x8"), addr.ToString("x8"), value.ToString("x8"));
@@ -262,24 +242,36 @@ namespace ProjectPSX.Devices {
                 case 0x06: readN(); break;
                 case 0x08: stop(); break;
                 case 0x09: pause(); break;
-                case 0x12: setSession(); break;
-                case 0x13: getTN(); break;
-                case 0x14: getTD(); break;
-                case 0x16: seekP(); break;
                 case 0x0A: init(); break;
                 case 0x0C: demute(); break;
                 case 0x0D: setFilter(); break;
                 case 0x0E: setMode(); break;
+                case 0x12: setSession(); break;
+                case 0x13: getTN(); break;
+                case 0x14: getTD(); break;
                 case 0x15: seekL(); break;
+                case 0x16: seekP(); break;
+                case 0x19: test(); break;
                 case 0x1A: getID(); break;
                 case 0x1B: readS(); break;
-                case 0x19: test(); break;
+                case 0x1F: videoCD(); break;
+                case uint _ when value >= 0x50 && value <= 0x57: lockUnlock(); break;
                 default: UnimplementedCDCommand(value); break;
             }
         }
 
-        private void setSession() //broken
-        {
+        private void lockUnlock() {
+            interruptQueue.Enqueue(0x5);
+        }
+
+        private void videoCD() { //INT5(11h,40h)  ;-Unused/invalid
+            parameterBuffer.Enqueue(0x11);
+            parameterBuffer.Enqueue(0x40);
+
+            interruptQueue.Enqueue(0x5);
+        }
+
+        private void setSession() { //broken
             parameterBuffer.Clear();
 
             STAT = 0x42;
@@ -325,7 +317,7 @@ namespace ProjectPSX.Devices {
             STAT = 0x82;
 
             //int track = BcdToDec((byte)parameterBuffer.Dequeue());
-           // Console.WriteLine("Track " + track);
+            // Console.WriteLine("Track " + track);
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
@@ -362,7 +354,8 @@ namespace ProjectPSX.Devices {
         private void getTN() {//todo
             responseBuffer.Enqueue(STAT);
             responseBuffer.Enqueue(0x1);
-            responseBuffer.Enqueue(0x15);
+            responseBuffer.Enqueue(0x1);//<--hardcoded number of traks!
+
             interruptQueue.Enqueue(0x3);
         }
 
@@ -442,7 +435,7 @@ namespace ProjectPSX.Devices {
 
         private void seekL() {
             SeekL = Loc;
-            //STAT |= 0x40; // seek
+            STAT = 0x42; // seek
 
             mode = Mode.Seek;
 
@@ -528,7 +521,6 @@ namespace ProjectPSX.Devices {
         }
 
         private void getStat() {
-            //STAT = 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
@@ -539,7 +531,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void test() {
-            switch (parameterBuffer.Dequeue()) {
+            uint command = parameterBuffer.Dequeue();
+            switch (command) {
                 case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
                     responseBuffer.Enqueue(0x94);
                     responseBuffer.Enqueue(0x09);
@@ -548,7 +541,26 @@ namespace ProjectPSX.Devices {
 
                     interruptQueue.Enqueue(0x3);
                     break;
-                default: Console.WriteLine("[CDROM] Unimplemented test command"); break;
+                case 0x22: //
+                    responseBuffer.Enqueue(0x66);
+                    responseBuffer.Enqueue(0x6F);
+                    responseBuffer.Enqueue(0x72);
+                    responseBuffer.Enqueue(0x20);
+                    responseBuffer.Enqueue(0x55);
+                    responseBuffer.Enqueue(0x53);
+                    responseBuffer.Enqueue(0x2F);
+                    responseBuffer.Enqueue(0x41);
+                    responseBuffer.Enqueue(0x45);
+                    responseBuffer.Enqueue(0x50);
+
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x60://  60h      lo,hi     INT3(databyte)   ;HC05 SUB-CPU read RAM and I/O ports
+                    responseBuffer.Enqueue(0);
+
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                default: Console.WriteLine("[CDROM] Unimplemented test command " + command.ToString("x8")); break;
             }
         }
 
