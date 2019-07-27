@@ -13,16 +13,14 @@ namespace ProjectPSX.Devices {
         private uint command;
         private int commandSize;
         //private Queue<uint> commandBuffer = new Queue<uint>(16);
-        private uint[] commandBuffer = new uint[32];
-        private uint[] emptyBuffer = new uint[32]; //fallback to rewrite
+        private uint[] commandBuffer = new uint[16];
+        private uint[] emptyBuffer = new uint[16]; //fallback to rewrite
         private int pointer;
 
         private const int CyclesPerFrame = 564480;
 
         private Window window;
         private DirectBitmap VRAM = new DirectBitmap();
-
-        private int[] clut = new int[256];
 
         public void setWindow(Window window) {
             this.window = window;
@@ -34,7 +32,7 @@ namespace ProjectPSX.Devices {
         private Mode mode;
 
         private enum Type {
-            opaque,
+            flat,
             shaded,
             textured
         }
@@ -63,19 +61,9 @@ namespace ProjectPSX.Devices {
         private struct TextureData {
             public int x, y;
 
-            public TextureData(uint val) {
-                x = (int)(val & 0xFF);
-                y = (int)((val >> 8) & 0xFF);
-            }
-
             public void setData(uint val) {
                 x = (int)(val & 0xFF);
                 y = (int)((val >> 8) & 0xFF);
-            }
-
-            public TextureData(int x, int y) {
-                this.x = x;
-                this.y = y;
             }
         }
         private TextureData[] t = new TextureData[4];
@@ -153,7 +141,7 @@ namespace ProjectPSX.Devices {
 
         public bool tick(int cycles) {
             timer += cycles;
-            if (timer >= CyclesPerFrame) { 
+            if (timer >= CyclesPerFrame) {
                 //Console.WriteLine("[GPU] Request Interrupt 0x1 VBLANK");
                 timer -= CyclesPerFrame; //1128960 ff7
                 window.update(VRAM.Bits);
@@ -211,23 +199,23 @@ namespace ProjectPSX.Devices {
         public void writeGP0(uint value) {
             //Console.WriteLine("Direct " + value.ToString("x8"));
             //Console.WriteLine(mode);
-            switch (mode) {
-                case Mode.COMMAND: DecodeGP0Command(value); break;
-                case Mode.VRAM: WriteToVRAM(value); break;
+            if (mode == Mode.COMMAND) {
+                DecodeGP0Command(value);
+            } else {
+                WriteToVRAM(value);
             }
         }
 
         internal void writeGP0(uint[] buffer) {
             //Console.WriteLine("buffer");
             //Console.WriteLine(mode);
-            switch (mode) {
-                case Mode.COMMAND: DecodeGP0Command(buffer); break;
-                case Mode.VRAM:
-                    for (int i = 0; i < buffer.Length; i++) {
-                        //Console.WriteLine(i + " " + buffer[i].ToString("x8"));
-                        WriteToVRAM(buffer[i]);
-                    }
-                    break;
+            if (mode == Mode.COMMAND) {
+                DecodeGP0Command(buffer);
+            } else {
+                for (int i = 0; i < buffer.Length; i++) {
+                    //Console.WriteLine(i + " " + buffer[i].ToString("x8"));
+                    WriteToVRAM(buffer[i]);
+                }
             }
         }
 
@@ -287,7 +275,7 @@ namespace ProjectPSX.Devices {
             commandBuffer[pointer++] = value;
             //Console.WriteLine("[GPU] Direct GP0: {0} buffer: {1}", value.ToString("x8"), pointer);
 
-            if (pointer == commandSize || commandSize == 32 && value == 0x5555_5555) {
+            if (pointer == commandSize || commandSize == 16 && value == 0x5555_5555) {
                 pointer = 0;
                 //Console.WriteLine("EXECUTING");
                 ExecuteGP0(command);
@@ -460,7 +448,7 @@ namespace ProjectPSX.Devices {
             bool isTextured = (command & (1 << 26)) != 0;
             bool isTransparent = (command & (1 << 25)) != 0; //todo unhandled still!
 
-            type = isShaded ? Type.shaded : Type.opaque;
+            type = isShaded ? Type.shaded : Type.flat;
             if (isTextured) type = Type.textured;
 
             int vertexN = isQuad ? 4 : 3;
@@ -526,7 +514,8 @@ namespace ProjectPSX.Devices {
                 c2 = colorAux;
             }
 
-            /*(Point2D min, Point2D max) = */boundingBox(v0, v1, v2);
+            /*(Point2D min, Point2D max) = */
+            boundingBox(v0, v1, v2);
 
             int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
             int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
@@ -543,17 +532,12 @@ namespace ProjectPSX.Devices {
             Point2D clut = new Point2D();
             clut.x = (short)((palette & 0x3f) << 4);
             clut.y = (short)((palette >> 6) & 0x1FF);
-            //int clutX = (int)(palette & 0x3f) << 4;
-            //int clutY = (int)(palette >> 6) & 0x1FF;
 
             Point2D textureBase = new Point2D();
             textureBase.x = (short)((texpage & 0xF) << 6);
             textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
-            //int XBase = (int)(texpage & 0xF) << 6;
-            //int YBase = (int)((texpage >> 4) & 0x1) << 8;
 
             int col = GetRgbColor(c0);
-            //loadClut(clutX, clutY, depth);
             //TESTING END
 
 
@@ -569,7 +553,7 @@ namespace ProjectPSX.Devices {
                     if ((w0 | w1 | w2) >= 0) {
 
                         switch (type) {
-                            case Type.opaque:
+                            case Type.flat:
                                 //col = GetRgbColor(c0); //this is overkill here as its the same but putting it outside slows the important ones
                                 VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
                                 break;
@@ -578,7 +562,7 @@ namespace ProjectPSX.Devices {
                                 VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
                                 break;
                             case Type.textured:
-                                col = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth/*, clut*/);
+                                col = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
                                 if (col != 0)
                                     VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
                                 break;
@@ -596,19 +580,7 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void loadClut(int clutX, int clutY, int depth) {
-            if (depth == 0) {
-                for (int i = 0; i < clut.Length; i++) {
-                    clut[i] = VRAM.GetPixel(clutX+i, clutY);
-                }
-            } else if (depth == 1) {
-                for (int i = 0; i < clut.Length; i++) {
-                    clut[i] = VRAM.GetPixel(clutX + i, clutY);
-                }
-            }
-        }
-
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int GetRgbColor(uint value) {
             c0.val = value;
             return (c0.m << 24 | c0.r << 16 | c0.g << 8 | c0.b);
@@ -642,7 +614,7 @@ namespace ProjectPSX.Devices {
             bool isTextured = (command & (1 << 26)) != 0;
             bool isTransparent = (command & (1 << 25)) != 0; //todo unhandled still!
 
-            type = Type.opaque;
+            type = Type.flat;
             if (isTextured) type = Type.textured;
 
             uint vertex = commandBuffer[pointer++];
@@ -788,8 +760,6 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getShadedColor(int w0, int w1, int w2, uint color0, uint color1, uint color2) {
-            //https://codeplea.com/triangular-interpolation
-            //int w = w0 + w1 + w2;
             c0.val = color0;
             c1.val = color1;
             c2.val = color2;
@@ -802,19 +772,8 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTextureColor(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2,Point2D clut, Point2D textureBase, int depth/*, int[] clut*/) {
-            switch (depth) {
-                case 0: return get4bppTexel(w0, w1, w2, t0, t1, t2, clut, textureBase/*, clut*/);
-                case 1: return get8bppTexel(w0, w1, w2, t0, t1, t2, clut, textureBase);
-                case 2: return get16bppTexel(w0, w1, w2, t0, t1, t2, textureBase);
-                default: Console.WriteLine("CLUT ERROR WAS " + textureDepth); Console.ReadLine(); return 0x00FF00FF;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get8bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase) {
+        private int getTextureColor(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase, int depth) {
             //https://codeplea.com/triangular-interpolation
-            //int w = w0 + w1 + w2;
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
             int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
 
@@ -826,55 +785,33 @@ namespace ProjectPSX.Devices {
             x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
 
-            //window.VRAM.SetPixel(x / 2 + XBase, y + YBase, 0x000000FF);
-            ushort index = VRAM.GetPixel16(x / 2 + textureBase.x, y + textureBase.y);
-
-            int p = 0;
-            switch (x & 1) { //way faster than x % 2
-                case 0: p = index & 0xFF; break;
-                case 1: p = index >> 8; break;
+            switch (depth) {
+                case 0: return get4bppTexel(x, y, clut, textureBase);
+                case 1: return get8bppTexel(x, y, clut, textureBase);
+                case 2: return get16bppTexel(x, y, textureBase);
+                default: return 0x00FF00FF;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
+            ushort index = VRAM.GetPixel16(x / 4 + textureBase.x, y + textureBase.y);
+            int p = (index >> (x & 3) * 4) & 0xF;
 
             return VRAM.GetPixel(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get16bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D textureBase) {
-            //int w = w0 + w1 + w2;
-            int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
-            int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
+        private int get8bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
+            ushort index = VRAM.GetPixel16(x / 2 + textureBase.x, y + textureBase.y);
+            int p = (index >> (x & 1) * 8) & 0xFF;
 
-            return VRAM.GetPixel(x + textureBase.x, y + textureBase.y);
+            return VRAM.GetPixel(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get4bppTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase/*, int[] clut*/) {
-            //int w = w0 + w1 + w2;
-            int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
-            int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
-            //Console.WriteLine(x + " " + y);
-
-            x &= 255;
-            y &= 255;
-
-            // Texture masking
-            // texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
-            x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
-            y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
-
-            //window.VRAM.SetPixel(x / 4 + XBase, y + YBase, 0x000000FF);
-            ushort index = VRAM.GetPixel16(x / 4 + textureBase.x, y + textureBase.y);
-
-            //int p = 0;
-            //switch (x & 3) { //way faster than x % 4
-            //    case 0: p = index & 0xF; break;
-            //    case 2: p = index >> 8 & 0xF; break;
-            //    case 1: p = index >> 4 & 0xF; break;
-            //    case 3: p = index >> 12; break;
-            //}
-            int p = (index >> (x & 3) * 4) & 0xF; 
-
-            return /*clut[p]; //*/VRAM.GetPixel(clut.x + p, clut.y);
+        private int get16bppTexel(int x, int y, Point2D textureBase) {
+            return VRAM.GetPixel(x + textureBase.x, y + textureBase.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -883,9 +820,6 @@ namespace ProjectPSX.Devices {
         }
 
         private /*(Point2D min, Point2D max)*/ void boundingBox(Point2D p0, Point2D p1, Point2D p2) {
-
-
-
             int minX = Math.Min(p0.x, Math.Min(p1.x, p2.x));
             int minY = Math.Min(p0.y, Math.Min(p1.y, p2.y));
             int maxX = Math.Max(p0.x, Math.Max(p1.x, p2.x));
@@ -920,10 +854,6 @@ namespace ProjectPSX.Devices {
 
             drawingXOffset = (short)(val & 0x7FF);
             drawingYOffset = (short)((val >> 11) & 0x7FF);
-            //drawingXOffset = 256;
-            //drawingYOffset = 128;
-            //drawingXOffset = 0;
-            //drawingYOffset = 0;
         }
 
         private void GP0_NOP() {
@@ -963,10 +893,7 @@ namespace ProjectPSX.Devices {
         public void writeGP1(uint value) {
             //Console.WriteLine("[GPU] GP1 Write Value: {0}", value.ToString("x8"));
             ////Console.ReadLine();
-            ExecuteGP1Command(value);
-        }
-
-        private void ExecuteGP1Command(uint value) {
+            //Execute GP1 Command
             uint opcode = value >> 24;
             switch (opcode) {
                 case 0x00: GP1_ResetGPU(); break;
@@ -985,13 +912,15 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_GPUInfo(uint value) {
-            uint info = value & 0xFFFFFF;
+            uint info = value & 0xF;
             switch (info) {
                 case 0x2: GPUREAD = (uint)(textureWindowOffsetY << 15 | textureWindowOffsetX << 10 | textureWindowMaskY << 5 | textureWindowMaskX); break;
                 case 0x3: GPUREAD = (uint)(drawingAreaTop << 10 | drawingAreaLeft); break;
                 case 0x4: GPUREAD = (uint)(drawingAreaBottom << 10 | drawingAreaRight); break;
                 case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | drawingXOffset); break;
-                default: GPUREAD = 0; Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
+                case 0x7: GPUREAD = 2; break;
+                case 0x8: GPUREAD = 0; break;
+                default: Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
             }
         }
 
@@ -1110,8 +1039,8 @@ namespace ProjectPSX.Devices {
          1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //1
          4,  4,  4,  4,  7,  7,  7,  7,  5,  5,  5,  5,  9,  9,  9,  9, //2
          6,  6,  6,  6,  9,  9,  9,  9,  8,  8,  8,  8, 12, 12, 12, 12, //3
-         3,  3,  3,  3,  3,  3,  3,  3, 32, 32, 32, 32, 32, 32, 32, 32, //4
-         4,  4,  4,  4,  4,  4,  4,  4, 32, 32, 32, 32, 32, 32, 32, 32, //5
+         3,  3,  3,  3,  3,  3,  3,  3, 16, 16, 16, 16, 16, 16, 16, 16, //4
+         4,  4,  4,  4,  4,  4,  4,  4, 16, 16, 16, 16, 16, 16, 16, 16, //5
          3,  3,  3,  1,  4,  4,  4,  4,  2,  1,  2,  1,  3,  3,  3,  3, //6
          2,  1,  2,  1,  3,  3,  3,  3,  2,  1,  2,  2,  3,  3,  3,  3, //7
          4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4, //8
