@@ -30,6 +30,7 @@ namespace ProjectPSX {
         private CDROM cdrom;
         private TIMERS timers;
         private JOYPAD joypad;
+        private MDEC mdec;
 
         public BUS() {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
@@ -38,6 +39,7 @@ namespace ProjectPSX {
             cdrom = new CDROM();
             timers = new TIMERS();
             joypad = new JOYPAD();
+            mdec = new MDEC();
 
             dma.setDMA_Transfer(this);
 
@@ -63,7 +65,6 @@ namespace ProjectPSX {
             //addr &= RegionMask[addr >> 29]; 
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
-
             if (addr < 0x1F00_0000) {
                 return loadRAM32(addr & 0x1F_FFFF, RAM);
             } else if (addr < 0x1F08_0000) {
@@ -73,7 +74,7 @@ namespace ProjectPSX {
             } else if (addr >= 0x1F80_1000 && addr < 0x1F80_2000) {
                 if (addr == 0x1F801070) {
                     return interruptController.loadISTAT();
-                } else if (addr == 0x1F801074) {
+                } else if (addr == 0x1F80_1074) {
                     return interruptController.loadIMASK();
                 } else if (addr >= 0x1F80_1040 && addr <= 0x1F80_104F) {
                     return joypad.load(Width.WORD, addr);
@@ -83,10 +84,14 @@ namespace ProjectPSX {
                     return timers.load(Width.WORD, addr);
                 } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
                     return cdrom.load(Width.WORD, addr);
-                } else if (addr == 0x1F801810) {
+                } else if (addr == 0x1F80_1810) {
                     return gpu.loadGPUREAD();
-                } else if (addr == 0x1F801814) {
+                } else if (addr == 0x1F80_1814) {
                     return gpu.loadGPUSTAT();
+                } else if (addr == 0x1F80_1820) {
+                    return mdec.readMDEC0_Data();
+                } else if (addr == 0x1F80_1824) {
+                    return mdec.readMDEC1_Status();
                 } else {
                     return load32(addr & 0xFFF, REGISTERS);
                 }
@@ -97,54 +102,6 @@ namespace ProjectPSX {
             } else {
                 return 0xFFFF_FFFF;
             }
-
-
-            //switch (addr) {
-            //    case uint _ when addr < 0x1F00_0000:
-            //        return loadRAM32(addr/* & 0x1F_FFFF*/, RAM);
-            //
-            //    case uint _ when addr < 0x1F08_0000:
-            //        return load32(addr & 0x7_FFFF, EX1);
-            //
-            //    case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-            //        return load32(addr & 0xFFF, SCRATHPAD);
-            //
-            //    case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-            //        switch (addr) {
-            //            case 0x1F801070:
-            //                return interruptController.loadISTAT();
-            //            case 0x1F801074:
-            //                return interruptController.loadIMASK();
-            //            case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-            //                return joypad.load(Width.WORD, addr);
-            //            case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-            //                return dma.load(addr);
-            //            case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-            //                //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
-            //                return timers.load(Width.WORD, addr);
-            //            case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-            //                return cdrom.load(Width.WORD, addr);
-            //            case 0x1F801810:
-            //                return gpu.loadGPUREAD();
-            //            case 0x1F801814:
-            //                return gpu.loadGPUSTAT();
-            //            default:
-            //                return load32(addr & 0xFFF, REGISTERS);
-            //        }
-            //
-            //    //case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
-            //    //    return 0; //nocash bios tests
-            //
-            //    case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-            //        return load32(addr & 0x7_FFFF, BIOS);
-            //
-            //    case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-            //        return load32(addr & 0x1FF, IO);
-            //
-            //    default:
-            //        Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
-            //        return 0xFFFF_FFFF;
-            //}
         }
 
 
@@ -171,7 +128,7 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
                             return joypad.load(Width.HALF, addr);
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            return dma.load(Width.HALF, addr);
+                            return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
                             return timers.load(Width.HALF, addr);
@@ -224,7 +181,7 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
                             return joypad.load(Width.BYTE, addr);
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            return dma.load(Width.BYTE, addr);
+                            return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
                             return timers.load(Width.BYTE, addr);
@@ -302,6 +259,12 @@ namespace ProjectPSX {
                             break;
                         case 0x1F801814:
                             gpu.writeGP1(value);
+                            break;
+                        case 0x1F801820:
+                            mdec.writeMDEC0_Command(value);
+                            break;
+                        case 0x1F801824:
+                            mdec.writeMDEC1_Control(value);
                             break;
 
                         default:
@@ -548,12 +511,14 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override uint fromRAM(uint addr) {
             //return load32(addr, RAM);
-            return loadRAM32(addr, RAM);
+            //Console.WriteLine(addr.ToString("x8"));
+            return load32(addr & 0x1F_FFFF, RAM);
         }
 
 
         private unsafe uint loadRAM32(uint addr, byte[] rAM) {
-            return *(uint*)(ramPtr + addr);
+            return *(uint*)(ramPtr + (addr & 0x1F_FFFF)); //this fixed raiden and ctr
+            //return (uint)(rAM[addr + 3] << 24 | rAM[addr + 2] << 16 | rAM[addr + 1] << 8 | rAM[addr]);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -561,12 +526,12 @@ namespace ProjectPSX {
             //1: Naive Approach
             //return (uint)(memory[addr + 3] << 24 | memory[addr + 2] << 16 | memory[addr + 1] << 8 | memory[addr]);
             //2: Pointer Magic Approach
-            fixed (void* ptr = &memory[addr]) {
-                // p is pinned as well as object, so create another pointer to show incrementing it.
-                return *(uint*)ptr;
-            }
+            //fixed (void* ptr = &memory[addr]) {
+            //    // p is pinned as well as object, so create another pointer to show incrementing it.
+            //    return *(uint*)ptr;
+            //}
             //3: fastest approach (it appears that even with the overhead it avoids the pinning and can be inlined)
-            //return Unsafe.As<byte, uint>(ref memory[addr]);
+            return Unsafe.As<byte, uint>(ref memory[addr]);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -584,7 +549,7 @@ namespace ProjectPSX {
             //    var ptr = Unsafe.AsPointer(ref memory[addr]);
             //    Unsafe.Write(ptr, value);
             //}
-            
+
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -628,6 +593,15 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override byte[] fromCD(uint size) { //test
             return cdrom.getDataBuffer();
+        }
+
+        public override void toMDECin(uint[] load) { //todo: actual process the whole array
+            foreach(uint word in load)
+            mdec.writeMDEC0_Command(word);
+        }
+
+        public override uint fromMDECout() {
+            return mdec.readMDEC0_Data();
         }
 
         private static uint[] RegionMask = {
