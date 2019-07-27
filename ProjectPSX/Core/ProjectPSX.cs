@@ -42,29 +42,29 @@ namespace ProjectPSX {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
             watch.Start();
-            //try {
+            try {
                 while (true) {
-                //for (int i = 0; i < 100; i++) {
-                //    cpu.Run();
-                //    counter++;
-                //}
-                //
-                //bus.tick(200); //2 ticks per opcode
-                //cpu.handleInterrupts();
-                for (int i = 0; i < 2822; i++)
-                {
-                    for (int j = 0; j < 100; j++)
-                    {
-                        cpu.Run();
-                        counter++;
+                    //for (int i = 0; i < 100; i++) {
+                    //    cpu.Run();
+                    //    counter++;
+                    //}
+                    //
+                    //bus.tick(200); //2 ticks per opcode
+                    //cpu.handleInterrupts();
+                    for (int i = 0; i < 2822; i++) {
+                        for (int j = 0; j < 100; j++) {
+                            cpu.Run();
+                            //cpu.handleInterrupts();
+                            counter++;
+                        }
+                        bus.tick(300);
+                        cpu.handleInterrupts();
+
                     }
-                    bus.tick(200);
-                    cpu.handleInterrupts();
-                }
 
 
                     if (watch.ElapsedMilliseconds > 1000) {
-                        window.Text = " ProjectPSX | Speed % " + (((float)counter / (PSX_MHZ / 2)) * 100);
+                        window.Text = " ProjectPSX | Speed % " + (((float)counter / (PSX_MHZ / 3)) * 100);
                         watch.Restart();
                         counter = 0;
                     }
@@ -74,9 +74,9 @@ namespace ProjectPSX {
                     //    watch.Restart();
                     //}
                 }
-            //} catch (Exception e) {
-            //    Console.WriteLine(e.ToString());
-            //}
+            } catch (Exception e) {
+                Console.WriteLine(e.ToString());
+            }
         }
 
     }
