@@ -37,5 +37,9 @@ namespace ProjectPSX.Devices {
             //Console.ReadLine();
             return IMASK;
         }
+
+        internal bool interruptPending() {
+            return (ISTAT & IMASK) != 0;
+        }
     }
 }
