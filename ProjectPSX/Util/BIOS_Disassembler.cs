@@ -64,7 +64,7 @@ namespace ProjectPSX {
                         case 0x25: msg += $"toupper(char)"; break;
                         case 0x26: msg += $"tolower(char)"; break;
                         case 0x27: msg += $"bcopy(src,dst,len)"; break;
-                        case 0x28: msg += $"bzero(dst,len)"; break;
+                        case 0x28: msg += $"bzero(dst = {arg1.ToString("x8")},len = {arg2.ToString("x8")})"; break;
                         case 0x29: msg += $"bcmp(ptr1,ptr2,len"; break;
                         case 0x2A: msg += $"memcpy(dst,src,len)"; break;
                         case 0x2B: msg += $"memset(dst,fillbyte,len)"; break;
@@ -229,13 +229,13 @@ namespace ProjectPSX {
                         case 0x04: msg += "enable_timer_irq(t)"; break;
                         case 0x05: msg += "disable_timer_irq(t)"; break;
                         case 0x06: msg += "restart_timer(t)"; break;
-                        case 0x07: msg += $"DeliverEvent({arg1.ToString("x8")}, {arg2.ToString("x8")})"; break;
-                        case 0x08: msg += "OpenEvent(class,spec,mode,func)"; break;
-                        case 0x09: msg += "CloseEvent(event)"; break;
-                        case 0x0A: msg += "WaitEvent(event)"; break;
+                        case 0x07: msg += $"DeliverEvent(class = {arg1.ToString("x8")}, spec = {arg2.ToString("x8")})"; break;
+                        case 0x08: msg += $"OpenEvent(class = {arg1.ToString("x8")},spec = {arg2.ToString("x8")},mode = {arg3.ToString("x8")},func = {arg4.ToString("x8")})"; break;
+                        case 0x09: msg += $"CloseEvent(event = {arg1.ToString("x8")})"; break;
+                        case 0x0A: msg += $"WaitEvent(event = {arg1.ToString("x8")})"; break;
                         case 0x0B: return; //msg += $"TestEvent({arg1.ToString("x8")})"; break; //SPAM
-                        case 0x0C: msg += "EnableEvent(event)"; break;
-                        case 0x0D: msg += "DisableEvent(event)"; break;
+                        case 0x0C: msg += $"EnableEvent(event = {arg1.ToString("x8")})"; break;
+                        case 0x0D: msg += $"DisableEvent(event = {arg1.ToString("x8")})"; break;
                         case 0x0E: msg += "OpenThread(reg_PC,reg_SP_FP,reg_GP)"; break;
                         case 0x0F: msg += "CloseThread(handle)"; break;
 
