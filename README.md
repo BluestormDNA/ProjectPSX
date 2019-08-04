@@ -9,7 +9,7 @@
 ProjectPSX dosn't use any external dependency and uses rather simplistic C# code.
 
 At the moment the following is implemented:
-- CPU (MIPS R3000A) with the Coprocessor 0 and Geometry Transformation Endgine (GTE) Coprocessor.
+- CPU (MIPS R3000A) with the Coprocessor 0 and Geometry Transformation Engine (GTE) Coprocessor.
 - A BUS to interconnect the components.
 - Partial GPU (software polygonal rasterizer) with all the commands implemented with VRAM renderer.
 - Partial CDROM: Implemented the common cd access commands.
