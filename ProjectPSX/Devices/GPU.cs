@@ -145,6 +145,7 @@ namespace ProjectPSX.Devices {
                 //Console.WriteLine("[GPU] Request Interrupt 0x1 VBLANK");
                 timer -= CyclesPerFrame; //1128960 ff7
                 window.update(VRAM.Bits);
+                isOddLine = !isOddLine;
                 return true;
             }
             return false;
@@ -755,7 +756,7 @@ namespace ProjectPSX.Devices {
 
 
         private void GP0_MemClearCache() {
-            pointer = 0;
+            pointer++;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
