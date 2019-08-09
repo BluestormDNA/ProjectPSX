@@ -276,7 +276,7 @@ namespace ProjectPSX.Devices {
             commandBuffer[pointer++] = value;
             //Console.WriteLine("[GPU] Direct GP0: {0} buffer: {1}", value.ToString("x8"), pointer);
 
-            if (pointer == commandSize || commandSize == 16 && value == 0x5555_5555) {
+            if (pointer == commandSize || commandSize == 16 && (value & 0xF000_F000) == 0x5000_5000) {
                 pointer = 0;
                 //Console.WriteLine("EXECUTING");
                 ExecuteGP0(command);
@@ -340,44 +340,68 @@ namespace ProjectPSX.Devices {
             isInterruptRequested = true;
         }
 
+        int renderline;
+        int rasterizeline;
         private void GP0_RenderLine() {
             //Console.WriteLine("size " + commandBuffer.Count);
+            Console.WriteLine("RENDERLINE" + ++renderline);
+            int arguments = 0;
             uint command = commandBuffer[pointer++];
+            arguments++;
+            
             uint color1 = command & 0xFFFFFF;
             uint color2 = color1;
 
             bool isPoly = (command & (1 << 27)) != 0;
             bool isShaded = (command & (1 << 28)) != 0;
             bool isTransparent = (command & (1 << 25)) != 0;
+            bool isRaw = (command & (1 << 24)) != 0;
+            bool isTextureMapped = (command & (1 << 26)) != 0;
+
+            if (isTextureMapped || isRaw) return;
 
             uint v1 = commandBuffer[pointer++];
+            arguments++;
 
-            if (isShaded) color2 = commandBuffer[pointer++];
+            if (isShaded) { color2 = commandBuffer[pointer++];
+                arguments++;
+            }
             uint v2 = commandBuffer[pointer++];
+            arguments++;
 
             rasterizeLine(v1, v2, color1, color2);
 
             if (!isPoly) return;
 
-            while (commandBuffer[pointer] != 0x5555_5555) {
+            while ((commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
                 //Console.WriteLine("DOING ANOTHER LINE");
+                arguments++;
                 color1 = color2;
-                if (isShaded) color2 = commandBuffer[pointer++];
+                if (isShaded) { color2 = commandBuffer[pointer++];
+                    arguments++;
+                }
                 v1 = v2;
                 v2 = commandBuffer[pointer++];
                 rasterizeLine(v1, v2, color1, color2);
+                //Console.WriteLine("RASTERIZE " + ++rasterizeline);
+                window.update(VRAM.Bits);
+                Console.ReadLine();
             }
 
             pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
         }
 
+        private short signed11bit(uint n) {
+            return (short)(((int)n << 21) >> 21);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void rasterizeLine(uint v1, uint v2, uint color1, uint color2) {
-            short x = (short)((v1 & 0xFFFF) & 0x3FF);
-            short y = (short)((v1 >> 16) & 0x1FF);
+            short x = signed11bit(v1 & 0xFFFF);
+            short y = signed11bit((v1 >> 16) & 0xFFFF);
 
-            short x2 = (short)((v2 & 0xFFFF) & 0x3FF);
-            short y2 = (short)((v2 >> 16) & 0x1FF);
+            short x2 = signed11bit(v2 & 0xFFFF);
+            short y2 = signed11bit((v2 >> 16) & 0xFFFF);
 
             x += drawingXOffset;
             y += drawingYOffset;
@@ -619,8 +643,8 @@ namespace ProjectPSX.Devices {
             if (isTextured) type = Type.textured;
 
             uint vertex = commandBuffer[pointer++];
-            short xo = (short)(vertex & 0xFFFF);
-            short yo = (short)((vertex >> 16) & 0xFFFF);
+            short xo = signed11bit(vertex & 0xFFFF);
+            short yo = signed11bit((vertex >> 16) & 0xFFFF);
 
             uint[] c = new uint[4];
             c[0] = color;
@@ -684,9 +708,6 @@ namespace ProjectPSX.Devices {
 
             rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, type);
             rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, type);
-
-            //Console.WriteLine("after offset x" + x + " y" + y);
-            //Console.ReadLine();
         }
 
         private void GP0_MemCopyRectVRAMtoCPU() {
@@ -798,7 +819,8 @@ namespace ProjectPSX.Devices {
         private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
             ushort index = VRAM.GetPixel16(x / 4 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 3) * 4) & 0xF;
-
+            //VRAM.SetPixel(x / 4 + textureBase.x, y + textureBase.y, 0x00FF00FF);
+            //VRAM.SetPixel(clut.x+ p, clut.y, 0x0000FFFF);
             return VRAM.GetPixel(clut.x + p, clut.y);
         }
 
