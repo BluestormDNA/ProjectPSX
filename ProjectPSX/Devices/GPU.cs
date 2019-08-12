@@ -418,7 +418,7 @@ namespace ProjectPSX.Devices {
                 v2 = commandBuffer[pointer++];
                 rasterizeLine(v1, v2, color1, color2);
                 //Console.WriteLine("RASTERIZE " + ++rasterizeline);
-                window.update(VRAM.Bits);
+                //window.update(VRAM.Bits);
                 //Console.ReadLine();
             }
 
@@ -954,8 +954,8 @@ namespace ProjectPSX.Devices {
         private void GP0_SetDrawingOffset() {
             uint val = commandBuffer[pointer++];
 
-            drawingXOffset = (short)(val & 0x7FF);
-            drawingYOffset = (short)((val >> 11) & 0x7FF);
+            drawingXOffset = signed11bit(val & 0x7FF);
+            drawingYOffset = signed11bit((val >> 11) & 0x7FF);
         }
 
         private void GP0_NOP() {
