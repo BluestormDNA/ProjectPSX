@@ -3,7 +3,7 @@
 namespace ProjectPSX.Devices {
     public class TIMERS {
 
-        TIMER[] timer = new TIMER[3];
+        private TIMER[] timer = new TIMER[3];
 
         public TIMERS() {
             timer[0] = new TIMER();
@@ -27,11 +27,16 @@ namespace ProjectPSX.Devices {
             return timer[timerNumber].tick(cycles);
         }
 
+        public void syncGPU((int, bool, bool) sync) {
+            timer[0].syncGPU(sync);
+            timer[1].syncGPU(sync);
+        }
+
         public class TIMER {
             private int timerNumber;
             private static int timerCounter;
 
-            private ushort counterValue;
+            private uint counterValue;
             private uint counterTargetValue;
 
             private byte syncEnable;
@@ -46,6 +51,16 @@ namespace ProjectPSX.Devices {
             private byte reachedTarget;
             private byte reachedFFFF;
 
+            private bool vblank;
+            private bool hblank;
+            private int dotDiv;
+
+            private bool prevHblank;
+            private bool prevVblank;
+
+            private bool irq;
+            private bool alreadFiredIrq;
+
             public TIMER() {
                 this.timerNumber = timerCounter++;
             }
@@ -55,78 +70,69 @@ namespace ProjectPSX.Devices {
                     case 0x0: counterValue = (ushort)value; break;
                     case 0x4: setCounterMode(value); break;
                     case 0x8: counterTargetValue = value; break;
+                    default: Console.WriteLine("[TIMER] " + timerNumber + "Unhandled Write" + addr); Console.ReadLine(); ; break;
                 }
             }
 
             public uint load(Width w, uint addr) {
                 switch (addr & 0xF) {
-                    case 0x0: return (uint)counterValue;
+                    case 0x0: return counterValue;
                     case 0x4: return getCounterMode();
                     case 0x8: return counterTargetValue;
-                    default: return 0;
+                    default: Console.WriteLine("[TIMER] " + timerNumber + "Unhandled load" + addr); Console.ReadLine(); return 0;
                 }
             }
 
-            public bool tick(int cycles) { //todo this needs rework
+            //infact only timer 0 and 1 todo
+            public void syncGPU((int dotDiv, bool hblank, bool vblank) sync) {
+                prevHblank = hblank;
+                prevVblank = vblank;
+                dotDiv = sync.dotDiv;
+                hblank = sync.hblank;
+                vblank = sync.vblank;
+            }
+
+            int cycles;
+            public bool tick(int cyclesTicked) { //todo this needs rework
+                cycles += cyclesTicked;
                 switch (timerNumber) {
                     case 0:
-                        //if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
-                        //    return false; // counter stoped
-                        //} //else free run
+                        if (syncEnable == 1) {
+                            switch (syncMode) {
+                                case 0: if (hblank) return false; break;
+                                case 1: if (hblank) counterValue = 0; break;
+                                case 2: if (hblank) counterValue = 0; if (!hblank) return false; break;
+                                case 3: if (!prevHblank && hblank) syncEnable = 0; else return false; break;
+                            }
+                        } //else free run
 
                         if (clockSource == 0 || clockSource == 2) {
                             counterValue += (ushort)cycles;
                         } else {
-                            counterValue += (ushort)(cycles); //todo dotClock
+                            counterValue += (ushort)(cycles * 11 / 7 / dotDiv); //DotClock
+                            cycles = (cycles*11) % (7 / dotDiv);
                         }
 
-                        //Console.WriteLine(counterValue.ToString("x4"));
+                        return handleIrq();
 
-                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
-                            counterValue = 0;
-                            reachedTarget = 1;
-                            if (irqWhenCounterTarget == 1) {
-                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
-                                //Console.ReadLine();
-                                return true;
-                            }
-                        }
-                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
-                            reachedFFFF = 1;
-                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
-                            //Console.ReadLine();
-                            return true;
-                        }
-                        return false;
                     case 1:
-                        //if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
-                        //   return false; // counter stoped
-                        //} //else free run
+                        if (syncEnable == 1) {
+                            switch (syncMode) {
+                                case 0: if (vblank) return false; break;
+                                case 1: if (vblank) counterValue = 0; break;
+                                case 2: if (vblank) counterValue = 0; if (!vblank) return false; break;
+                                case 3: if (!prevVblank && vblank) syncEnable = 0; else return false; break;
+                            }
+                        }
 
                         if (clockSource == 0 || clockSource == 2) {
                             counterValue += (ushort)cycles;
                         } else {
-                            counterValue += (ushort)(cycles);//todo VBlank
+                            counterValue += (ushort)(cycles / 2160);
+                            cycles %= 2160;
                         }
 
-                        //Console.WriteLine(counterValue.ToString("x4"));
-
-                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
-                            counterValue = 0;
-                            reachedTarget = 1;
-                            if (irqWhenCounterTarget == 1) {
-                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
-                                //Console.ReadLine();
-                                return true;
-                            }
-                        }
-                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
-                            reachedFFFF = 1;
-                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
-                            //Console.ReadLine();
-                            return true;
-                        }
-                        return false;
+                        return handleIrq();
                     case 2:
                         if (syncEnable == 1 && syncMode == 0 || syncMode == 3) {
                             return false; // counter stoped
@@ -136,30 +142,53 @@ namespace ProjectPSX.Devices {
                             counterValue += (ushort)cycles;
                         } else {
                             counterValue += (ushort)(cycles / 8);
+                            cycles %= 8;
                         }
 
-                        //Console.WriteLine(counterValue.ToString("x4"));
-
-                        if (resetCounterOnTarget == 1 && counterValue >= counterTargetValue) {
-                            counterValue = 0;
-                            reachedTarget = 1;
-                            if (irqWhenCounterTarget == 1) {
-                                //Console.WriteLine("[IRQ Timer 2] irqWhenTarget " + counterTargetValue.ToString("x4") + " ClockSource " + clockSource);
-                                //Console.ReadLine();
-                                return true;
-                            }
-                        }
-                        if (counterValue == 0 && irqWhenCounterFFFF == 1) {
-                            reachedFFFF = 1;
-                            //Console.WriteLine("[IRQ Timer 2] counterWhenFFFF achieved. ClockSource: " + clockSource);
-                            //Console.ReadLine();
-                            return true;
-                        }
-                        return false;
+                        return handleIrq();
                     default:
                         return false;
                 }
 
+            }
+
+            private bool handleIrq() {
+                irq = false;
+
+                if (counterValue >= counterTargetValue) {
+                    reachedTarget = 1;
+                    if (resetCounterOnTarget == 1) counterValue = 0;
+                    if (irqWhenCounterTarget == 1) irq = true;
+                }
+
+                if (counterValue >= 0xFFFF) {
+                    reachedFFFF = 1;
+                    if (irqWhenCounterFFFF == 1) irq = true;
+                }
+
+                counterValue &= 0xFFFF;
+
+                if (!irq) return false;
+
+                if(irqPulse == 0){ //short bit10
+                    interruptRequest = 0;
+                } else { //toggle it
+                    interruptRequest = (byte)((interruptRequest + 1) & 0x1);
+                }
+
+                bool trigger = interruptRequest == 0;
+
+                if (irqRepeat == 0) { //once
+                    if (!alreadFiredIrq && trigger) {
+                        alreadFiredIrq = true;
+                    } else { //already fired
+                        return false;
+                    }
+                } // repeat
+
+                interruptRequest = 1;
+
+                return trigger;
             }
 
             private void setCounterMode(uint value) {
@@ -171,9 +200,9 @@ namespace ProjectPSX.Devices {
                 irqRepeat = (byte)((value >> 6) & 0x1);
                 irqPulse = (byte)((value >> 7) & 0x1);
                 clockSource = (byte)((value >> 8) & 0x3);
-                interruptRequest = (byte)((value >> 10) & 0x1);
-                reachedTarget = (byte)((value >> 11) & 0x1);
-                reachedFFFF = (byte)((value >> 12) & 0x1);
+
+                interruptRequest = 1;
+                alreadFiredIrq = false;
 
                 counterValue = 0;
             }
@@ -197,6 +226,8 @@ namespace ProjectPSX.Devices {
 
                 return counterMode;
             }
+
         }
+
     }
 }
