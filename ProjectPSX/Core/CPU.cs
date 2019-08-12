@@ -80,7 +80,7 @@ namespace ProjectPSX {
         private MEM memoryLoad;
         private MEM delayedMemoryLoad;
 
-        public bool debug = true;
+        public bool debug = false;
         private bool isEX1 = true;
         private bool exe = true;
 
@@ -136,6 +136,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
+            if(debug) mips.disassemble(instr, PC_Now, PC_Predictor);
             Execute();
             //Execute2(); //function table tests
             MemAccess();
@@ -143,25 +144,24 @@ namespace ProjectPSX {
 
             /*debug*/
             //TTY();
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
+            //if (exe) forceTest(tgpu); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
             //if (isEX1) forceEX1();
 
             //if(cycle > 150000000) {
             //    debug = true;
             //}
-
-            //if (debug) {
             //bios.verbose(PC_Now, GPR);
-            //mips.disassemble(instr, PC_Now, PC_Predictor);
-            //mips.PrintRegs();
-            //}
+            if (debug) {
+
+            mips.PrintRegs();
+            }
         }
 
         string tcpu = "./psxtest_cpu.exe";
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./oxy.exe";
+        string demo = "./cube.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
@@ -383,7 +383,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             //Console.WriteLine("Store Data FROM GTE");
-            uint addr = GPR[instr.rs] + instr.imm;
+            uint addr = GPR[instr.rs] + instr.imm_s;
 
             if ((addr & 0x3) == 0) {
                 bus.write32(addr, gte.loadData(instr.rt));
@@ -397,7 +397,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             //Console.WriteLine("Load Data TO GTE");
-            uint addr = GPR[instr.rs] + instr.imm;
+            uint addr = GPR[instr.rs] + instr.imm_s;
 
             if ((addr & 0x3) == 0) {
                 uint value = bus.load32(addr);
