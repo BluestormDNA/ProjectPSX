@@ -9,7 +9,7 @@ namespace ProjectPSX.Devices {
     class MDEC {
 
         //Status Register
-        private bool isDataOutFifoEmpty;
+        //private bool isDataOutFifoEmpty;
         private bool isDataInFifoFull;
         private bool isCommandBusy;
         private bool isDataInRequested;
@@ -32,7 +32,7 @@ namespace ProjectPSX.Devices {
         private short[] Cbblk = new short[64];
         private short[][] Yblk = { new short[64], new short[64], new short[64], new short[64] };
 
-        private ushort[] src = new ushort[0xFFFF * 2]; //TEST TODO: REVISIT THIS "it works"...
+        private ushort[] src = new ushort[0xFFFF]; //TEST TODO: REVISIT THIS "it works"...
         private uint[] inBuffer = new uint[0xFFFF]; //this is badly wrong. should be 0x20 and handle dmas
         private Queue<uint> outBuffer = new Queue<uint>();
         private int ptr;
@@ -52,7 +52,7 @@ namespace ProjectPSX.Devices {
             }
 
             if (remainingDataWords == 0) {
-                //isCommandBusy = true;
+                isCommandBusy = true;
                 outBuffer.Clear();
                 command();
                 ptr = 0;
@@ -66,7 +66,7 @@ namespace ProjectPSX.Devices {
             dataOutputDepth = (value >> 27) & 0x3;
             isSigned = ((value >> 26) & 0x1) == 1;
             bit15 = (value >> 25) & 0x1;
-            remainingDataWords = value & 0xFFFF;
+            remainingDataWords = (value & 0xFFFF);
             isColored = (value & 0x1) == 1; //only used on command2;
 
             switch (rawCommand) {
@@ -197,7 +197,7 @@ namespace ProjectPSX.Devices {
         }
 
         private int signed10bit(int n) {
-            return ((n & 0x200) != 0) ? (int)(short)(n | 0xFC00) : n;
+            return (n << 22) >> 22;
         }
 
         private void setQuantTable() {//64 unsigned parameter bytes for the Luminance Quant Table (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes for the Color Quant Table (used for Cb and Cr).
@@ -230,11 +230,12 @@ namespace ProjectPSX.Devices {
         }
 
         public void writeMDEC1_Control(uint value) { //1F801824h - MDEC1 - MDEC Control/Reset Register (W)
-            uint resetMdec = (value >> 31) & 0x1; //todo actual abort commands and set status to 80040000h
+            bool isDataOutFifoEmpty = ((value >> 31) & 0x1) == 1; //todo actual abort commands and set status to 80040000h
+            if (isDataOutFifoEmpty) outBuffer.Clear();
             isDataInRequested = ((value >> 30) & 0x1) == 1; //todo enable dma
             isDataOutRequested = ((value >> 29) & 0x1) == 1;
 
-            //Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
+            Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
         }
 
         //int decodeTest = 0;
@@ -295,7 +296,7 @@ namespace ProjectPSX.Devices {
         public uint readMDEC1_Status() {//1F801824h - MDEC1 - MDEC Status Register (R)
             uint status = 0;
 
-            status |= (isDataOutFifoEmpty ? 1u : 0) << 31;
+            status |= (isDataOutFifoEmpty() ? 1u : 0) << 31;
             status |= (isDataInFifoFull ? 1u : 0) << 30;
             status |= (isCommandBusy ? 1u : 0) << 29;
             status |= (isDataInRequested ? 1u : 0) << 28;
@@ -303,10 +304,19 @@ namespace ProjectPSX.Devices {
             status |= dataOutputDepth << 25;
             status |= (isSigned ? 1u : 0) << 24;
             status |= bit15 << 23;
+            status |= 1 << 18; // weird status return for 0x8004_0000;
             status |= currentBlock << 16;
-            status |= remainingDataWords - 1 == 0xFFFF_FFFF ? 0 : remainingDataWords - 1;
-            //Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
+            status |= (ushort)(remainingDataWords - 1);
+            Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
+            //Console.ReadLine();
+
+            isCommandBusy = false;
+
             return status;
+        }
+
+        private bool isDataOutFifoEmpty() {
+            return outBuffer.Count == 0;
         }
 
         private static readonly byte[] zigzag = {
