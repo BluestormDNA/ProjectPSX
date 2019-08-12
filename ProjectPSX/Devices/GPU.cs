@@ -18,6 +18,9 @@ namespace ProjectPSX.Devices {
         private int pointer;
 
         private const int CyclesPerFrame = 564480;
+        private const int VideoCyclesPerFrame = 887040;
+        private static readonly int[] resolutions = { 256, 320, 512, 640, 368};//gpustat res index
+        private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
         private Window window;
         private DirectBitmap VRAM = new DirectBitmap();
@@ -94,7 +97,8 @@ namespace ProjectPSX.Devices {
         private bool isInterlaceField;
         private bool isReverseFlag;
         private bool isTextureDisabled;
-        private byte horizontalResolution;
+        private byte horizontalResolution2;
+        private byte horizontalResolution1;
         private bool isVerticalResolution480;
         private bool isPal;
         private bool is24BitDepth;
@@ -132,23 +136,51 @@ namespace ProjectPSX.Devices {
         private ushort displayY1;
         private ushort displayY2;
 
-        private int timer;
+        private int videoCycles;
 
         public GPU() {
             mode = Mode.COMMAND;
             GP1_ResetGPU();
         }
 
+        int scanLine = 0;
         public bool tick(int cycles) {
-            timer += cycles;
-            if (timer >= CyclesPerFrame) {
-                //Console.WriteLine("[GPU] Request Interrupt 0x1 VBLANK");
-                timer -= CyclesPerFrame; //1128960 ff7
-                window.update(VRAM.Bits);
-                isOddLine = !isOddLine;
-                return true;
+            //Video clock is the cpu clock multiplied by 11/7.
+            videoCycles += cycles * 11 / 7;
+
+            //Todo: move this to the funct that sets isPal and res
+            int horizontalTiming = isPal ? 3406 : 3413;
+            int verticalTiming = isPal ? 314 : 263;
+            //int horizontalResolution = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
+
+            //Console.WriteLine("x1 " + displayX1 + " x2 " + displayX2);
+            //Console.WriteLine("y1 " + displayY1 + " y2 " + displayY2);
+
+            if (videoCycles >= horizontalTiming) {
+                videoCycles -= horizontalTiming;
+                scanLine++;
+                if (!isVerticalResolution480) {
+                    isOddLine = (scanLine & 0x1) != 0;
+                }
+            
+                if(scanLine >= verticalTiming) {
+                    scanLine = 0;
+                    if (isVerticalInterlace && isVerticalResolution480) {
+                        isOddLine = !isOddLine;
+                    }
+                    window.update(VRAM.Bits);
+                    return true;
+                }
             }
             return false;
+        }
+
+        public (int dot, bool hblank, bool bBlank) getBlanksAndDot() { //test
+            int dot = dotClockDiv[horizontalResolution2 << 2 | horizontalResolution1];
+            bool hBlank = videoCycles < displayX1 || videoCycles > displayX2;
+            bool vBlank = scanLine < displayY1 || scanLine > displayY2;
+
+            return (dot, hBlank, vBlank);
         }
 
         public uint loadGPUSTAT() {
@@ -165,8 +197,9 @@ namespace ProjectPSX.Devices {
             GPUSTAT |= (uint)(isInterlaceField ? 1 : 0) << 13;
             GPUSTAT |= (uint)(isReverseFlag ? 1 : 0) << 14;
             GPUSTAT |= (uint)(isTextureDisabled ? 1 : 0) << 15;
-            GPUSTAT |= (uint)horizontalResolution << 16;
-            GPUSTAT |= (uint)/*(isVerticalResolution480 ? 1 : 0)*/0 << 19;
+            GPUSTAT |= (uint)horizontalResolution2 << 16;
+            GPUSTAT |= (uint)horizontalResolution1 << 17;
+            GPUSTAT |= (uint)(isVerticalResolution480 ? 1 : 0);
             GPUSTAT |= (uint)(isPal ? 1 : 0) << 20;
             GPUSTAT |= (uint)(is24BitDepth ? 1 : 0) << 21;
             GPUSTAT |= (uint)(isVerticalInterlace ? 1 : 0) << 22;
@@ -331,7 +364,7 @@ namespace ProjectPSX.Devices {
                 case uint nop when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
                     GP0_NOP(); break;
 
-                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); Console.ReadLine(); GP0_NOP(); break;// throw new NotImplementedException();
+                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_NOP(); break;// throw new NotImplementedException();
             }
         }
 
@@ -344,11 +377,10 @@ namespace ProjectPSX.Devices {
         int rasterizeline;
         private void GP0_RenderLine() {
             //Console.WriteLine("size " + commandBuffer.Count);
-            Console.WriteLine("RENDERLINE" + ++renderline);
             int arguments = 0;
             uint command = commandBuffer[pointer++];
             arguments++;
-            
+
             uint color1 = command & 0xFFFFFF;
             uint color2 = color1;
 
@@ -358,12 +390,13 @@ namespace ProjectPSX.Devices {
             bool isRaw = (command & (1 << 24)) != 0;
             bool isTextureMapped = (command & (1 << 26)) != 0;
 
-            if (isTextureMapped || isRaw) return;
+            //if (isTextureMapped /*isRaw*/) return;
 
             uint v1 = commandBuffer[pointer++];
             arguments++;
 
-            if (isShaded) { color2 = commandBuffer[pointer++];
+            if (isShaded) {
+                color2 = commandBuffer[pointer++];
                 arguments++;
             }
             uint v2 = commandBuffer[pointer++];
@@ -372,12 +405,13 @@ namespace ProjectPSX.Devices {
             rasterizeLine(v1, v2, color1, color2);
 
             if (!isPoly) return;
-
-            while ((commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
-                //Console.WriteLine("DOING ANOTHER LINE");
+            renderline = 0;
+            while (/*arguments < 0xF &&*/ (commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
+                Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
                 arguments++;
                 color1 = color2;
-                if (isShaded) { color2 = commandBuffer[pointer++];
+                if (isShaded) {
+                    color2 = commandBuffer[pointer++];
                     arguments++;
                 }
                 v1 = v2;
@@ -385,10 +419,10 @@ namespace ProjectPSX.Devices {
                 rasterizeLine(v1, v2, color1, color2);
                 //Console.WriteLine("RASTERIZE " + ++rasterizeline);
                 window.update(VRAM.Bits);
-                Console.ReadLine();
+                //Console.ReadLine();
             }
 
-            pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
+            /*if (arguments != 0xF) */pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
         }
 
         private short signed11bit(uint n) {
@@ -979,14 +1013,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_DisplayMode(uint value) {
-            uint horizontalRes1 = value & 0x3;
-            uint horizontalRes2 = value & 0x40;
-
-            horizontalResolution = (byte)(horizontalRes2 << 2 | horizontalRes1);
+            horizontalResolution1 = (byte)(value & 0x3);
             isVerticalResolution480 = (value & 0x4) != 0;
             isPal = (value & 0x8) != 0;
             is24BitDepth = (value & 0x10) != 0;
             isVerticalInterlace = (value & 0x20) != 0;
+            horizontalResolution2 = (byte)((value & 0x40) >> 6);
             isReverseFlag = (value & 0x80) != 0;
         }
 
@@ -1007,7 +1039,8 @@ namespace ProjectPSX.Devices {
             isMaskedPriority = false;
             dmaDirection = 0;
             isDisplayDisabled = true;
-            horizontalResolution = 0;
+            horizontalResolution2 = 0;
+            horizontalResolution1 = 0;
             isVerticalResolution480 = false;
             isPal = false;
             isVerticalInterlace = false; //?
