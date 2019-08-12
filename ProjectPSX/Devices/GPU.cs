@@ -19,7 +19,7 @@ namespace ProjectPSX.Devices {
 
         private const int CyclesPerFrame = 564480;
         private const int VideoCyclesPerFrame = 887040;
-        private static readonly int[] resolutions = { 256, 320, 512, 640, 368};//gpustat res index
+        private static readonly int[] resolutions = { 256, 320, 512, 640, 368 };//gpustat res index
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
         private Window window;
@@ -34,12 +34,12 @@ namespace ProjectPSX.Devices {
         }
         private Mode mode;
 
-        private enum Type {
-            flat,
-            shaded,
-            textured
+        private struct Primitive {
+            public bool isShaded;
+            public bool isTextured;
+            public bool isSemiTransparent;
+            public bool isRawTextured;//if not: blended
         }
-        private Type type;
 
         private struct VRAM_Coord {
             public int x, y;
@@ -80,10 +80,10 @@ namespace ProjectPSX.Devices {
             [FieldOffset(3)] public byte m;
         }
 
-        private Color c0;
-        private Color c1;
-        private Color c2;
-        private Color c3;
+        private Color color0;
+        private Color color1;
+        private Color color2;
+        private Color color3;
 
         //GP0
         private byte textureXBase;
@@ -162,8 +162,8 @@ namespace ProjectPSX.Devices {
                 if (!isVerticalResolution480) {
                     isOddLine = (scanLine & 0x1) != 0;
                 }
-            
-                if(scanLine >= verticalTiming) {
+
+                if (scanLine >= verticalTiming) {
                     scanLine = 0;
                     if (isVerticalInterlace && isVerticalResolution480) {
                         isOddLine = !isOddLine;
@@ -422,7 +422,8 @@ namespace ProjectPSX.Devices {
                 //Console.ReadLine();
             }
 
-            /*if (arguments != 0xF) */pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
+            /*if (arguments != 0xF) */
+            pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
         }
 
         private short signed11bit(uint n) {
@@ -487,13 +488,13 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int interpolate(uint color1, uint color2, float ratio) {
-            c1.val = color1;
-            c2.val = color2;
+        private int interpolate(uint c1, uint c2, float ratio) {
+            color1.val = c1;
+            color2.val = c2;
 
-            byte r = (byte)(c2.r * ratio + c1.r * (1 - ratio));
-            byte g = (byte)(c2.g * ratio + c1.g * (1 - ratio));
-            byte b = (byte)(c2.b * ratio + c1.b * (1 - ratio));
+            byte r = (byte)(color2.r * ratio +  color1.r * (1 - ratio));
+            byte g = (byte)(color2.g * ratio +  color1.g * (1 - ratio));
+            byte b = (byte)(color2.b * ratio +  color1.b * (1 - ratio));
 
             return (r << 16 | g << 8 | b);
         }
@@ -503,12 +504,17 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine(command.ToString("x8") +  " "  + commandBuffer.Length + " " + pointer);
 
             bool isQuad = (command & (1 << 27)) != 0;
+
             bool isShaded = (command & (1 << 28)) != 0;
             bool isTextured = (command & (1 << 26)) != 0;
-            bool isTransparent = (command & (1 << 25)) != 0; //todo unhandled still!
+            bool isSemiTransparent = (command & (1 << 25)) != 0;
+            bool isRawTextured = (command & (1 << 24)) != 0;
 
-            type = isShaded ? Type.shaded : Type.flat;
-            if (isTextured) type = Type.textured;
+            Primitive primitive = new Primitive();
+            primitive.isShaded = isShaded;
+            primitive.isTextured = isTextured;
+            primitive.isSemiTransparent = isSemiTransparent;
+            primitive.isRawTextured = isRawTextured;         
 
             int vertexN = isQuad ? 4 : 3;
 
@@ -543,8 +549,8 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, type);
-            if (isQuad) rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, type);
+            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
+            if (isQuad) rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
         }
 
         //Mother of parameters. this should be better when c#8 ranges come into play. I could declare 2 new arrays segments but i dont like them
@@ -553,7 +559,7 @@ namespace ProjectPSX.Devices {
         //Atm passing structs as parameters is pretty lol..
         //well anyway not an "issue" right now. (priority low)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Type type) {
+        private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Primitive primitive) {
 
             area = orient2d(v0, v1, v2);
 
@@ -596,7 +602,7 @@ namespace ProjectPSX.Devices {
             textureBase.x = (short)((texpage & 0xF) << 6);
             textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
 
-            int col = GetRgbColor(c0);
+            int baseColor = GetRgbColor(c0);
             //TESTING END
 
 
@@ -611,21 +617,50 @@ namespace ProjectPSX.Devices {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 | w1 | w2) >= 0) {
 
-                        switch (type) {
-                            case Type.flat:
-                                //col = GetRgbColor(c0); //this is overkill here as its the same but putting it outside slows the important ones
-                                VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
-                                break;
-                            case Type.shaded:
-                                col = getShadedColor(w0, w1, w2, c0, c1, c2);
-                                VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
-                                break;
-                            case Type.textured:
-                                col = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
-                                if (col != 0)
-                                    VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), col);
-                                break;
+                        int color = baseColor; //hack to fix flat transparent primitives tofix...
+
+                        //Transparency tests... this will need to be refactored for blend and lines!
+                        if (primitive.isTextured) {
+                            color = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
+                            if (color == 0) {
+                                w0 += A12;
+                                w1 += A20;
+                                w2 += A01;
+                                continue;
+                            }
+                        } else {
+                            if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
                         }
+
+                        if (primitive.isSemiTransparent) {
+                            color0.val = (uint)(VRAM.GetPixel(x & 0x3FF, y & 0x1FF)); //back
+                            color1.val = (uint)color; //front
+                            switch (transparency) {
+                                case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
+                                    color2.r = clampToByte(color0.r / 2 + color1.r / 2);
+                                    color2.g = clampToByte(color0.g / 2 + color1.g / 2);
+                                    color2.b = clampToByte(color0.b / 2 + color1.b / 2);
+                                    break;
+                                case 1://1.0 x B + 1.0 x F    ;aka B+F
+                                    color2.r = clampToByte(color0.r + color1.r);
+                                    color2.g = clampToByte(color0.g + color1.g);
+                                    color2.b = clampToByte(color0.b + color1.b);
+                                    break;
+                                case 2: //1.0 x B - 1.0 x F    ;aka B-F
+                                    color2.r = clampToByte(color0.r - color1.r);
+                                    color2.g = clampToByte(color0.g - color1.g);
+                                    color2.b = clampToByte(color0.b - color1.b);
+                                    break;
+                                case 3: //1.0 x B +0.25 x F    ;aka B+F/4
+                                    color2.r = clampToByte(color0.r + color1.r / 4);
+                                    color2.g = clampToByte(color0.g + color1.g / 4);
+                                    color2.b = clampToByte(color0.b + color1.b / 4);
+                                    break;
+                            }
+                            color = (color2.b << 16 | color2.g << 8 | color2.r);
+                        }
+
+                        VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), color);
                     }
                     // One step to the right
                     w0 += A12;
@@ -639,19 +674,25 @@ namespace ProjectPSX.Devices {
             }
         }
 
+        private byte clampToByte(int v) {
+            if (v < 0) return 0;
+            else if (v > 0xFF) return 0xFF;
+            else return (byte)v;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int GetRgbColor(uint value) {
-            c0.val = value;
-            return (c0.m << 24 | c0.r << 16 | c0.g << 8 | c0.b);
+            color0.val = value;
+            return (color0.m << 24 | color0.r << 16 | color0.g << 8 | color0.b);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GP0_FillRectVRAM() {
-            c0.val = commandBuffer[pointer++];
+            color0.val = commandBuffer[pointer++];
             v[0].val = commandBuffer[pointer++];
             v[1].val = commandBuffer[pointer++];
 
-            int color = (c0.r << 16 | c0.g << 8 | c0.b);
+            int color = (color0.r << 16 | color0.g << 8 | color0.b);
 
             for (int yPos = v[0].y; yPos < v[1].y + v[0].y; yPos++) {
                 for (int xPos = v[0].x; xPos < v[1].x + v[0].x; xPos++) {
@@ -671,10 +712,14 @@ namespace ProjectPSX.Devices {
 
             bool isShaded = (command & (1 << 28)) != 0;
             bool isTextured = (command & (1 << 26)) != 0;
-            bool isTransparent = (command & (1 << 25)) != 0; //todo unhandled still!
+            bool isSemiTransparent = (command & (1 << 25)) != 0;
+            bool isRawTextured = (command & (1 << 24)) != 0;
 
-            type = Type.flat;
-            if (isTextured) type = Type.textured;
+            Primitive primitive = new Primitive();
+            primitive.isShaded = isShaded;
+            primitive.isTextured = isTextured;
+            primitive.isSemiTransparent = isSemiTransparent;
+            primitive.isRawTextured = isRawTextured;
 
             uint vertex = commandBuffer[pointer++];
             short xo = signed11bit(vertex & 0xFFFF);
@@ -740,8 +785,8 @@ namespace ProjectPSX.Devices {
 
             uint texpage = getTexpageFromGPU();
 
-            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, type);
-            rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, type);
+            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
+            rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
         }
 
         private void GP0_MemCopyRectVRAMtoCPU() {
@@ -816,13 +861,13 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getShadedColor(int w0, int w1, int w2, uint color0, uint color1, uint color2) {
-            c0.val = color0;
-            c1.val = color1;
-            c2.val = color2;
+            this.color0.val = color0;
+            this.color1.val = color1;
+            this.color2.val = color2;
 
-            int r = (c0.r * w0 + c1.r * w1 + c2.r * w2) / area;
-            int g = (c0.g * w0 + c1.g * w1 + c2.g * w2) / area;
-            int b = (c0.b * w0 + c1.b * w1 + c2.b * w2) / area;
+            int r = (this.color0.r * w0 + this.color1.r * w1 + this.color2.r * w2) / area;
+            int g = (this.color0.g * w0 + this.color1.g * w1 + this.color2.g * w2) / area;
+            int b = (this.color0.b * w0 + this.color1.b * w1 + this.color2.b * w2) / area;
 
             return (r << 16 | g << 8 | b);
         }
