@@ -26,12 +26,12 @@ namespace ProjectPSX {
             Bits[index] = color;
         }
 
-        public int GetPixel(int x, int y) {
+        public int GetPixelRGB888(int x, int y) {
             int index = x + (y * Width);
             return Bits[index];
         }
 
-        public ushort GetPixel16(int x, int y) {
+        public ushort GetPixelBGR555(int x, int y) {
             int index = x + (y * Width);
             int color = Bits[index];
 

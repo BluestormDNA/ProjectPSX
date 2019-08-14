@@ -269,8 +269,8 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private uint readFromVRAM() {
-            ushort pixel0 = VRAM.GetPixel16(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
-            ushort pixel1 = VRAM.GetPixel16(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
+            ushort pixel0 = VRAM.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
+            ushort pixel1 = VRAM.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
             if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
                 vram_coord.x -= vram_coord.w;
                 vram_coord.y++;
@@ -633,7 +633,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         if (primitive.isSemiTransparent) {
-                            color0.val = (uint)(VRAM.GetPixel(x & 0x3FF, y & 0x1FF)); //back
+                            color0.val = (uint)(VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF)); //back
                             color1.val = (uint)color; //front
                             switch (transparency) {
                                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
@@ -848,7 +848,7 @@ namespace ProjectPSX.Devices {
 
             for (int yPos = 0; yPos < h; yPos++) {
                 for (int xPos = 0; xPos < w; xPos++) {
-                    int color = VRAM.GetPixel((sx + xPos) & 0x3FF, (sy + yPos) & 0x1FF);
+                    int color = VRAM.GetPixelRGB888((sx + xPos) & 0x3FF, (sy + yPos) & 0x1FF);
                     VRAM.SetPixel((dx + xPos) & 0x3FF, (dy + yPos) & 0x1FF, color);
                 }
             }
@@ -890,30 +890,31 @@ namespace ProjectPSX.Devices {
                 case 0: return get4bppTexel(x, y, clut, textureBase);
                 case 1: return get8bppTexel(x, y, clut, textureBase);
                 case 2: return get16bppTexel(x, y, textureBase);
+                case 3: return get16bppTexel(x, y, textureBase);
                 default: return 0x00FF00FF;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = VRAM.GetPixel16(x / 4 + textureBase.x, y + textureBase.y);
+            ushort index = VRAM.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 3) * 4) & 0xF;
             //VRAM.SetPixel(x / 4 + textureBase.x, y + textureBase.y, 0x00FF00FF);
             //VRAM.SetPixel(clut.x+ p, clut.y, 0x0000FFFF);
-            return VRAM.GetPixel(clut.x + p, clut.y);
+            return VRAM.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get8bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = VRAM.GetPixel16(x / 2 + textureBase.x, y + textureBase.y);
+            ushort index = VRAM.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 1) * 8) & 0xFF;
 
-            return VRAM.GetPixel(clut.x + p, clut.y);
+            return VRAM.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get16bppTexel(int x, int y, Point2D textureBase) {
-            return VRAM.GetPixel(x + textureBase.x, y + textureBase.y);
+            return VRAM.GetPixelRGB888(x + textureBase.x, y + textureBase.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
