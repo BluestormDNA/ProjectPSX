@@ -632,8 +632,8 @@ namespace ProjectPSX.Devices {
                             if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
                         }
 
-                        if (primitive.isSemiTransparent) {
-                            color0.val = (uint)(VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF)); //back
+                        if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
+                            color0.val = (uint)VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
                             color1.val = (uint)color; //front
                             switch (transparency) {
                                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
