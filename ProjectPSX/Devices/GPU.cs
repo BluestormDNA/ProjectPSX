@@ -616,20 +616,31 @@ namespace ProjectPSX.Devices {
                 for (int x = min.x; x < max.x; x++) {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 | w1 | w2) >= 0) {
+                        // reset default color of the triangle calculated outside the for as it gets overwriten as follows...
+                        int color = baseColor;
 
-                        int color = baseColor; //hack to fix flat transparent primitives tofix...
+                        if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
 
-                        //Transparency tests... this will need to be refactored for blend and lines!
                         if (primitive.isTextured) {
-                            color = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
-                            if (color == 0) {
+                            int texel = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
+                            if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
                                 w2 += A01;
                                 continue;
                             }
-                        } else {
-                            if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
+
+                            if (!primitive.isRawTextured) {
+                                color0.val = (uint)color;
+                                color1.val = (uint)texel;
+                                color1.r = clampToByte((int)((float)color0.r * color1.r / 0x7F));
+                                color1.g = clampToByte((int)((float)color0.g * color1.g / 0x7F));
+                                color1.b = clampToByte((int)((float)color0.b * color1.b / 0x7F));
+
+                                texel = (int)color1.val;
+                            }
+
+                            color = texel;
                         }
 
                         if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
@@ -728,6 +739,8 @@ namespace ProjectPSX.Devices {
             uint[] c = new uint[4];
             c[0] = color;
             c[1] = color;
+            c[2] = color;
+            c[3] = color;
 
             ushort palette = 0;
             short textureX = 0;
