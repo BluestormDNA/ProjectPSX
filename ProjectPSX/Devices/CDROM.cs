@@ -112,8 +112,6 @@ namespace ProjectPSX.Devices {
                     testCDBuffer = cd.Read(isSectorSizeRAW, Loc++);
                     cdBuffer = new Queue<byte>(testCDBuffer);
 
-                    // }
-
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
                     counter = 0;
@@ -172,7 +170,9 @@ namespace ProjectPSX.Devices {
                     break;
                 case 0x1F801801:
                     if (INDEX == 0) {
+                        //Console.BackgroundColor = ConsoleColor.Yellow;
                         //Console.WriteLine("[CDROM] [W01.0]     -------     COMMAND: {0}", value.ToString("x8"));
+                        //Console.ResetColor();
                         ExecuteCommand(value);
                     } else {
                         //Console.WriteLine("[CDROM] [Unhandled Write] Index: {0} Access: {1} Value: {2}", INDEX.ToString("x8"), addr.ToString("x8"), value.ToString("x8"));
@@ -229,7 +229,7 @@ namespace ProjectPSX.Devices {
                     }
                     break;
                 default:
-                    //Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                    Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
                     break;
             }
         }
@@ -240,12 +240,15 @@ namespace ProjectPSX.Devices {
                 case 0x02: setLoc(); break;
                 case 0x03: play(); break;
                 case 0x06: readN(); break;
+                case 0x07: motorOn(); break;
                 case 0x08: stop(); break;
                 case 0x09: pause(); break;
                 case 0x0A: init(); break;
                 case 0x0C: demute(); break;
                 case 0x0D: setFilter(); break;
                 case 0x0E: setMode(); break;
+                case 0x10: getLocL(); break;
+                case 0x11: getLocP(); break;
                 case 0x12: setSession(); break;
                 case 0x13: getTN(); break;
                 case 0x14: getTD(); break;
@@ -258,6 +261,44 @@ namespace ProjectPSX.Devices {
                 case uint _ when value >= 0x50 && value <= 0x57: lockUnlock(); break;
                 default: UnimplementedCDCommand(value); break;
             }
+        }
+
+        private void motorOn() {
+            STAT = 0x2;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+        }
+
+        private void getLocL() { //HARDCODED,THIS NEEDS CUE PARSER
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void getLocP() { //HARDCODED, THIS NEEDS CUE PARSER
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
+
+            interruptQueue.Enqueue(0x3);
         }
 
         private void lockUnlock() {
@@ -337,16 +378,13 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x2);
         }
 
-        //hardcoded track values for puzzle bobble 2 as we miss a cue parser yet
-        //byte[] mm = { 32, 0, 2, 2, 4, 5, 8, 11, 15, 18, 21, 21, 24, 25, 26, 29 };
-        //byte[] ss = { 46, 2, 46, 57, 12, 25, 37, 56, 07, 25, 39, 49, 13, 10, 24, 48 };
         private void getTD() { //todo
             int track = BcdToDec((byte)parameterBuffer.Dequeue());
-            Console.WriteLine("Track " + track);
+            //Console.WriteLine("Track " + track);
             responseBuffer.Enqueue(STAT);
 
-            //responseBuffer.Enqueue(mm[track]);
-            //responseBuffer.Enqueue(ss[track]);
+            responseBuffer.Enqueue(0);
+            responseBuffer.Enqueue(0);
 
             interruptQueue.Enqueue(0x3);
         }
@@ -463,7 +501,7 @@ namespace ProjectPSX.Devices {
 
             //There are 75 sectors on a second
             Loc = sector + (second * 75) + (minute * 60 * 75);
-
+            if (Loc < 0) Loc = 0;
             //Console.ForegroundColor = ConsoleColor.DarkGreen;
             //Console.WriteLine("[CDROM] setLoc " + minute + ":" + second + ":" + sector + " Loc: " + Loc);
             //Console.ReadLine();
@@ -581,7 +619,7 @@ namespace ProjectPSX.Devices {
             stat |= parametterBuffer_hasSpace() << 4;
             stat |= parametterBuffer_isEmpty() << 3;
             //stat |= XA-ADPCM() << 2;
-            stat |= (int)INDEX;
+            stat |= INDEX;
             return (byte)stat;
         }
 
