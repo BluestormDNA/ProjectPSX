@@ -72,7 +72,7 @@ namespace ProjectPSX {
                             if (instr.value == 0) output = "NOP";
                             else output = "SLL " + instr.rd;
                             break;
-                        case 0b00_0010: output = "SRL"; break;
+                        case 0b00_0010: output = "SRL R" + instr.rs + " " + (GPR[instr.rt] >> (int)instr.sa); break;
                         case 0b00_0011: output = "SRA"; break;
                         case 0b00_0100: output = "SLLV"; break;
                         case 0b00_0110: output = "SRLV"; break;
@@ -92,9 +92,9 @@ namespace ProjectPSX {
                         case 0b10_0001: output = "ADDU"; break;
                         case 0b10_0010: output = "SUB"; break;
                         case 0b10_0011: output = "SUBU"; break;
-                        case 0b10_0100: output = "AND"; break;
+                        case 0b10_0100: output = "AND R" + instr.rd + " R" + instr.rs + " & R" + instr.rt + " " + GPR[instr.rs].ToString("x8") + " & " + GPR[instr.rt].ToString("x8"); break;
                         case 0b10_0101: output = "OR"; values = "R" + instr.rd + "," + (GPR[instr.rs] | GPR[instr.rt]).ToString("x8"); break;
-                        case 0b10_0110: output = "XOR"; break;
+                        case 0b10_0110: output = "XOR R" + instr.rd + " R" + instr.rs + " ^ R" + instr.rt + " " + GPR[instr.rs].ToString("x8") + " ^ " + GPR[instr.rt].ToString("x8"); break;
                         case 0b10_0111: output = "NOR"; break;
                         case 0b10_1010: output = "SLT"; break;
                         case 0b10_1011: output = "SLTU"; break;
@@ -156,7 +156,7 @@ namespace ProjectPSX {
 
                 case 0b00_1100: //ANDI();
                     output = "ANDI";
-                    values = "R" + instr.rt + ", " + (GPR[instr.rs] & instr.imm).ToString("x8");
+                    values = "R" + instr.rt + ", " + "R " + GPR[instr.rs] + "AND " + instr.imm + "=" + (GPR[instr.rs] & instr.imm).ToString("x8");
                     break;
                 case 0b00_1101: //ORI();
                                 //setGPR(instr.rt, REG[instr.rs] | instr.imm);
@@ -224,6 +224,9 @@ namespace ProjectPSX {
                     else values = "R" + instr.rt + "[" + GPR[instr.rt].ToString("x8") + "], " + instr.imm_s.ToString("x8") + "(" + GPR[instr.rs].ToString("x8") + ")" + "[" + (instr.imm_s + GPR[instr.rs]).ToString("x8") + "]" + " WARNING IGNORED WRITE";
                     break;
                 case 0b10_1110: output = "SWR"; break;
+                case 0b11_0010: output = "LWC2"; break;
+                case 0b11_1010: output = "SWC2";
+                                values = "GTE R" + instr.rt +" -> R" + instr.rs + "= " + GPR[instr.rs].ToString("x8") + " + imm: " + instr.imm.ToString("x8") + " = " + (GPR[instr.rs] + instr.imm).ToString("x8"); break;
                 default:
                     break;
             }
