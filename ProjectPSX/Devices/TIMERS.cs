@@ -53,7 +53,7 @@ namespace ProjectPSX.Devices {
 
             private bool vblank;
             private bool hblank;
-            private int dotDiv;
+            private int dotDiv = 1;
 
             private bool prevHblank;
             private bool prevVblank;
@@ -108,9 +108,11 @@ namespace ProjectPSX.Devices {
 
                         if (clockSource == 0 || clockSource == 2) {
                             counterValue += (ushort)cycles;
+                            cycles = 0;
                         } else {
-                            counterValue += (ushort)(cycles * 11 / 7 / dotDiv); //DotClock
-                            cycles = (cycles*11) % (7 / dotDiv);
+                            ushort dot = (ushort)(cycles * 11 / 7 / dotDiv);
+                            counterValue += dot; //DotClock
+                            cycles = 0;
                         }
 
                         return handleIrq();
@@ -127,6 +129,7 @@ namespace ProjectPSX.Devices {
 
                         if (clockSource == 0 || clockSource == 2) {
                             counterValue += (ushort)cycles;
+                            cycles = 0;
                         } else {
                             counterValue += (ushort)(cycles / 2160);
                             cycles %= 2160;
@@ -140,6 +143,7 @@ namespace ProjectPSX.Devices {
 
                         if (clockSource == 0 || clockSource == 1) {
                             counterValue += (ushort)cycles;
+                            cycles = 0;
                         } else {
                             counterValue += (ushort)(cycles / 8);
                             cycles %= 8;
