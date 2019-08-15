@@ -32,5 +32,9 @@ namespace ProjectPSX {
             screen.Invalidate();
         }
 
+        public DoubleBufferedPanel getScreen() {
+            return screen;
+        }
+
     }
 }

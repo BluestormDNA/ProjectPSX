@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace ProjectPSX.Util {
-    class DoubleBufferedPanel : Panel {
+    public class DoubleBufferedPanel : Panel {
 
         public DoubleBufferedPanel() {
             this.DoubleBuffered = true;
