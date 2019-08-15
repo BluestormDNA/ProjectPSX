@@ -81,6 +81,7 @@ namespace ProjectPSX {
                 } else if (addr >= 0x1F80_1080 && addr <= 0x1F80_10FF) {
                     return dma.load(addr);
                 } else if (addr >= 0x1F80_1100 && addr <= 0x1F80_112B) {
+                    //Console.WriteLine("[TIMERS] Load32 " + addr.ToString("x8"));
                     return timers.load(Width.WORD, addr);
                 } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
                     return cdrom.load(Width.WORD, addr);
@@ -100,6 +101,7 @@ namespace ProjectPSX {
             } else if (addr >= 0xFFFE_0000 && addr < 0xFFFE_0200) {
                 return load32(addr & 0x1FF, IO);
             } else {
+                Console.WriteLine("[BUS] Load32 Unsupported: " + addr.ToString("x8"));
                 return 0xFFFF_FFFF;
             }
         }
@@ -130,7 +132,8 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
+                            //Console.WriteLine("[TIMERS] Load16 " + addr.ToString("x8"));
+                            //Console.ReadLine();
                             return timers.load(Width.HALF, addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(Width.HALF, addr);
@@ -152,7 +155,7 @@ namespace ProjectPSX {
                     return load16(addr & 0x1FF, IO);
 
                 default:
-                    Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+                    Console.WriteLine("[BUS] Load16 Unsupported: " + addr.ToString("x8"));
                     return 0xFFFF_FFFF;
             }
         }
@@ -183,7 +186,8 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Load " + addr.ToString("x8"));
+                            Console.WriteLine("[TIMERS] Load8 " + addr.ToString("x8"));
+                            Console.ReadLine();
                             return timers.load(Width.BYTE, addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(Width.BYTE, addr);
@@ -205,7 +209,7 @@ namespace ProjectPSX {
                     return load8(addr & 0x1FF, IO);
 
                 default:
-                    Console.WriteLine("[BUS] Load Unsupported: " + addr.ToString("x4"));
+                    Console.WriteLine("[BUS] Load8 Unsupported: " + addr.ToString("x8"));
                     return 0xFFFF_FFFF;
             }
         }
@@ -248,7 +252,7 @@ namespace ProjectPSX {
                             dma.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
+                            //Console.WriteLine("[TIMERS] Write32 " +addr.ToString("x8") + value.ToString("x8"));
                             timers.write(Width.WORD, addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
@@ -283,7 +287,7 @@ namespace ProjectPSX {
                     break;
 
                 default:
-                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    Console.WriteLine("[BUS] Write32 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
                     break;
             }
         }
@@ -320,7 +324,8 @@ namespace ProjectPSX {
                             dma.write(addr, value);
                             break;
                         case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
+                            //Console.WriteLine("[TIMERS] Write 16 " +addr.ToString("x8") + value.ToString("x8"));
+                            //Console.ReadLine();
                             timers.write(Width.HALF, addr, value);
                             break;
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
@@ -349,7 +354,7 @@ namespace ProjectPSX {
                     break;
 
                 default:
-                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    Console.WriteLine("[BUS] Write16 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
                     break;
             }
         }
@@ -386,7 +391,8 @@ namespace ProjectPSX {
                             dma.write(addr, value);
                             break;
                         case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Write " +addr.ToString("x8") + value.ToString("x8"));
+                            Console.WriteLine("[TIMERS] Write 8 " +addr.ToString("x8") + value.ToString("x8"));
+                            Console.ReadLine();
                             timers.write(Width.BYTE, addr, value);
                             break;
                         case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
@@ -415,7 +421,7 @@ namespace ProjectPSX {
                     break;
 
                 default:
-                    Console.WriteLine("[BUS] Write Unsupported: " + addr.ToString("x4") + ": " + value.ToString("x4"));
+                    Console.WriteLine("[BUS] Write8 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
                     break;
             }
         }
@@ -495,11 +501,14 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void tick(int cycles) {
             if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
-            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM); // /2 this breaks the PS Logo as it gets "bad hankakus" on TTY but makes FF7 work.
+            if (cdrom.tick(100)) interruptController.set(Interrupt.CDROM);
             if (dma.tick()) interruptController.set(Interrupt.DMA);
-            if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
-            if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
-            if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
+
+            timers.syncGPU(gpu.getBlanksAndDot()); //test
+
+            if (timers.tick(0, 100)) interruptController.set(Interrupt.TIMER0);
+            if (timers.tick(1, 100)) interruptController.set(Interrupt.TIMER1);
+            if (timers.tick(2, 100)) interruptController.set(Interrupt.TIMER2);
             if (joypad.tick(cycles)) interruptController.set(Interrupt.CONTR);
         }
 
