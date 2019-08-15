@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 
 namespace ProjectPSX.Devices {
     public class DMA {
@@ -263,8 +264,9 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            private void linkedList() {
+            private void linkedList() { //WARNING QUEUE ARRAY TESTS !!!!
                 uint header = 0;
+                Queue<uint> queue = new Queue<uint>(); //test
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
@@ -274,13 +276,18 @@ namespace ProjectPSX.Devices {
 
                     if (size > 0) {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
-                        //uint load = dma_transfer.fromRAM(dmaAddress);
+                        uint[] load = dma_transfer.fromRAM(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
                         //dma_transfer.toGPU(load);
-                        dma_transfer.toGPU(dma_transfer.fromRAM(baseAddress, size));
+                        //dma_transfer.toGPU();
+                        for (int i = 0; i < load.Length; i++) {
+                            queue.Enqueue(load[i]);
+                        }
                     }
                     baseAddress = header & 0x1ffffc;
                 }
+
+                dma_transfer.toGPU(queue.ToArray());
             }
 
             private bool isActive() {
