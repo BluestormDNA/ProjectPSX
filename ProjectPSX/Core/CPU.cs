@@ -7,8 +7,6 @@ namespace ProjectPSX {
     internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
 
         private BUS bus;
-        //private static Action[] opTable;
-        //private static Action[] specialTable;
 
         private uint PC_Now; // PC on current execution as PC and PC Predictor go ahead after fetch. This is handy on Branch Delay so it dosn't give erronious PC-4
         private uint PC = 0xbfc0_0000; // Bios Entry Point
@@ -42,12 +40,13 @@ namespace ProjectPSX {
         private BIOS_Disassembler bios;
         private MIPS_Disassembler mips;
 
-        //private bool interruptDelay;
-
         private struct MEM {
             public uint register;
             public uint value;
         }
+        private MEM writeBack;
+        private MEM memoryLoad;
+        private MEM delayedMemoryLoad;
 
         public struct Instr {
             public uint value;                     //debug
@@ -76,80 +75,32 @@ namespace ProjectPSX {
         }
         private Instr instr;
 
-        private MEM writeBack;
-        private MEM memoryLoad;
-        private MEM delayedMemoryLoad;
-
+        //debug expansion and exe
         public bool debug = false;
         private bool isEX1 = true;
         private bool exe = true;
 
         public CPU(BUS bus) {
-            //interruptDelay = true;
             this.bus = bus;
             bios = new BIOS_Disassembler(bus);
             mips = new MIPS_Disassembler(ref HI, ref LO, GPR, COP0_GPR);
             COP0_GPR[15] = 0x2; //PRID Processor ID
             gte = new GTE(this); //debug
-            //init();
         }
-
-        // FUNCTION TABLE PROVED TO BE SLOWER THAN THE SWITCH BECAUSE C# DELEGATES ARE VERY SLOW STILL HERE FOR TESTS
-        //private void init() {
-        //    opTable = new Action[] {
-        //        SPECIAL2, BCOND,    J,      JAL,    BEQ,    BNE,    BLEZ,   BGTZ,
-        //        ADDI,     ADDIU,    SLTI,   SLTIU,  ANDI,   ORI,    XORI,   LUI,
-        //        COP0,     NAE,     COP2,   NAE,   NA,     NA,     NA,     NA,
-        //        NA,       NA,       NA,     NA,     NA,     NA,     NA,     NA,
-        //        LB,       LH,       LWL,    LW,     LBU,    LHU,    LWR,    NA,
-        //        SB,       SH,       SWL,    SW,     NA,     NA,     SWR,    NA,
-        //        NAE, NAE, LWC2, NAE, NA, NA, NA, NA,
-        //        NAE, NAE, SWC2, NAE, NA, NA, NA, NA
-        //    };
-        //
-        //    specialTable = new Action[] {
-        //        SLL,     NA,     SRL,    SRA,    SLLV,      NA,     SRLV,   SRAV,
-        //        JR,      JALR,   NA,     NA,     SYSCALL,   BREAK,  NA,     NA,
-        //        MFHI,    MTHI,   MFLO,   MTLO,   NA,        NA,     NA,     NA,
-        //        MULT, MULTU, DIV, DIVU, NA, NA, NA, NA,
-        //        ADD, ADDU, SUB, SUBU, AND, OR, XOR, NOR,
-        //        NA, NA, SLT, SLTU, NA, NA, NA, NA,
-        //        NA, NA, NA, NA, NA, NA, NA, NA,
-        //        NA, NA, NA, NA, NA, NA, NA, NA,
-        //    };
-        //}
-        //
-        //private void SPECIAL2() {
-        //    specialTable[instr.function]();
-        //}
-        //
-        //private void NA() {
-        //    EXCEPTION(EX.ILLEGAL_INSTR, instr.opcode & 0x3);
-        //}
-        //
-        //private void NAE() { }
-
-        //private void Execute2() {
-        //    opTable[instr.opcode]();
-        //}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
             if(debug) mips.disassemble(instr, PC_Now, PC_Predictor);
             Execute();
-            //Execute2(); //function table tests
             MemAccess();
             WriteBack();
 
             /*debug*/
-            //TTY();
-            //if (exe) forceTest(tgpu); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
+            TTY();
+            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
             //if (isEX1) forceEX1();
 
-            //if(cycle > 150000000) {
-            //    debug = true;
-            //}
             //bios.verbose(PC_Now, GPR);
             if (debug) {
 
@@ -161,7 +112,7 @@ namespace ProjectPSX {
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./cube.exe";
+        string demo = "./RenderPolygon16BPP.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
