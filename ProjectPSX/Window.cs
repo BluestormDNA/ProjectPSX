@@ -11,6 +11,7 @@ namespace ProjectPSX {
         private readonly DoubleBufferedPanel screen = new DoubleBufferedPanel();
 
         private ProjectPSX psx;
+        private int fps;
 
         public Window() {
             this.Text = "ProjectPSX";
@@ -28,6 +29,7 @@ namespace ProjectPSX {
         }
 
         public void update(int[] vramBits) {
+            fps++;
             Buffer.BlockCopy(vramBits, 0, buffer.Bits, 0, 0x200000);
             screen.Invalidate();
         }
@@ -36,5 +38,10 @@ namespace ProjectPSX {
             return screen;
         }
 
+        internal int getFPS() {
+            int currentFps = fps;
+            fps = 0;
+            return currentFps;
+        }
     }
 }
