@@ -20,7 +20,7 @@ namespace ProjectPSX {
 
             switch (pc) {
                 case 0xA0:
-                    msg = "[BIOS] [Function A " + function.ToString("x2") + "] ";
+                    msg = $"[BIOS] [Function A {function:x2}] ";
                     switch (function) {
                         case 0x00: //msg += $"FileOpen({biosOutput(arg1)}, {biosOutput(arg2)})"; break;
                         case 0x01: msg += $"FileSeek(fd, offset, seektype)"; break;
@@ -64,7 +64,7 @@ namespace ProjectPSX {
                         case 0x25: msg += $"toupper(char)"; break;
                         case 0x26: msg += $"tolower(char)"; break;
                         case 0x27: msg += $"bcopy(src,dst,len)"; break;
-                        case 0x28: msg += $"bzero(dst = {arg1.ToString("x8")},len = {arg2.ToString("x8")})"; break;
+                        case 0x28: msg += $"bzero(dst = {arg1:x8},len = {arg2:x8})"; break;
                         case 0x29: msg += $"bcmp(ptr1,ptr2,len"; break;
                         case 0x2A: msg += $"memcpy(dst,src,len)"; break;
                         case 0x2B: msg += $"memset(dst,fillbyte,len)"; break;
@@ -149,13 +149,13 @@ namespace ProjectPSX {
                         case 0x75:
                         case 0x76:
                         case 0x77: msg += $"return 0"; break;
-                        case 0x78: msg += $"CdAsyncSeekL({arg1.ToString("x8")})"; break;
+                        case 0x78: msg += $"CdAsyncSeekL({arg1:x8})"; break;
                         case 0x79:
                         case 0x7A:
                         case 0x7B: msg += $"return 0"; break;
-                        case 0x7C: msg += $"CdAsyncGetStatus({arg1.ToString("x8")})"; break;
+                        case 0x7C: msg += $"CdAsyncGetStatus({arg1:x8})"; break;
                         case 0x7D: msg += $"return 0"; break;
-                        case 0x7E: msg += $"CdAsyncReadSector({arg1.ToString("x8")},{arg2.ToString("x8")},{arg3.ToString("x8")})"; break;
+                        case 0x7E: msg += $"CdAsyncReadSector({arg1:x8)},{arg2:x8},{arg3:x8})"; break;
                         case 0x7F:
 
                         case 0x80: msg += $"return 0"; break;
@@ -193,7 +193,7 @@ namespace ProjectPSX {
                         case 0x9F: msg += $"SetMemSize(megabytes)"; break;
 
                         case 0xA0: msg += $"WarmBoot()"; break;
-                        case 0xA1: msg += $"SystemErrorBootOrDiskFailure({(char)arg1},{arg2.ToString("x8")})"; break;
+                        case 0xA1: msg += $"SystemErrorBootOrDiskFailure({(char)arg1},{arg2:x8})"; break;
                         case 0xA2: msg += $"EnqueueCdIntr()"; break;
                         case 0xA3: msg += $"DequeueCdIntr()"; break;
                         case 0xA4: msg += $"CdGetLbn(filename)"; break;
@@ -220,7 +220,7 @@ namespace ProjectPSX {
                     log(msg);
                     break;
                 case 0xB0:
-                    msg = "[BIOS] [Function B " + function.ToString("x2") + "] ";
+                    msg = $"[BIOS] [Function B {function:x2}] ";
                     switch (function) {
                         case 0x00: msg += "alloc_kernel_memory(size)"; break;
                         case 0x01: msg += "free_kernel_memory(buf)"; break;
@@ -229,13 +229,13 @@ namespace ProjectPSX {
                         case 0x04: msg += "enable_timer_irq(t)"; break;
                         case 0x05: msg += "disable_timer_irq(t)"; break;
                         case 0x06: msg += "restart_timer(t)"; break;
-                        case 0x07: msg += $"DeliverEvent(class = {arg1.ToString("x8")}, spec = {arg2.ToString("x8")})"; break;
-                        case 0x08: msg += $"OpenEvent(class = {arg1.ToString("x8")},spec = {arg2.ToString("x8")},mode = {arg3.ToString("x8")},func = {arg4.ToString("x8")})"; break;
-                        case 0x09: msg += $"CloseEvent(event = {arg1.ToString("x8")})"; break;
-                        case 0x0A: msg += $"WaitEvent(event = {arg1.ToString("x8")})"; break;
-                        case 0x0B: return; //msg += $"TestEvent({arg1.ToString("x8")})"; break; //SPAM
-                        case 0x0C: msg += $"EnableEvent(event = {arg1.ToString("x8")})"; break;
-                        case 0x0D: msg += $"DisableEvent(event = {arg1.ToString("x8")})"; break;
+                        case 0x07: msg += $"DeliverEvent(class = {arg1:x8}, spec = {arg2:x8})"; break;
+                        case 0x08: msg += $"OpenEvent(class = {arg1:x8},spec = {arg2:x8},mode = {arg3:x8},func = {arg4:x8})"; break;
+                        case 0x09: msg += $"CloseEvent(event = {arg1:x8})"; break;
+                        case 0x0A: msg += $"WaitEvent(event = {arg1:x8})"; break;
+                        case 0x0B: return; //msg += $"TestEvent({arg1:x8})"; break; //SPAM
+                        case 0x0C: msg += $"EnableEvent(event = {arg1:x8})"; break;
+                        case 0x0D: msg += $"DisableEvent(event = {arg1:x8})"; break;
                         case 0x0E: msg += "OpenThread(reg_PC,reg_SP_FP,reg_GP)"; break;
                         case 0x0F: msg += "CloseThread(handle)"; break;
 
@@ -327,7 +327,7 @@ namespace ProjectPSX {
                     log(msg);
                     break;
                 case 0xC0:
-                    msg = "[BIOS] [Function C " + function.ToString("x2") + "] ";
+                    msg = $"[BIOS] [Function C {function:x2}] ";
                     switch (function) {
                         case 0x00: msg += $"EnqueueTimerAndVblankIrqs(priority) ;used with prio=1"; break;
                         case 0x01: msg += $"EnqueueSyscallHandler(priority)     ;used with prio=0"; break;
@@ -383,10 +383,10 @@ namespace ProjectPSX {
             string output = "";
             char c = (char)bus.load8(addr++);
             while (c != '\0') {
-                 output += c;
-                 c = (char)bus.load8(addr++);
-             }
-             return output;
+                output += c;
+                c = (char)bus.load8(addr++);
+            }
+            return output;
             //return null;
         }
     }
