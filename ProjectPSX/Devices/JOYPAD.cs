@@ -24,7 +24,6 @@ namespace ProjectPSX {
         bool parityTypeOdd;
         bool clkOutputPolarity;
 
-
         //1F80104Ah JOY_CTRL (R/W) (usually 1003h,3003h,0000h)
         bool TXenable;
         bool JoyOutput;
@@ -41,38 +40,19 @@ namespace ProjectPSX {
 
         Controller controller = new DigitalController();
 
-        int counter = 500000;
+        int counter;
 
         public bool tick(int cycles) {
-            if (JoyOutput && JOY_TX_DATA.Count != 0) {
-                TXreadyFlag2 = true;
-
-                if (desiredSlotNumber == 1) {
-                    JOY_TX_DATA.Dequeue();
-                    JOY_RX_DATA.Enqueue(0xFF);
-                    return false;
+            if (counter > 0) {
+                counter -= cycles;
+                if(counter == 0) {
+                    //Console.WriteLine("[IRQ] TICK Triggering JOYPAD");
+                    ackInputLevel = false;
+                    interruptRequest = true;
                 }
-
-                JOY_RX_DATA.Enqueue(controller.process(JOY_TX_DATA.Dequeue()));
-                //Console.WriteLine("[JOYPAD] TICK Enqueued RX response " + JOY_RX_DATA.Peek().ToString("x2"));
-                //Console.ReadLine();
-                ackInputLevel = controller.ack;
-                counter = 500;
-                
             }
-            //Console.WriteLine(ack);
-            if (ackInputLevel && counter <= 0) {
-                //Console.WriteLine("[IRQ] TICK Triggering JOYPAD");
-                ackInputLevel = false;
-                interruptRequest = true;
-                return true;
-            }
-            if (counter > 0) counter -= cycles;
 
-            //baudrateTimer -= cycles;
-
-            //if (baudrateTimer <= 0)
-            //    reloadTimer();
+            if (interruptRequest) return true;
 
             return false;
         }
@@ -89,6 +69,24 @@ namespace ProjectPSX {
                     JOY_TX_DATA.Enqueue((byte)value);
                     TXreadyFlag1 = true;
                     TXreadyFlag2 = false;
+
+                    if (JoyOutput) {
+                        TXreadyFlag2 = true;
+
+                        if (desiredSlotNumber == 1) {
+                            JOY_TX_DATA.Dequeue();
+                            JOY_RX_DATA.Enqueue(0xFF);
+                            return;
+                        }
+
+                        JOY_RX_DATA.Enqueue(controller.process(JOY_TX_DATA.Dequeue()));
+                        //Console.WriteLine("[JOYPAD] TICK Enqueued RX response " + JOY_RX_DATA.Peek().ToString("x2"));
+                        //Console.ReadLine();
+                        ack = controller.ack;
+                        ackInputLevel = true;
+                    }
+
+                    if (ack) counter = 500;
                     break;
                 case 0x48:
                     //Console.WriteLine("[JOYPAD] SET MODE " + value.ToString("x4"));
@@ -120,6 +118,7 @@ namespace ProjectPSX {
                     JOY_BAUD = (ushort)value;
                     reloadTimer();
                     break;
+                default: Console.WriteLine($"Unhandled JOYPAD Write {w} {addr:x8} {value:x8}"); Console.ReadLine(); break;
             }
         }
 
@@ -134,7 +133,6 @@ namespace ProjectPSX {
             RXinterruptEnable = ((value >> 11) & 0x1) != 0;
             ACKinterruptEnable = ((value >> 12) & 0x1) != 0;
             desiredSlotNumber = (value >> 13) & 0x1;
-            //TODO ACK???
         }
 
         private void setJOY_MODE(uint value) {
@@ -150,7 +148,7 @@ namespace ProjectPSX {
                 case 0x40:
                     if (JOY_RX_DATA.Count == 0) {
                         //Console.WriteLine("[JOYPAD] WARNING COUNT WAS 0 GET RX DATA returning 0");
-                        return 0;
+                        return 0xFF;
                     }
                     //Console.WriteLine("[JOYPAD] GET RX DATA " + JOY_RX_DATA.Peek().ToString("x2"));
                     //Console.WriteLine("count" + (JOY_RX_DATA.Count - 1));
@@ -168,7 +166,7 @@ namespace ProjectPSX {
                     //Console.WriteLine("[JOYPAD] GET BAUD" + JOY_BAUD.ToString("x8"));
                     return JOY_BAUD;
                 default:
-                    //Console.WriteLine("[JOYPAD] Unhandled Read at" + addr);
+                    Console.WriteLine("[JOYPAD] Unhandled Read at" + addr); Console.ReadLine();
                     return 0xFFFF_FFFF;
             }
         }
@@ -208,7 +206,7 @@ namespace ProjectPSX {
             joy_stat |= (interruptRequest ? 1u : 0u) << 9;
             joy_stat |= (uint)baudrateTimer << 11;
 
-            ack = false;
+            ackInputLevel = false;
 
             return joy_stat;
         }
