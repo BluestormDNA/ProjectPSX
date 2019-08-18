@@ -26,7 +26,7 @@ namespace ProjectPSX {
         //Other Subsystems
         public InterruptController interruptController;
         private DMA dma;
-        private GPU gpu;
+        public GPU gpu;
         private CDROM cdrom;
         private TIMERS timers;
         private JOYPAD joypad;
@@ -391,7 +391,7 @@ namespace ProjectPSX {
                             dma.write(addr, value);
                             break;
                         case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            Console.WriteLine("[TIMERS] Write 8 " +addr.ToString("x8") + value.ToString("x8"));
+                            Console.WriteLine("[TIMERS] Write 8 " + addr.ToString("x8") + value.ToString("x8"));
                             Console.ReadLine();
                             timers.write(Width.BYTE, addr, value);
                             break;
@@ -501,15 +501,15 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void tick(int cycles) {
             if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
-            if (cdrom.tick(100)) interruptController.set(Interrupt.CDROM);
+            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM);
             if (dma.tick()) interruptController.set(Interrupt.DMA);
 
             timers.syncGPU(gpu.getBlanksAndDot()); //test
 
-            if (timers.tick(0, 100)) interruptController.set(Interrupt.TIMER0);
-            if (timers.tick(1, 100)) interruptController.set(Interrupt.TIMER1);
-            if (timers.tick(2, 100)) interruptController.set(Interrupt.TIMER2);
-            if (joypad.tick(cycles)) interruptController.set(Interrupt.CONTR);
+            if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
+            if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
+            if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
+            if (joypad.tick(100)) interruptController.set(Interrupt.CONTR);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -605,8 +605,8 @@ namespace ProjectPSX {
         }
 
         public override void toMDECin(uint[] load) { //todo: actual process the whole array
-            foreach(uint word in load)
-            mdec.writeMDEC0_Command(word);
+            foreach (uint word in load)
+                mdec.writeMDEC0_Command(word);
         }
 
         public override uint fromMDECout() {

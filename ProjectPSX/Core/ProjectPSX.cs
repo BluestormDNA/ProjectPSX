@@ -30,8 +30,10 @@ namespace ProjectPSX {
         public void toggleDebug(object sender, MouseEventArgs e) {
             if (!cpu.debug) {
                 cpu.debug = true;
+                bus.gpu.debug = true;
             } else {
                 cpu.debug = false;
+                bus.gpu.debug = false;
             }
         }
 
@@ -45,13 +47,6 @@ namespace ProjectPSX {
             watch.Start();
             try {
                 while (true) {
-                    //for (int i = 0; i < 100; i++) {
-                    //    cpu.Run();
-                    //    counter++;
-                    //}
-                    //
-                    //bus.tick(200); //2 ticks per opcode
-                    //cpu.handleInterrupts();
                     for (int i = 0; i < 2822; i++) {
                         for (int j = 0; j < 100; j++) {
                             cpu.Run();
@@ -63,17 +58,11 @@ namespace ProjectPSX {
 
                     }
 
-
                     if (watch.ElapsedMilliseconds > 1000) {
-                        //window.Text = " ProjectPSX | Speed % " + (((float)counter / (PSX_MHZ / 3)) * 100);
+                        window.Text = " ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
                         watch.Restart();
                         counter = 0;
                     }
-                    //if (counter >= PSX_MHZ/2) {
-                    //    counter = 0;
-                    //    window.Text = "ProjectPSX | Fps: " + (60 / ((float)watch.ElapsedMilliseconds / 1000)).ToString();
-                    //    watch.Restart();
-                    //}
                 }
             } catch (Exception e) {
                 Console.WriteLine(e.ToString());
