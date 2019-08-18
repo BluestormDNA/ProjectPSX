@@ -25,6 +25,8 @@ namespace ProjectPSX.Devices {
         private Window window;
         private DirectBitmap VRAM = new DirectBitmap();
 
+        public bool debug;
+
         public void setWindow(Window window) {
             this.window = window;
         }
@@ -322,9 +324,13 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine(commandBuffer.Length);
 
             while (pointer < buffer.Length) {
-                command = commandBuffer[pointer] >> 24;
-                //Console.WriteLine("Buffer Executing " + command.ToString("x2") + " pointer " + pointer);
-                ExecuteGP0(command);
+                if (mode == Mode.COMMAND) {
+                    command = commandBuffer[pointer] >> 24;
+                    //if (debug) Console.WriteLine("Buffer Executing " + command.ToString("x2") + " pointer " + pointer);
+                    ExecuteGP0(command);
+                } else {
+                    WriteToVRAM(commandBuffer[pointer++]);
+                }
             }
             pointer = 0;
 
@@ -364,7 +370,7 @@ namespace ProjectPSX.Devices {
                 case uint nop when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
                     GP0_NOP(); break;
 
-                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_NOP(); break;// throw new NotImplementedException();
+                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_NOP(); break;
             }
         }
 
@@ -402,12 +408,12 @@ namespace ProjectPSX.Devices {
             uint v2 = commandBuffer[pointer++];
             arguments++;
 
-            rasterizeLine(v1, v2, color1, color2);
+            rasterizeLine(v1, v2, color1, color2, isTransparent);
 
             if (!isPoly) return;
             renderline = 0;
             while (/*arguments < 0xF &&*/ (commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
-                Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
+                //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
                 arguments++;
                 color1 = color2;
                 if (isShaded) {
@@ -416,7 +422,7 @@ namespace ProjectPSX.Devices {
                 }
                 v1 = v2;
                 v2 = commandBuffer[pointer++];
-                rasterizeLine(v1, v2, color1, color2);
+                rasterizeLine(v1, v2, color1, color2, isTransparent);
                 //Console.WriteLine("RASTERIZE " + ++rasterizeline);
                 //window.update(VRAM.Bits);
                 //Console.ReadLine();
@@ -431,7 +437,7 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void rasterizeLine(uint v1, uint v2, uint color1, uint color2) {
+        private void rasterizeLine(uint v1, uint v2, uint color1, uint color2, bool isTransparent) {
             short x = signed11bit(v1 & 0xFFFF);
             short y = signed11bit((v1 >> 16) & 0xFFFF);
 
@@ -471,8 +477,13 @@ namespace ProjectPSX.Devices {
                 float ratio = (float)i / longest;
                 int color = interpolate(color1, color2, ratio);
 
-                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) //why boundingbox dosnt work???
+                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
+                    //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
+                    if (isTransparent) {
+                        color = handleSemiTransp(x, y, color, (uint)transparency << 5);
+                    }
                     VRAM.SetPixel(x, y, color);
+                }
 
                 numerator += shortest;
                 if (!(numerator < longest)) {
@@ -492,9 +503,9 @@ namespace ProjectPSX.Devices {
             color1.val = c1;
             color2.val = c2;
 
-            byte r = (byte)(color2.r * ratio +  color1.r * (1 - ratio));
-            byte g = (byte)(color2.g * ratio +  color1.g * (1 - ratio));
-            byte b = (byte)(color2.b * ratio +  color1.b * (1 - ratio));
+            byte r = (byte)(color2.r * ratio + color1.r * (1 - ratio));
+            byte g = (byte)(color2.g * ratio + color1.g * (1 - ratio));
+            byte b = (byte)(color2.b * ratio + color1.b * (1 - ratio));
 
             return (r << 16 | g << 8 | b);
         }
@@ -514,7 +525,7 @@ namespace ProjectPSX.Devices {
             primitive.isShaded = isShaded;
             primitive.isTextured = isTextured;
             primitive.isSemiTransparent = isSemiTransparent;
-            primitive.isRawTextured = isRawTextured;         
+            primitive.isRawTextured = isRawTextured;
 
             int vertexN = isQuad ? 4 : 3;
 
@@ -529,7 +540,7 @@ namespace ProjectPSX.Devices {
             }
 
             uint palette = 0;
-            uint texpage = 0;
+            uint texpage = (uint)transparency << 5;
 
             for (int i = 0; i < vertexN; i++) {
                 if (isShaded) c[i] = commandBuffer[pointer++];
@@ -593,6 +604,7 @@ namespace ProjectPSX.Devices {
             //TEST
             area = w0_row + w1_row + w2_row;
             int depth = (int)(texpage >> 7) & 0x3;
+            //transparency = (byte)((texpage >> 5) & 0x3);
 
             Point2D clut = new Point2D();
             clut.x = (short)((palette & 0x3f) << 4);
@@ -633,9 +645,9 @@ namespace ProjectPSX.Devices {
                             if (!primitive.isRawTextured) {
                                 color0.val = (uint)color;
                                 color1.val = (uint)texel;
-                                color1.r = clampToByte((int)((float)color0.r * color1.r / 0x7F));
-                                color1.g = clampToByte((int)((float)color0.g * color1.g / 0x7F));
-                                color1.b = clampToByte((int)((float)color0.b * color1.b / 0x7F));
+                                color1.r = clampToByte((float)color0.r * color1.r / 0x7F);
+                                color1.g = clampToByte((float)color0.g * color1.g / 0x7F);
+                                color1.b = clampToByte((float)color0.b * color1.b / 0x7F);
 
                                 texel = (int)color1.val;
                             }
@@ -644,31 +656,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                            color0.val = (uint)VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
-                            color1.val = (uint)color; //front
-                            switch (transparency) {
-                                case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
-                                    color2.r = clampToByte(color0.r / 2 + color1.r / 2);
-                                    color2.g = clampToByte(color0.g / 2 + color1.g / 2);
-                                    color2.b = clampToByte(color0.b / 2 + color1.b / 2);
-                                    break;
-                                case 1://1.0 x B + 1.0 x F    ;aka B+F
-                                    color2.r = clampToByte(color0.r + color1.r);
-                                    color2.g = clampToByte(color0.g + color1.g);
-                                    color2.b = clampToByte(color0.b + color1.b);
-                                    break;
-                                case 2: //1.0 x B - 1.0 x F    ;aka B-F
-                                    color2.r = clampToByte(color0.r - color1.r);
-                                    color2.g = clampToByte(color0.g - color1.g);
-                                    color2.b = clampToByte(color0.b - color1.b);
-                                    break;
-                                case 3: //1.0 x B +0.25 x F    ;aka B+F/4
-                                    color2.r = clampToByte(color0.r + color1.r / 4);
-                                    color2.g = clampToByte(color0.g + color1.g / 4);
-                                    color2.b = clampToByte(color0.b + color1.b / 4);
-                                    break;
-                            }
-                            color = (color2.b << 16 | color2.g << 8 | color2.r);
+                            color = handleSemiTransp(x, y, color, texpage);
                         }
 
                         VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), color);
@@ -683,9 +671,42 @@ namespace ProjectPSX.Devices {
                 w1_row += B20;
                 w2_row += B01;
             }
+            if (debug) {
+                //window.update(VRAM.Bits);
+                Console.ReadLine();
+            }
         }
 
-        private byte clampToByte(int v) {
+        private int handleSemiTransp(int x, int y, int color, uint texpage) {
+            color0.val = (uint)VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
+            color1.val = (uint)color; //front
+            switch ((texpage >> 5) & 0x3) {
+                case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
+                    color2.r = clampToByte(color0.r / 2f + color1.r / 2f);
+                    color2.g = clampToByte(color0.g / 2f + color1.g / 2f);
+                    color2.b = clampToByte(color0.b / 2f + color1.b / 2f);
+                    break;
+                case 1://1.0 x B + 1.0 x F    ;aka B+F
+                    color2.r = clampToByte(color0.r + color1.r);
+                    color2.g = clampToByte(color0.g + color1.g);
+                    color2.b = clampToByte(color0.b + color1.b);
+                    break;
+                case 2: //1.0 x B - 1.0 x F    ;aka B-F
+                    color2.r = clampToByte(color0.r - color1.r);
+                    color2.g = clampToByte(color0.g - color1.g);
+                    color2.b = clampToByte(color0.b - color1.b);
+                    break;
+                case 3: //1.0 x B +0.25 x F    ;aka B+F/4
+                    color2.r = clampToByte(color0.r + color1.r / 4f);
+                    color2.g = clampToByte(color0.g + color1.g / 4f);
+                    color2.b = clampToByte(color0.b + color1.b / 4f);
+                    break;
+                default: Console.WriteLine("Unhandled SemiTransp Mode"); break;
+            }//actually doing RGB calcs on BGR struct...
+            return (color2.b << 16 | color2.g << 8 | color2.r);
+        }
+
+        private byte clampToByte(float v) {
             if (v < 0) return 0;
             else if (v > 0xFF) return 0xFF;
             else return (byte)v;
