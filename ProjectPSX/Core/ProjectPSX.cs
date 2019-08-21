@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Windows.Forms;
 
 namespace ProjectPSX {
@@ -13,7 +14,6 @@ namespace ProjectPSX {
         private Window window;
 
         private long counter;
-        Stopwatch watch = new Stopwatch();
 
         public ProjectPSX(Window window) {
             this.window = window;
@@ -44,30 +44,29 @@ namespace ProjectPSX {
         private void EXECUTE() {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
-            watch.Start();
+
+            var timer = new System.Timers.Timer(1000);
+            timer.Elapsed += OnTimedEvent;
+            timer.Enabled = true;
+
             try {
                 while (true) {
-                    for (int i = 0; i < 2822; i++) {
-                        for (int j = 0; j < 100; j++) {
-                            cpu.Run();
-                            //cpu.handleInterrupts();
-                            counter++;
-                        }
-                        bus.tick(200);
-                        cpu.handleInterrupts();
-
+                    for (int j = 0; j < 100; j++) {
+                        cpu.Run();
+                        //cpu.handleInterrupts();
+                        counter++;
                     }
-
-                    if (watch.ElapsedMilliseconds > 1000) {
-                        window.Text = " ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
-                        watch.Restart();
-                        counter = 0;
-                    }
+                    bus.tick(200);
+                    cpu.handleInterrupts();
                 }
             } catch (Exception e) {
                 Console.WriteLine(e.ToString());
             }
         }
 
+        private void OnTimedEvent(object sender, ElapsedEventArgs e) {
+            window.Text = " ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
+            counter = 0;
+        }
     }
 }
