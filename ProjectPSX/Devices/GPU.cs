@@ -393,8 +393,6 @@ namespace ProjectPSX.Devices {
             bool isPoly = (command & (1 << 27)) != 0;
             bool isShaded = (command & (1 << 28)) != 0;
             bool isTransparent = (command & (1 << 25)) != 0;
-            bool isRaw = (command & (1 << 24)) != 0;
-            bool isTextureMapped = (command & (1 << 26)) != 0;
 
             //if (isTextureMapped /*isRaw*/) return;
 
@@ -480,7 +478,7 @@ namespace ProjectPSX.Devices {
                 if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
                     //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
                     if (isTransparent) {
-                        color = handleSemiTransp(x, y, color, (uint)transparency << 5);
+                        color = handleSemiTransp(x, y, color, transparency);
                     }
                     VRAM.SetPixel(x, y, color);
                 }
@@ -604,7 +602,7 @@ namespace ProjectPSX.Devices {
             //TEST
             area = w0_row + w1_row + w2_row;
             int depth = (int)(texpage >> 7) & 0x3;
-            //transparency = (byte)((texpage >> 5) & 0x3);
+            int semiTransp = (int)((texpage >> 5) & 0x3);
 
             Point2D clut = new Point2D();
             clut.x = (short)((palette & 0x3f) << 4);
@@ -645,9 +643,9 @@ namespace ProjectPSX.Devices {
                             if (!primitive.isRawTextured) {
                                 color0.val = (uint)color;
                                 color1.val = (uint)texel;
-                                color1.r = clampToByte((float)color0.r * color1.r / 0x7F);
-                                color1.g = clampToByte((float)color0.g * color1.g / 0x7F);
-                                color1.b = clampToByte((float)color0.b * color1.b / 0x7F);
+                                color1.r = clampToFF((float)color0.r * color1.r / 0x7F);
+                                color1.g = clampToFF((float)color0.g * color1.g / 0x7F);
+                                color1.b = clampToFF((float)color0.b * color1.b / 0x7F);
 
                                 texel = (int)color1.val;
                             }
@@ -656,7 +654,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                            color = handleSemiTransp(x, y, color, texpage);
+                            color = handleSemiTransp(x, y, color, semiTransp);
                         }
 
                         VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), color);
@@ -671,44 +669,47 @@ namespace ProjectPSX.Devices {
                 w1_row += B20;
                 w2_row += B01;
             }
-            if (debug) {
-                //window.update(VRAM.Bits);
-                Console.ReadLine();
-            }
+            //if (debug) {
+            //    //window.update(VRAM.Bits);
+            //    Console.ReadLine();
+            //}
         }
 
-        private int handleSemiTransp(int x, int y, int color, uint texpage) {
+        private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
             color0.val = (uint)VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
             color1.val = (uint)color; //front
-            switch ((texpage >> 5) & 0x3) {
+            switch (semiTranspMode) {
                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
-                    color2.r = clampToByte(color0.r / 2f + color1.r / 2f);
-                    color2.g = clampToByte(color0.g / 2f + color1.g / 2f);
-                    color2.b = clampToByte(color0.b / 2f + color1.b / 2f);
+                    color2.r = (byte)(color0.r / 2f + color1.r / 2f);
+                    color2.g = (byte)(color0.g / 2f + color1.g / 2f);
+                    color2.b = (byte)(color0.b / 2f + color1.b / 2f);
                     break;
                 case 1://1.0 x B + 1.0 x F    ;aka B+F
-                    color2.r = clampToByte(color0.r + color1.r);
-                    color2.g = clampToByte(color0.g + color1.g);
-                    color2.b = clampToByte(color0.b + color1.b);
+                    color2.r = clampToFF(color0.r + color1.r);
+                    color2.g = clampToFF(color0.g + color1.g);
+                    color2.b = clampToFF(color0.b + color1.b);
                     break;
                 case 2: //1.0 x B - 1.0 x F    ;aka B-F
-                    color2.r = clampToByte(color0.r - color1.r);
-                    color2.g = clampToByte(color0.g - color1.g);
-                    color2.b = clampToByte(color0.b - color1.b);
+                    color2.r = clampToZero(color0.r - color1.r);
+                    color2.g = clampToZero(color0.g - color1.g);
+                    color2.b = clampToZero(color0.b - color1.b);
                     break;
                 case 3: //1.0 x B +0.25 x F    ;aka B+F/4
-                    color2.r = clampToByte(color0.r + color1.r / 4f);
-                    color2.g = clampToByte(color0.g + color1.g / 4f);
-                    color2.b = clampToByte(color0.b + color1.b / 4f);
+                    color2.r = clampToFF(color0.r + color1.r / 4f);
+                    color2.g = clampToFF(color0.g + color1.g / 4f);
+                    color2.b = clampToFF(color0.b + color1.b / 4f);
                     break;
-                default: Console.WriteLine("Unhandled SemiTransp Mode"); break;
             }//actually doing RGB calcs on BGR struct...
-            return (color2.b << 16 | color2.g << 8 | color2.r);
+            return (int)color2.val;
         }
 
-        private byte clampToByte(float v) {
+        private byte clampToZero(float v) {
             if (v < 0) return 0;
-            else if (v > 0xFF) return 0xFF;
+            else return (byte)v;
+        }
+
+        private byte clampToFF(float v) {
+            if (v > 0xFF) return 0xFF;
             else return (byte)v;
         }
 
@@ -1123,7 +1124,7 @@ namespace ProjectPSX.Devices {
             horizontalResolution1 = 0;
             isVerticalResolution480 = false;
             isPal = false;
-            isVerticalInterlace = false; //?
+            isVerticalInterlace = false;
             is24BitDepth = false;
             isInterruptRequested = false;
             isInterlaceField = true;
@@ -1186,7 +1187,7 @@ namespace ProjectPSX.Devices {
          3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //C
          3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //D
          1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //E
-         1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1 //F
+         1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1  //F
     };
     }
 }
