@@ -367,9 +367,8 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWR() {
             uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = (uint)(addr & ~0b11);
-
-            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -385,9 +384,8 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWL() {
             uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = (uint)(addr & ~0b11);
-
-            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
 
             uint value = 0;
             switch (addr & 0b11) {
@@ -403,11 +401,8 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWR() {
             uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = (uint)(addr & ~0b11);
-
-            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
-
-            //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
 
             uint value = 0;
             uint LRValue = GPR[instr.rt];
@@ -423,18 +418,14 @@ namespace ProjectPSX {
                 case 3: value = (LRValue & 0xFFFF_FF00) | (aligned_load >> 24); break;
             }
 
-            //Console.WriteLine("case " + (addr & 0b11) + " LWR Value " + value.ToString("x8"));
             delayedLoad(instr.rt, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWL() {
             uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = (uint)(addr & ~0b11);
-
-            uint aligned_load = bus.load32(aligned_addr & 0xFFFF_FFFC);
-
-            //Console.WriteLine("Addr {0}   Aligned Addr {1}", addr.ToString("x8"), aligned_addr.ToString("x8"));
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
 
             uint value = 0;
             uint LRValue = GPR[instr.rt];
