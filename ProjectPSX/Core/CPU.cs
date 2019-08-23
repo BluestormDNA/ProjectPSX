@@ -91,28 +91,28 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
-            if(debug) mips.disassemble(instr, PC_Now, PC_Predictor);
+            //if(debug) mips.disassemble(instr, PC_Now, PC_Predictor);
             Execute();
             MemAccess();
             WriteBack();
 
             /*debug*/
-            TTY();
+            //TTY();
             //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
             //if (isEX1) forceEX1();
 
             //bios.verbose(PC_Now, GPR);
-            if (debug) {
-
-            mips.PrintRegs();
-            }
+            //if (debug) {
+            //
+            //mips.PrintRegs();
+            //}
         }
 
         string tcpu = "./psxtest_cpu.exe";
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./RenderPolygon16BPP.exe";
+        string demo = "./oxy.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
@@ -193,11 +193,15 @@ namespace ProjectPSX {
         private void Execute() {
             switch (instr.opcode) {
                 case 0b00_0000: SPECIAL(); break;//R-Type opcodes
+                case 0b10_1011: SW(); break;
+                case 0b10_0011: LW(); break;
+                case 0b00_0100: BEQ(); break;
+                case 0b00_0101: BNE(); break;
                 case 0b00_0001: BCOND(); break;
                 case 0b00_0010: J(); break;
                 case 0b00_0011: JAL(); break;
-                case 0b00_0100: BEQ(); break;
-                case 0b00_0101: BNE(); break;
+                case 0b01_0010: COP2(); break;
+
                 case 0b00_0110: BLEZ(); break;
                 case 0b00_0111: BGTZ(); break;
                 case 0b00_1000: ADDI(); break;
@@ -210,19 +214,19 @@ namespace ProjectPSX {
                 case 0b00_1111: LUI(); break;
                 case 0b01_0000: COP0(); break;
                 case 0b01_0001: /*COP1()*/ break;
-                case 0b01_0010: COP2(); break;
+
                 case 0b01_0011: /*COP3()*/ break;
                 case 0b10_0000: LB(); break;
                 case 0b10_0001: LH(); break;
                 case 0b10_0010: LWL(); break;
-                case 0b10_0011: LW(); break;
+
                 case 0b10_0100: LBU(); break;
                 case 0b10_0101: LHU(); break;
                 case 0b10_0110: LWR(); break;
                 case 0b10_1000: SB(); break;
                 case 0b10_1001: SH(); break;
                 case 0b10_1010: SWL(); break;
-                case 0b10_1011: SW(); break;
+
                 case 0b10_1110: SWR(); break;
                 case 0b11_0000: //LWC0
                 case 0b11_0001: //LWC1
