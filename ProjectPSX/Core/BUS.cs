@@ -66,7 +66,7 @@ namespace ProjectPSX {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             if (addr < 0x1F00_0000) {
-                return loadRAM32(addr & 0x1F_FFFF, RAM);
+                return loadRAM32(addr/*, RAM*/);
             } else if (addr < 0x1F08_0000) {
                 return load32(addr & 0x7_FFFF, EX1);
             } else if (addr >= 0x1f80_0000 && addr < 0x1f80_0400) {
@@ -525,7 +525,7 @@ namespace ProjectPSX {
         }
 
 
-        private unsafe uint loadRAM32(uint addr, byte[] rAM) {
+        private unsafe uint loadRAM32(uint addr/*, byte[] rAM*/) {
             return *(uint*)(ramPtr + (addr & 0x1F_FFFF)); //this fixed raiden and ctr
             //return (uint)(rAM[addr + 3] << 24 | rAM[addr + 2] << 16 | rAM[addr + 1] << 8 | rAM[addr]);
         }
