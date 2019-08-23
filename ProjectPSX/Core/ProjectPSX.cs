@@ -50,22 +50,22 @@ namespace ProjectPSX {
             timer.Enabled = true;
 
             try {
-                while (true) {
-                    for (int j = 0; j < 100; j++) {
-                        cpu.Run();
-                        //cpu.handleInterrupts();
-                        counter++;
-                    }
-                    bus.tick(200);
-                    cpu.handleInterrupts();
+            while (true) {
+                for (int j = 0; j < 100; j++) {
+                    cpu.Run();
+                    //cpu.handleInterrupts();
+                    counter++;
                 }
+                bus.tick(200);
+                cpu.handleInterrupts();
+            }
             } catch (Exception e) {
                 Console.WriteLine(e.ToString());
             }
         }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
-            window.Text = " ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
+            window.Text = "ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
             counter = 0;
         }
     }

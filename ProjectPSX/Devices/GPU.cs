@@ -139,6 +139,8 @@ namespace ProjectPSX.Devices {
         private ushort displayY2;
 
         private int videoCycles;
+        private int horizontalTiming = 3413;
+        private int verticalTiming = 263;
 
         public GPU() {
             mode = Mode.COMMAND;
@@ -150,9 +152,6 @@ namespace ProjectPSX.Devices {
             //Video clock is the cpu clock multiplied by 11/7.
             videoCycles += cycles * 11 / 7;
 
-            //Todo: move this to the funct that sets isPal and res
-            int horizontalTiming = isPal ? 3406 : 3413;
-            int verticalTiming = isPal ? 314 : 263;
             //int horizontalResolution = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
 
             //Console.WriteLine("x1 " + displayX1 + " x2 " + displayX2);
@@ -1077,16 +1076,22 @@ namespace ProjectPSX.Devices {
         private void GP1_DisplayVerticalRange(uint value) {
             displayY1 = (ushort)(value & 0x3FF);
             displayY2 = (ushort)((value >> 10) & 0x3FF);
+
+            window.setVerticalRange(displayY1, displayY2);
         }
 
         private void GP1_DisplayHorizontalRange(uint value) {
             displayX1 = (ushort)(value & 0xFFF);
             displayX2 = (ushort)((value >> 12) & 0xFFF);
+
+            window.setHorizontalRange(displayX1, displayX2);
         }
 
         private void GP1_DisplayVRAMStart(uint value) {
             displayVRAMXStart = (ushort)(value & 0x3FE);
             displayVRAMYStart = (ushort)((value >> 10) & 0x1FE);
+
+            window.setVRAMStart(displayVRAMXStart, displayVRAMYStart);
         }
 
         private void GP1_DMADirection(uint value) {
@@ -1101,6 +1106,14 @@ namespace ProjectPSX.Devices {
             isVerticalInterlace = (value & 0x20) != 0;
             horizontalResolution2 = (byte)((value & 0x40) >> 6);
             isReverseFlag = (value & 0x80) != 0;
+
+            horizontalTiming = isPal ? 3406 : 3413;
+            verticalTiming = isPal ? 314 : 263;
+
+            int horizontalRes = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
+            int verticalRes = isVerticalResolution480 ? 480 : 240;
+
+            window.setDisplayMode(horizontalRes, verticalRes, is24BitDepth);
         }
 
         private void GP1_ResetGPU() {

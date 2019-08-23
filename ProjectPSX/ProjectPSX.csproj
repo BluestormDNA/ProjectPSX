@@ -89,6 +89,7 @@
     <Compile Include="Devices\CDROM.cs" />
     <Compile Include="Devices\InterruptController.cs" />
     <Compile Include="Devices\TIMERS.cs" />
+    <Compile Include="Util\Display.cs" />
     <Compile Include="Util\DoubleBufferedPanel.cs">
       <SubType>Component</SubType>
     </Compile>
