@@ -42,9 +42,9 @@ namespace ProjectPSX {
 
         int counter;
 
-        public bool tick(int cycles) {
+        public bool tick() {
             if (counter > 0) {
-                counter -= cycles;
+                counter -= 100;
                 if(counter == 0) {
                     //Console.WriteLine("[IRQ] TICK Triggering JOYPAD");
                     ackInputLevel = false;
