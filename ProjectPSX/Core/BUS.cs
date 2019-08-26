@@ -226,7 +226,7 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    write32(addr & 0x1F_FFFF, value, RAM);
+                    writeRAM32(addr, value);
                     break;
 
                 case uint _ when addr < 0x1F08_0000:
@@ -509,7 +509,7 @@ namespace ProjectPSX {
             if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
             if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
             if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
-            if (joypad.tick(100)) interruptController.set(Interrupt.CONTR);
+            if (joypad.tick()) interruptController.set(Interrupt.CONTR);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -527,7 +527,13 @@ namespace ProjectPSX {
 
         private unsafe uint loadRAM32(uint addr/*, byte[] rAM*/) {
             return *(uint*)(ramPtr + (addr & 0x1F_FFFF)); //this fixed raiden and ctr
-            //return (uint)(rAM[addr + 3] << 24 | rAM[addr + 2] << 16 | rAM[addr + 1] << 8 | rAM[addr]);
+            //return (uint)(RAM[addr + 3] << 24 | RAM[addr + 2] << 16 | RAM[addr + 1] << 8 | RAM[addr]);
+            //return Unsafe.As<byte, uint>(ref RAM[addr]);
+        }
+
+        private unsafe void writeRAM32(uint addr, uint value) {
+            *(uint*)(ramPtr + (addr & 0x1F_FFFF)) = value; 
+            //Unsafe.Write(ramPtr + (addr & 0x1F_FFFF), value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -542,6 +548,8 @@ namespace ProjectPSX {
             //3: fastest approach (it appears that even with the overhead it avoids the pinning and can be inlined)
             return Unsafe.As<byte, uint>(ref memory[addr]);
         }
+
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void write32(uint addr, uint value, byte[] memory) {
@@ -563,12 +571,16 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void toRAM(uint addr, uint value) {
-            write32(addr, value, RAM);
-            //unsafe {
-            //    var ptr = Unsafe.AsPointer(ref RAM[addr]);
-            //    Unsafe.Write(ptr, value);
-            //}
-        }
+            //write32(addr, value, RAM);
+            //writeRAM32(addr, value);
+
+            unsafe {
+                *(uint*)(ramPtr + (addr & 0x1F_FFFF)) = value;
+                //Unsafe.Write(ramPtr + (addr & 0x1F_FFFF), value);
+                ////    var ptr = Unsafe.AsPointer(ref RAM[addr]);
+                ////    Unsafe.Write(ptr, value);
+                }
+            }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void toRAM(uint addr, byte[] buffer, uint size) {
