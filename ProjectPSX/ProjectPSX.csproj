@@ -93,6 +93,7 @@
     <Compile Include="Util\DoubleBufferedPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Util\Extension.cs" />
     <Compile Include="Util\MIPS_Disassembler.cs" />
     <Compile Include="Window.cs">
       <SubType>Form</SubType>
