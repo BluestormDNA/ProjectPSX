@@ -154,9 +154,6 @@ namespace ProjectPSX.Devices {
 
             //int horizontalResolution = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
 
-            //Console.WriteLine("x1 " + displayX1 + " x2 " + displayX2);
-            //Console.WriteLine("y1 " + displayY1 + " y2 " + displayY2);
-
             if (videoCycles >= horizontalTiming) {
                 videoCycles -= horizontalTiming;
                 scanLine++;
@@ -631,7 +628,7 @@ namespace ProjectPSX.Devices {
                         if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
 
                         if (primitive.isTextured) {
-                            int texel = getTextureColor(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
+                            int texel = getTexel(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
                             if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -742,13 +739,11 @@ namespace ProjectPSX.Devices {
             uint color = command & 0xFFFFFF;
             uint opcode = (command >> 24) & 0xFF;
 
-            bool isShaded = (command & (1 << 28)) != 0;
             bool isTextured = (command & (1 << 26)) != 0;
             bool isSemiTransparent = (command & (1 << 25)) != 0;
             bool isRawTextured = (command & (1 << 24)) != 0;
 
             Primitive primitive = new Primitive();
-            primitive.isShaded = isShaded;
             primitive.isTextured = isTextured;
             primitive.isSemiTransparent = isSemiTransparent;
             primitive.isRawTextured = isRawTextured;
@@ -759,9 +754,9 @@ namespace ProjectPSX.Devices {
 
             uint[] c = new uint[4];
             c[0] = color;
-            c[1] = color;
-            c[2] = color;
-            c[3] = color;
+            //c[1] = color;
+            //c[2] = color;
+            //c[3] = color;
 
             ushort palette = 0;
             short textureX = 0;
@@ -791,9 +786,6 @@ namespace ProjectPSX.Devices {
                 case 0x3:
                     width = 16; heigth = 16;
                     break;
-                default:
-                    Console.WriteLine("INCORRECT LENGTH");
-                    break;
             }
 
             int y = yo + drawingYOffset;
@@ -802,25 +794,81 @@ namespace ProjectPSX.Devices {
             v[0].x = (short)x;
             v[0].y = (short)y;
 
-            v[1].x = (short)(x + width);
-            v[1].y = (short)y;
+            //v[1].x = (short)(x + width);
+            //v[1].y = (short)y;
 
-            v[2].x = (short)x;
-            v[2].y = (short)(y + heigth);
+            //v[2].x = (short)x;
+            //v[2].y = (short)(y + heigth);
 
             v[3].x = (short)(x + width);
             v[3].y = (short)(y + heigth);
 
 
             t[0].x = textureX; t[0].y = textureY;
-            t[1].x = textureX + width; t[1].y = textureY;
-            t[2].x = textureX; t[2].y = textureY + heigth;
-            t[3].x = textureX + width; t[3].y = textureY + heigth;
+            //t[1].x = textureX + width; t[1].y = textureY;
+            //t[2].x = textureX; t[2].y = textureY + heigth;
+            //t[3].x = textureX + width; t[3].y = textureY + heigth;
 
             uint texpage = getTexpageFromGPU();
 
-            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
-            rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
+            //rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
+            //rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
+            rasterizeRect(v, t, c, palette, texpage, primitive);
+        }
+
+        private void rasterizeRect(Point2D[] vec, TextureData[] t, uint[] c, ushort palette, uint texpage, Primitive primitive) {
+            int xOrigin = Math.Max(vec[0].x, drawingAreaLeft);
+            int yOrigin = Math.Max(vec[0].y, drawingAreaTop);
+            int width = Math.Min(vec[3].x, drawingAreaRight);
+            int height = Math.Min(vec[3].y, drawingAreaBottom);
+
+            int depth = (int)(texpage >> 7) & 0x3;
+            int semiTransp = (int)((texpage >> 5) & 0x3);
+
+            Point2D clut = new Point2D();
+            clut.x = (short)((palette & 0x3f) << 4);
+            clut.y = (short)((palette >> 6) & 0x1FF);
+
+            Point2D textureBase = new Point2D();
+            textureBase.x = (short)((texpage & 0xF) << 6);
+            textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
+
+            int uOrigin = t[0].x;
+            int vOrigin = t[0].y;
+
+            int baseColor = GetRgbColor(c[0]);
+
+            for (int y = yOrigin, v = vOrigin; y < height; y++, v++) {
+                for (int x = xOrigin, u = uOrigin; x < width; x++, u++) {
+                    int color = baseColor;
+
+                    if (primitive.isTextured) {
+                        int texel = getRectTexel(u, v, clut, textureBase, depth);
+                        if (texel == 0) {
+                            continue;
+                        }
+
+                        if (!primitive.isRawTextured) {
+                            color0.val = (uint)color;
+                            color1.val = (uint)texel;
+                            color1.r = clampToFF((float)color0.r * color1.r / 0x7F);
+                            color1.g = clampToFF((float)color0.g * color1.g / 0x7F);
+                            color1.b = clampToFF((float)color0.b * color1.b / 0x7F);
+                        
+                            texel = (int)color1.val;
+                        }
+
+                        color = texel;
+                    }
+
+                    if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
+                        color = handleSemiTransp(x, y, color, semiTransp);
+                    }
+
+                    VRAM.SetPixel(x, y, color);
+                }
+
+            }
         }
 
         private void GP0_MemCopyRectVRAMtoCPU() {
@@ -907,11 +955,30 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTextureColor(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase, int depth) {
+        private int getTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase, int depth) {
             //https://codeplea.com/triangular-interpolation
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
             int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
 
+            x &= 255;
+            y &= 255;
+
+            // Texture masking
+            // texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
+            x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
+            y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
+
+            switch (depth) {
+                case 0: return get4bppTexel(x, y, clut, textureBase);
+                case 1: return get8bppTexel(x, y, clut, textureBase);
+                case 2: return get16bppTexel(x, y, textureBase);
+                case 3: return get16bppTexel(x, y, textureBase);
+                default: return 0x00FF00FF;
+            }
+        }
+
+
+        private int getRectTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
             x &= 255;
             y &= 255;
 
@@ -948,6 +1015,7 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get16bppTexel(int x, int y, Point2D textureBase) {
+            //VRAM.SetPixel(x + textureBase.x, y + textureBase.y, 0x00FF00FF);
             return VRAM.GetPixelRGB888(x + textureBase.x, y + textureBase.y);
         }
 
@@ -1054,7 +1122,7 @@ namespace ProjectPSX.Devices {
                 case 0x2: GPUREAD = (uint)(textureWindowOffsetY << 15 | textureWindowOffsetX << 10 | textureWindowMaskY << 5 | textureWindowMaskX); break;
                 case 0x3: GPUREAD = (uint)(drawingAreaTop << 10 | drawingAreaLeft); break;
                 case 0x4: GPUREAD = (uint)(drawingAreaBottom << 10 | drawingAreaRight); break;
-                case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | drawingXOffset); break;
+                case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | (ushort)drawingXOffset); break;
                 case 0x7: GPUREAD = 2; break;
                 case 0x8: GPUREAD = 0; break;
                 default: Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
