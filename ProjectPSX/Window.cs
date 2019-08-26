@@ -34,7 +34,7 @@ namespace ProjectPSX {
             this.AutoSize = true;
             this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.vramViewerToggle);
+            this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.vramViewerToggle);
 
             screen.BackgroundImage = display.Bitmap;// TESTING
             screen.Size = new Size(640, 480);
@@ -47,54 +47,58 @@ namespace ProjectPSX {
         }
 
         public void update(int[] vramBits) {
-            fps++;
 
             if (vramViewer) {
                 Buffer.BlockCopy(vramBits, 0, display.Bits, 0, 0x200000);
-                screen.Invalidate();
-                return;
-            }
-
-
-            if (is24BitDepth) { //pretty much hacked from our current limitations on vram...
-                for (int y = 0; y < verticalRes; y++) {
-                    int offset = 0;
-                    for (int x = 0; x < horizontalRes; x += 2) {
-                        int p0rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
-                        int p1rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
-                        int p2rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
-
-                        ushort p0bgr555 = GetPixelBGR555(p0rgb);
-                        ushort p1bgr555 = GetPixelBGR555(p1rgb);
-                        ushort p2bgr555 = GetPixelBGR555(p2rgb);
-
-                        //[(G0R0][R1)(B0][B1G1)]
-                        //   RG    B - R   GB
-
-                        int p0R = p0bgr555 & 0xFF;
-                        int p0G = (p0bgr555 >> 8) & 0xFF;
-                        int p0B = p1bgr555 & 0xFF;
-                        int p1R = (p1bgr555 >> 8) & 0xFF;
-                        int p1G = p2bgr555 & 0xFF;
-                        int p1B = (p2bgr555 >> 8) & 0xFF;
-
-                        int p0rgb24bpp = p0R << 16 | p0G << 8 | p0B;
-                        int p1rgb24bpp = p1R << 16 | p1G << 8 | p1B;
-
-                        display.Bits[x + (y * horizontalRes)] = p0rgb24bpp;
-                        display.Bits[x + 1 + (y * horizontalRes)] = p1rgb24bpp;
-                    }
-                }
+            } else if (is24BitDepth) { //pretty much hacked from our current limitations on vram...
+                blit24bpp(vramBits);
             } else {
-                for (int y = 0; y < display.Height; y++) {
-                    for (int x = 0; x < display.Width; x++) {
-                        int pixel = vramBits[(x + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
-                        display.Bits[x + (y * horizontalRes)] = pixel;
-                        //Console.WriteLine(y + " " + x);
-                    }
+                blit16bpp(vramBits);
+            }
+
+            fps++;
+            screen.Invalidate();
+        }
+
+        private void blit24bpp(int[] vramBits) {
+            for (int y = 0; y < verticalRes; y++) {
+                int offset = 0;
+                for (int x = 0; x < horizontalRes; x += 2) {
+                    int p0rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
+                    int p1rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
+                    int p2rgb = vramBits[(offset++ + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
+
+                    ushort p0bgr555 = GetPixelBGR555(p0rgb);
+                    ushort p1bgr555 = GetPixelBGR555(p1rgb);
+                    ushort p2bgr555 = GetPixelBGR555(p2rgb);
+
+                    //[(G0R0][R1)(B0][B1G1)]
+                    //   RG    B - R   GB
+
+                    int p0R = p0bgr555 & 0xFF;
+                    int p0G = (p0bgr555 >> 8) & 0xFF;
+                    int p0B = p1bgr555 & 0xFF;
+                    int p1R = (p1bgr555 >> 8) & 0xFF;
+                    int p1G = p2bgr555 & 0xFF;
+                    int p1B = (p2bgr555 >> 8) & 0xFF;
+
+                    int p0rgb24bpp = p0R << 16 | p0G << 8 | p0B;
+                    int p1rgb24bpp = p1R << 16 | p1G << 8 | p1B;
+
+                    display.Bits[x + (y * horizontalRes)] = p0rgb24bpp;
+                    display.Bits[x + 1 + (y * horizontalRes)] = p1rgb24bpp;
                 }
             }
-            screen.Invalidate();
+        }
+
+        private void blit16bpp(int[] vramBits) {
+            for (int y = 0; y < display.Height; y++) {
+                for (int x = 0; x < display.Width; x++) {
+                    int pixel = vramBits[(x + displayVRAMXStart) + ((y + displayVRAMYStart) * 1024)];
+                    display.Bits[x + (y * horizontalRes)] = pixel;
+                    //Console.WriteLine(y + " " + x);
+                }
+            }
         }
 
         public ushort GetPixelBGR555(int color) {
@@ -157,7 +161,7 @@ namespace ProjectPSX {
             //Console.WriteLine("Horizontal Range " + displayX1 + " " + displayX2);
         }
 
-        private void vramViewerToggle(object sender, KeyEventArgs e) {
+        private void vramViewerToggle(object sender, KeyEventArgs e) { //this is very buggy but its only for debug purposes maybe disable it when unneded?
             if(e.KeyCode == Keys.Tab) {
                 if (!vramViewer) {
                     display = new Display(1024, 512);
