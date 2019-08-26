@@ -55,9 +55,7 @@ namespace ProjectPSX.Devices {
 
         private enum Mode {
             Idle,
-            Seek,
             Read,
-            Transfer
         }
         Mode mode = Mode.Idle;
 
@@ -92,15 +90,6 @@ namespace ProjectPSX.Devices {
                     //Console.WriteLine("[CDROM] MODE IDLE");
                     break;
 
-                case Mode.Seek:
-                    if (interruptQueue.Count != 0) {
-                        return false;
-                    }
-                    counter = 0;
-                    mode = Mode.Read; //??? GET RID OF THIS
-                    //Console.WriteLine("[CDROM] MODE SEEK");
-                    break;
-
                 case Mode.Read:
                     if (counter < 33868800 / (isDoubleSpeed ? 150 : 75) || interruptQueue.Count != 0) {
                         return false;
@@ -118,14 +107,6 @@ namespace ProjectPSX.Devices {
 
                     //Console.WriteLine("[CDROM] MODE READ");
                     break;
-
-                case Mode.Transfer:
-                    if (/*counter < 10000 ||*/ interruptQueue.Count != 0) {
-                        return false;
-                    }
-                    counter = 0;
-
-                    break;
             }
             return false;
 
@@ -138,7 +119,10 @@ namespace ProjectPSX.Devices {
                     return STATUS();
                 case 0x1F801801:
                     //Console.WriteLine("[CDROM] [L01] RESPONSE " + responseBuffer.Peek().ToString("x8"));
+                    //Console.ReadLine();
+                    if (responseBuffer.Count > 0)
                     return responseBuffer.Dequeue();
+                    return 0xFF;
                 case 0x1F801802:
                     //Console.WriteLine("[CDROM] [L02] DATA");// Console.ReadLine();
                     //Console.WriteLine(dataBuffer.Count);
@@ -235,6 +219,9 @@ namespace ProjectPSX.Devices {
         }
 
         private void ExecuteCommand(uint value) {
+            //Console.WriteLine("[CDROM] Command " + value.ToString("x4"));
+            interruptQueue.Clear(); //this fixes the badhankakus on bios, but it confirms our cdrom timming problems...
+            //responseBuffer.Clear();
             switch (value) {
                 case 0x01: getStat(); break;
                 case 0x02: setLoc(); break;
@@ -244,6 +231,7 @@ namespace ProjectPSX.Devices {
                 case 0x08: stop(); break;
                 case 0x09: pause(); break;
                 case 0x0A: init(); break;
+                case 0x0B: mute(); break;
                 case 0x0C: demute(); break;
                 case 0x0D: setFilter(); break;
                 case 0x0E: setMode(); break;
@@ -257,10 +245,24 @@ namespace ProjectPSX.Devices {
                 case 0x19: test(); break;
                 case 0x1A: getID(); break;
                 case 0x1B: readS(); break;
+                case 0x1E: readTOC(); break;
                 case 0x1F: videoCD(); break;
                 case uint _ when value >= 0x50 && value <= 0x57: lockUnlock(); break;
                 default: UnimplementedCDCommand(value); break;
             }
+        }
+
+        private void mute() {
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void readTOC() {
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
         }
 
         private void motorOn() {
@@ -274,30 +276,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void getLocL() { //HARDCODED,THIS NEEDS CUE PARSER
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-
+            responseBuffer.EnqueueRange<uint>(0, 0, 0, 0, 0, 0, 0, 0);
             interruptQueue.Enqueue(0x3);
         }
 
         private void getLocP() { //HARDCODED, THIS NEEDS CUE PARSER
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-
+            responseBuffer.EnqueueRange<uint>(0, 0, 0, 0, 0, 0, 0, 0);
             interruptQueue.Enqueue(0x3);
         }
 
@@ -306,8 +290,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void videoCD() { //INT5(11h,40h)  ;-Unused/invalid
-            parameterBuffer.Enqueue(0x11);
-            parameterBuffer.Enqueue(0x40);
+            responseBuffer.EnqueueRange<uint>(0x11, 0x40);
 
             interruptQueue.Enqueue(0x5);
         }
@@ -381,19 +364,12 @@ namespace ProjectPSX.Devices {
         private void getTD() { //todo
             int track = BcdToDec((byte)parameterBuffer.Dequeue());
             //Console.WriteLine("Track " + track);
-            responseBuffer.Enqueue(STAT);
-
-            responseBuffer.Enqueue(0);
-            responseBuffer.Enqueue(0);
-
+            responseBuffer.EnqueueRange<uint>(STAT, 0, 0);
             interruptQueue.Enqueue(0x3);
         }
 
-        private void getTN() {//todo
-            responseBuffer.Enqueue(STAT);
-            responseBuffer.Enqueue(0x1);
-            responseBuffer.Enqueue(0x1);//<--hardcoded number of traks!
-
+        private void getTN() {//todo hardcoded number of traks!
+            responseBuffer.EnqueueRange<uint>(STAT, 1, 1);
             interruptQueue.Enqueue(0x3);
         }
 
@@ -475,8 +451,6 @@ namespace ProjectPSX.Devices {
             SeekL = Loc;
             STAT = 0x42; // seek
 
-            mode = Mode.Seek;
-
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
@@ -519,26 +493,14 @@ namespace ProjectPSX.Devices {
             //STAT = 0x2; //0x40 seek
             //responseBuffer.Enqueue(STAT);
             //interruptQueue.Enqueue(0x3);
-            //
-            //responseBuffer.Enqueue(0x08);
-            //responseBuffer.Enqueue(0x40);
-            //responseBuffer.Enqueue(0x00);
-            //responseBuffer.Enqueue(0x00);
-            //
-            //responseBuffer.Enqueue(0x00);
-            //responseBuffer.Enqueue(0x00);
-            //responseBuffer.Enqueue(0x00);
-            //responseBuffer.Enqueue(0x00);
+
+            //responseBuffer.AddRange<uint>(0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
             //interruptQueue.Enqueue(0x5);
 
             //Door Open              INT5(11h,80h)  N/A
             //STAT = 0x10; //Shell Open
+            //responseBuffer.AddRange<uint>(0x11, 0x80, 0x00, 0x00);
             //interruptQueue.Enqueue(0x5);
-            //
-            //responseBuffer.Enqueue(0x11);
-            //responseBuffer.Enqueue(0x80);
-            //responseBuffer.Enqueue(0x0);
-            //responseBuffer.Enqueue(0x0);
 
             //Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
             STAT = 0x40; //0x40 seek
@@ -546,15 +508,8 @@ namespace ProjectPSX.Devices {
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
-            responseBuffer.Enqueue(0x02);
-            responseBuffer.Enqueue(0x00);
-            responseBuffer.Enqueue(0x20);
-            responseBuffer.Enqueue(0x00);
+            responseBuffer.EnqueueRange<uint>(0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41); //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe) 
 
-            responseBuffer.Enqueue(0x53); //S
-            responseBuffer.Enqueue(0x43); //C
-            responseBuffer.Enqueue(0x45); //E
-            responseBuffer.Enqueue(0x41); //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe) 
             interruptQueue.Enqueue(0x2);
         }
 
@@ -570,35 +525,34 @@ namespace ProjectPSX.Devices {
 
         private void test() {
             uint command = parameterBuffer.Dequeue();
+            responseBuffer.Clear(); //we need to clear the delay on response to get the actual 0 0 to bypass antimodchip protection
             switch (command) {
-                case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
-                    responseBuffer.Enqueue(0x94);
-                    responseBuffer.Enqueue(0x09);
-                    responseBuffer.Enqueue(0x19);
-                    responseBuffer.Enqueue(0xC0);
-
+                case 0x04://Com 19h,04h   ;ResetSCExInfo (reset GetSCExInfo response to 0,0) Used for antimodchip games like Dino Crisis
+                    Console.WriteLine("TRIGGERING 19 04");
+                    STAT = 0x2;
+                    responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x3);
                     break;
-                case 0x22: //
-                    responseBuffer.Enqueue(0x66);
-                    responseBuffer.Enqueue(0x6F);
-                    responseBuffer.Enqueue(0x72);
-                    responseBuffer.Enqueue(0x20);
-                    responseBuffer.Enqueue(0x55);
-                    responseBuffer.Enqueue(0x53);
-                    responseBuffer.Enqueue(0x2F);
-                    responseBuffer.Enqueue(0x41);
-                    responseBuffer.Enqueue(0x45);
-                    responseBuffer.Enqueue(0x50);
-
+                case 0x05:// 05h      -   INT3(total,success);Stop SCEx reading and get counters
+                    Console.WriteLine("TRIGGERING 19 05");
+                    responseBuffer.EnqueueRange<uint>(0, 0);
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
+                    responseBuffer.EnqueueRange<uint>(0x94, 0x09, 0x19, 0xC0);
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x22: //INT3("for US/AEP") --> Region-free debug version --> accepts unlicensed CDRs
+                    responseBuffer.EnqueueRange<uint>(0x66, 0x6F, 0x72, 0x20, 0x55, 0x53, 0x2F, 0x41, 0x45, 0x50);
                     interruptQueue.Enqueue(0x3);
                     break;
                 case 0x60://  60h      lo,hi     INT3(databyte)   ;HC05 SUB-CPU read RAM and I/O ports
                     responseBuffer.Enqueue(0);
-
                     interruptQueue.Enqueue(0x3);
                     break;
-                default: Console.WriteLine("[CDROM] Unimplemented test command " + command.ToString("x8")); break;
+                default:
+                    Console.WriteLine("[CDROM] Unimplemented test command " + command.ToString("x8"));
+                    break;
             }
         }
 
@@ -654,6 +608,7 @@ namespace ProjectPSX.Devices {
             testDataBuffer = null;
             return test;
         }
+
     }
 }
 
