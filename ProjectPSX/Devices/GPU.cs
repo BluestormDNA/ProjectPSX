@@ -690,9 +690,9 @@ namespace ProjectPSX.Devices {
                     color2.b = clampToZero(color0.b - color1.b);
                     break;
                 case 3: //1.0 x B +0.25 x F    ;aka B+F/4
-                    color2.r = clampToFF(color0.r + color1.r >> 2);
-                    color2.g = clampToFF(color0.g + color1.g >> 2);
-                    color2.b = clampToFF(color0.b + color1.b >> 2);
+                    color2.r = clampToFF(color0.r + (color1.r >> 2));
+                    color2.g = clampToFF(color0.g + (color1.g >> 2));
+                    color2.b = clampToFF(color0.b + (color1.b >> 2));
                     break;
             }//actually doing RGB calcs on BGR struct...
             return (int)color2.val;
