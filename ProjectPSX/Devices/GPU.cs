@@ -17,8 +17,6 @@ namespace ProjectPSX.Devices {
         private uint[] emptyBuffer = new uint[16]; //fallback to rewrite
         private int pointer;
 
-        private const int CyclesPerFrame = 564480;
-        private const int VideoCyclesPerFrame = 887040;
         private static readonly int[] resolutions = { 256, 320, 512, 640, 368 };//gpustat res index
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
@@ -628,7 +626,8 @@ namespace ProjectPSX.Devices {
                         if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
 
                         if (primitive.isTextured) {
-                            int texel = getTexel(w0, w1, w2, t0, t1, t2, clut, textureBase, depth);
+                            (int texelX, int texelY) = interpolateCoords(w0, w1, w2, t0, t1, t2, area);
+                            int texel = getTexel(texelX, texelY, clut, textureBase, depth);
                             if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -639,9 +638,9 @@ namespace ProjectPSX.Devices {
                             if (!primitive.isRawTextured) {
                                 color0.val = (uint)color;
                                 color1.val = (uint)texel;
-                                color1.r = clampToFF((float)color0.r * color1.r / 0x7F);
-                                color1.g = clampToFF((float)color0.g * color1.g / 0x7F);
-                                color1.b = clampToFF((float)color0.b * color1.b / 0x7F);
+                                color1.r = clampToFF(color0.r * color1.r >> 7);
+                                color1.g = clampToFF(color0.g * color1.g >> 7);
+                                color1.b = clampToFF(color0.b * color1.b >> 7);
 
                                 texel = (int)color1.val;
                             }
@@ -676,9 +675,9 @@ namespace ProjectPSX.Devices {
             color1.val = (uint)color; //front
             switch (semiTranspMode) {
                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
-                    color2.r = (byte)(color0.r / 2f + color1.r / 2f);
-                    color2.g = (byte)(color0.g / 2f + color1.g / 2f);
-                    color2.b = (byte)(color0.b / 2f + color1.b / 2f);
+                    color2.r = (byte)((color0.r + color1.r) >> 1);
+                    color2.g = (byte)((color0.g + color1.g) >> 1);
+                    color2.b = (byte)((color0.b + color1.b) >> 1);
                     break;
                 case 1://1.0 x B + 1.0 x F    ;aka B+F
                     color2.r = clampToFF(color0.r + color1.r);
@@ -691,20 +690,20 @@ namespace ProjectPSX.Devices {
                     color2.b = clampToZero(color0.b - color1.b);
                     break;
                 case 3: //1.0 x B +0.25 x F    ;aka B+F/4
-                    color2.r = clampToFF(color0.r + color1.r / 4f);
-                    color2.g = clampToFF(color0.g + color1.g / 4f);
-                    color2.b = clampToFF(color0.b + color1.b / 4f);
+                    color2.r = clampToFF(color0.r + color1.r >> 2);
+                    color2.g = clampToFF(color0.g + color1.g >> 2);
+                    color2.b = clampToFF(color0.b + color1.b >> 2);
                     break;
             }//actually doing RGB calcs on BGR struct...
             return (int)color2.val;
         }
 
-        private byte clampToZero(float v) {
+        private byte clampToZero(int v) {
             if (v < 0) return 0;
             else return (byte)v;
         }
 
-        private byte clampToFF(float v) {
+        private byte clampToFF(int v) {
             if (v > 0xFF) return 0xFF;
             else return (byte)v;
         }
@@ -843,7 +842,7 @@ namespace ProjectPSX.Devices {
                     int color = baseColor;
 
                     if (primitive.isTextured) {
-                        int texel = getRectTexel(u, v, clut, textureBase, depth);
+                        int texel = getTexel(u, v, clut, textureBase, depth);
                         if (texel == 0) {
                             continue;
                         }
@@ -851,10 +850,10 @@ namespace ProjectPSX.Devices {
                         if (!primitive.isRawTextured) {
                             color0.val = (uint)color;
                             color1.val = (uint)texel;
-                            color1.r = clampToFF((float)color0.r * color1.r / 0x7F);
-                            color1.g = clampToFF((float)color0.g * color1.g / 0x7F);
-                            color1.b = clampToFF((float)color0.b * color1.b / 0x7F);
-                        
+                            color1.r = clampToFF(color0.r * color1.r >> 7);
+                            color1.g = clampToFF(color0.g * color1.g >> 7);
+                            color1.b = clampToFF(color0.b * color1.b >> 7);
+
                             texel = (int)color1.val;
                         }
 
@@ -955,30 +954,16 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTexel(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, Point2D clut, Point2D textureBase, int depth) {
+        private (int x, int y) interpolateCoords(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int area) {
             //https://codeplea.com/triangular-interpolation
             int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
             int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
 
-            x &= 255;
-            y &= 255;
-
-            // Texture masking
-            // texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
-            x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
-            y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
-
-            switch (depth) {
-                case 0: return get4bppTexel(x, y, clut, textureBase);
-                case 1: return get8bppTexel(x, y, clut, textureBase);
-                case 2: return get16bppTexel(x, y, textureBase);
-                case 3: return get16bppTexel(x, y, textureBase);
-                default: return 0x00FF00FF;
-            }
+            return (x, y);
         }
 
-
-        private int getRectTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int getTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
             x &= 255;
             y &= 255;
 
@@ -1000,8 +985,6 @@ namespace ProjectPSX.Devices {
         private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
             ushort index = VRAM.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 3) * 4) & 0xF;
-            //VRAM.SetPixel(x / 4 + textureBase.x, y + textureBase.y, 0x00FF00FF);
-            //VRAM.SetPixel(clut.x+ p, clut.y, 0x0000FFFF);
             return VRAM.GetPixelRGB888(clut.x + p, clut.y);
         }
 
@@ -1009,13 +992,11 @@ namespace ProjectPSX.Devices {
         private int get8bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
             ushort index = VRAM.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 1) * 8) & 0xFF;
-
             return VRAM.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get16bppTexel(int x, int y, Point2D textureBase) {
-            //VRAM.SetPixel(x + textureBase.x, y + textureBase.y, 0x00FF00FF);
             return VRAM.GetPixelRGB888(x + textureBase.x, y + textureBase.y);
         }
 
