@@ -58,16 +58,14 @@ namespace ProjectPSX.Devices {
         }
 
         private Point2D[] v = new Point2D[4];
-        Point2D min = new Point2D();
-        Point2D max = new Point2D();
+        private Point2D min = new Point2D();
+        private Point2D max = new Point2D();
 
+        [StructLayout(LayoutKind.Explicit)]
         private struct TextureData {
-            public int x, y;
-
-            public void setData(uint val) {
-                x = (int)(val & 0xFF);
-                y = (int)((val >> 8) & 0xFF);
-            }
+            [FieldOffset(0)] public ushort val;
+            [FieldOffset(0)] public byte x;
+            [FieldOffset(1)] public byte y;
         }
         private TextureData[] t = new TextureData[4];
 
@@ -543,7 +541,7 @@ namespace ProjectPSX.Devices {
 
                 if (isTextured) {
                     uint textureData = commandBuffer[pointer++];
-                    t[i].setData(textureData);
+                    t[i].val = (ushort)textureData;
                     if (i == 0) {
                         palette = textureData >> 16 & 0xFFFF;
                     } else if (i == 1) {
@@ -758,13 +756,13 @@ namespace ProjectPSX.Devices {
             //c[3] = color;
 
             ushort palette = 0;
-            short textureX = 0;
-            short textureY = 0;
+            byte textureX = 0;
+            byte textureY = 0;
             if (isTextured) {
                 uint texture = commandBuffer[pointer++];
                 palette = (ushort)((texture >> 16) & 0xFFFF);
-                textureX = (short)(texture & 0xFF);
-                textureY = (short)((texture >> 8) & 0xFF);
+                textureX = (byte)(texture & 0xFF);
+                textureY = (byte)((texture >> 8) & 0xFF);
             }
 
             short width = 0;
