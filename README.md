@@ -97,3 +97,16 @@ I have been interested in emulating hardware for some time. I started doing a Ja
 I  mainly used Martin Korth PSX-SPX documentation about the Playstation hardware at https://problemkaputt.de/psx-spx.htm
 Also the people at the #playstation channel on the emudev discord at https://discord.gg/dkmJAes was very helpful.
 
+- Have you looked at .Net Core 3.0?
+
+Yes, there are some fancy features that i would like to play with (Unsafe, Vectors, Ranges...) and of course going multiplarform.
+
+- What about WinForms?
+
+Winforms was the easiest way to have output for me as it was fast prototyped it somehow has lasted more than intended... but the idea is to let it go away in the future.
+I looked at AvaloniaUI but as I said im more focused at the moment on the core aspect and not much (yet) on the UI. The WinForms dependency is very thin and can be easily changed (at some point i used GDI and even SDL). I just wish .Net Core 3.0 had a multiplatform UI as i don't like dependencys.
+
+- Tell me more about you!
+
+I'm just a guy that has a boring job unrelated to coding. I don't want to do it for the rest of my life so I started studying to change careers. Eventually learned (a bit) so I code whatever makes me happy. Looking for an internship right now btw...
+
