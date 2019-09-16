@@ -8,6 +8,9 @@ using System.Windows.Forms;
 namespace ProjectPSX {
     class ProjectPSX {
         const int PSX_MHZ = 33868800;
+        const int SYNC_CYCLES = 100;
+        const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
+
         private CPU cpu;
         private BUS bus;
 
@@ -50,22 +53,22 @@ namespace ProjectPSX {
             timer.Enabled = true;
 
             try {
-            while (true) {
-                for (int j = 0; j < 100; j++) {
-                    cpu.Run();
-                    //cpu.handleInterrupts();
-                    counter++;
+                while (true) {
+                    for (int j = 0; j < SYNC_CYCLES; j++) {
+                        cpu.Run();
+                        //cpu.handleInterrupts();
+                        counter++;
+                    }
+                    bus.tick(SYNC_CYCLES * MIPS_UNDERCLOCK);
+                    cpu.handleInterrupts();
                 }
-                bus.tick(200);
-                cpu.handleInterrupts();
-            }
             } catch (Exception e) {
                 Console.WriteLine(e.ToString());
             }
         }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
-            window.Text = "ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / 2)) * 100) + "%" + " | Fps " + window.getFPS();
+            window.Text = "ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK)) * SYNC_CYCLES) + "%" + " | Fps " + window.getFPS();
             counter = 0;
         }
     }
