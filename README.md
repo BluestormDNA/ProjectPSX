@@ -28,7 +28,7 @@ What is not implemented (but should be...):
 
 > **Note:**  A valid PlayStation Bios is needed to run the emulator. SCPH1001.BIN is the default bios on the development but some others like SCPH5501 or SCPH7001 have been reported to work.
 
-## Compability
+## Compatibility
 
 The emulator is in very early development and there are constant rewrites. Somehow and although with some limitations there are some games that already "work" like:
 Ridge Racer, Castlevania Symphony of the Night, Final Fantasy 7, Crash Bandicoot 1, 2 and 3, Spyro the dragon, Tekken 1 and 3, Toshinden, Time Crisis, Toabal 1 and 2, Vagrant Story, Street Fighter Zero 3, Rockman/Megaman 8/X4, Parasite Eve...
