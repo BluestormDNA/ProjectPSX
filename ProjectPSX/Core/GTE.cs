@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
     class GTE { //PSX MIPS Coprocessor 02 - Geometry Transformation Engine
@@ -9,55 +10,29 @@ namespace ProjectPSX {
             public Vector3 v3;
         }
 
+        [StructLayout(LayoutKind.Explicit)]
         private struct Vector3 {
-            public short x;
-            public short y;
-            public short z;
-
-            public Vector3(short x, short y, short z) {
-                this.x = x;
-                this.y = y;
-                this.z = z;
-            }
-
-            public uint XY {
-                get { return (uint)(y << 16) | (ushort)x; }
-                set { y = (short)(value >> 16); x = (short)value; }
-            }
-            public uint OZ {
-                get { return (uint)z; }
-                set { z = (short)value; }
-            }
+            [FieldOffset(0)] public uint XY;
+            [FieldOffset(0)] public short x;
+            [FieldOffset(2)] public short y;
+            [FieldOffset(4)] public short z;
         }
 
+
+        [StructLayout(LayoutKind.Explicit)]
         private struct Vector2 {
-            public short x;
-            public short y;
-
-            public uint get() {
-                return (uint)(y << 16) | (ushort)x;
-            }
-            public void set(uint value) {
-                x = (short)(value & 0x0000_FFFF);
-                y = (short)((value & 0xFFFF_0000) >> 16);
-            }
+            [FieldOffset(0)] public uint val;
+            [FieldOffset(0)] public short x;
+            [FieldOffset(2)] public short y;
         }
 
+        [StructLayout(LayoutKind.Explicit)]
         private struct Color {
-            public byte r;
-            public byte g;
-            public byte b;
-            public byte c;
-
-            public uint get() {
-                return (uint)(c << 24 | b << 16 | g << 8 | r);
-            }
-            public void set(uint value) {
-                r = (byte)(value & 0x0000_00FF);
-                g = (byte)((value & 0x0000_FF00) >> 8);
-                b = (byte)((value & 0x00FF_0000) >> 16);
-                c = (byte)((value & 0xFF00_0000) >> 24);
-            }
+            [FieldOffset(0)] public uint val;
+            [FieldOffset(0)] public byte r;
+            [FieldOffset(1)] public byte g;
+            [FieldOffset(2)] public byte b;
+            [FieldOffset(3)] public byte c;
         }
 
         //Data Registers
@@ -133,7 +108,7 @@ namespace ProjectPSX {
                 case 0x3D: GPF(); break;
                 case 0x3E: GPL(); break;
                 case 0x3F: NCCT(); break;
-                default: Console.WriteLine("UNIMPLEMENTED GTE COMMAND" + opcode.ToString("x2")); break;/* throw new NotImplementedException();*/
+                default: Console.WriteLine($"UNIMPLEMENTED GTE COMMAND {opcode:x2}"); break;/* throw new NotImplementedException();*/
             }
 
             if ((FLAG & 0x7F87_E000) != 0) {
@@ -491,7 +466,7 @@ namespace ProjectPSX {
                 case 0: return V[0];
                 case 1: return V[1];
                 case 2: return V[2];
-                case 3: return new Vector3(IR[1], IR[2], IR[3]);
+                case 3: return new Vector3() { x = IR[1], y = IR[2], z = IR[3] };
                 default: Console.WriteLine("[GTE] Unhandled M Vector " + MVMVA_M_Matrix); return new Vector3();
             }
         }
@@ -868,28 +843,28 @@ namespace ProjectPSX {
             uint value;
             switch (fs) {
                 case 00: value = V[0].XY; break;
-                case 01: value = V[0].OZ; break;
+                case 01: value = (uint)V[0].z; break;
                 case 02: value = V[1].XY; break;
-                case 03: value = V[1].OZ; break;
+                case 03: value = (uint)V[1].z; break;
                 case 04: value = V[2].XY; break;
-                case 05: value = V[2].OZ; break;
-                case 06: value = RGBC.get(); break;
+                case 05: value = (uint)V[2].z; break;
+                case 06: value = RGBC.val; break;
                 case 07: value = OTZ; break;
                 case 08: value = (uint)IR[0]; break;
                 case 09: value = (uint)IR[1]; break;
                 case 10: value = (uint)IR[2]; break;
                 case 11: value = (uint)IR[3]; break;
-                case 12: value = SXY[0].get(); break;
-                case 13: value = SXY[1].get(); break;
+                case 12: value = SXY[0].val; break;
+                case 13: value = SXY[1].val; break;
                 case 14: //Mirror
-                case 15: value = SXY[2].get(); break;
+                case 15: value = SXY[2].val; break;
                 case 16: value = SZ[0]; break;
                 case 17: value = SZ[1]; break;
                 case 18: value = SZ[2]; break;
                 case 19: value = SZ[3]; break;
-                case 20: value = RGB[0].get(); break;
-                case 21: value = RGB[1].get(); break;
-                case 22: value = RGB[2].get(); break;
+                case 20: value = RGB[0].val; break;
+                case 21: value = RGB[1].val; break;
+                case 22: value = RGB[2].val; break;
                 case 23: value = RES1; break; //Prohibited Register
                 case 24: value = (uint)MAC0; break;
                 case 25: value = (uint)MAC1; break;
@@ -916,28 +891,28 @@ namespace ProjectPSX {
             //Console.ReadLine();
             switch (fs) {
                 case 00: V[0].XY = v; break;
-                case 01: V[0].OZ = v; break;
+                case 01: V[0].z = (short)v; break;
                 case 02: V[1].XY = v; break;
-                case 03: V[1].OZ = v; break;
+                case 03: V[1].z = (short)v; break;
                 case 04: V[2].XY = v; break;
-                case 05: V[2].OZ = v; break;
-                case 06: RGBC.set(v); break;
+                case 05: V[2].z = (short)v; break;
+                case 06: RGBC.val = v; break;
                 case 07: OTZ = (ushort)v; break;
                 case 08: IR[0] = (short)v; break;
                 case 09: IR[1] = (short)v; break;
                 case 10: IR[2] = (short)v; break;
                 case 11: IR[3] = (short)v; break;
-                case 12: SXY[0].set(v); break;
-                case 13: SXY[1].set(v); break;
-                case 14: SXY[2].set(v); break;
-                case 15: SXY[0] = SXY[1]; SXY[1] = SXY[2]; SXY[2].set(v); break; //On load mirrors 0x14 on write cycles the fifo
+                case 12: SXY[0].val = v; break;
+                case 13: SXY[1].val = v; break;
+                case 14: SXY[2].val = v; break;
+                case 15: SXY[0] = SXY[1]; SXY[1] = SXY[2]; SXY[2].val = v; break; //On load mirrors 0x14 on write cycles the fifo
                 case 16: SZ[0] = (ushort)v; break;
                 case 17: SZ[1] = (ushort)v; break;
                 case 18: SZ[2] = (ushort)v; break;
                 case 19: SZ[3] = (ushort)v; break;
-                case 20: RGB[0].set(v); break;
-                case 21: RGB[1].set(v); break;
-                case 22: RGB[2].set(v); break;
+                case 20: RGB[0].val = v; break;
+                case 21: RGB[1].val = v; break;
+                case 22: RGB[2].val = v; break;
                 case 23: RES1 = v; break;
                 case 24: MAC0 = (int)v; break;
                 case 25: MAC1 = (int)v; break;
@@ -962,7 +937,7 @@ namespace ProjectPSX {
                 case 01: value = (ushort)RT.v1.z | (uint)(RT.v2.x << 16); break;
                 case 02: value = (ushort)RT.v2.y | (uint)(RT.v2.z << 16); break;
                 case 03: value = RT.v3.XY; break;
-                case 04: value = RT.v3.OZ; break;
+                case 04: value = (uint)RT.v3.z; break;
                 case 05: value = (uint)TRX; break;
                 case 06: value = (uint)TRY; break;
                 case 07: value = (uint)TRZ; break;
@@ -970,7 +945,7 @@ namespace ProjectPSX {
                 case 09: value = (ushort)LM.v1.z | (uint)(LM.v2.x << 16); break;
                 case 10: value = (ushort)LM.v2.y | (uint)(LM.v2.z << 16); break;
                 case 11: value = LM.v3.XY; break;
-                case 12: value = LM.v3.OZ; break;
+                case 12: value = (uint)LM.v3.z; break;
                 case 13: value = (uint)RBK; break;
                 case 14: value = (uint)GBK; break;
                 case 15: value = (uint)BBK; break;
@@ -978,7 +953,7 @@ namespace ProjectPSX {
                 case 17: value = (ushort)LRGB.v1.z | (uint)(LRGB.v2.x << 16); break;
                 case 18: value = (ushort)LRGB.v2.y | (uint)(LRGB.v2.z << 16); break;
                 case 19: value = LRGB.v3.XY; break;
-                case 20: value = LRGB.v3.OZ; break;
+                case 20: value = (uint)LRGB.v3.z; break;
                 case 21: value = (uint)RFC; break;
                 case 22: value = (uint)GFC; break;
                 case 23: value = (uint)BFC; break;
@@ -1008,7 +983,7 @@ namespace ProjectPSX {
                 case 01: RT.v1.z = (short)v; RT.v2.x = (short)(v >> 16); break;
                 case 02: RT.v2.y = (short)v; RT.v2.z = (short)(v >> 16); break;
                 case 03: RT.v3.XY = v; break;
-                case 04: RT.v3.OZ = v; break;
+                case 04: RT.v3.z = (short)v; break;
                 case 05: TRX = (int)v; break;
                 case 06: TRY = (int)v; break;
                 case 07: TRZ = (int)v; break;
@@ -1016,7 +991,7 @@ namespace ProjectPSX {
                 case 09: LM.v1.z = (short)v; LM.v2.x = (short)(v >> 16); break;
                 case 10: LM.v2.y = (short)v; LM.v2.z = (short)(v >> 16); break;
                 case 11: LM.v3.XY = v; break;
-                case 12: LM.v3.OZ = v; break;
+                case 12: LM.v3.z = (short)v; break;
                 case 13: RBK = (int)v; break;
                 case 14: GBK = (int)v; break;
                 case 15: BBK = (int)v; break;
@@ -1024,7 +999,7 @@ namespace ProjectPSX {
                 case 17: LRGB.v1.z = (short)v; LRGB.v2.x = (short)(v >> 16); break;
                 case 18: LRGB.v2.y = (short)v; LRGB.v2.z = (short)(v >> 16); break;
                 case 19: LRGB.v3.XY = v; break;
-                case 20: LRGB.v3.OZ = v; break;
+                case 20: LRGB.v3.z = (short)v; break;
                 case 21: RFC = (int)v; break;
                 case 22: GFC = (int)v; break;
                 case 23: BFC = (int)v; break;
