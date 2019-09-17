@@ -18,14 +18,14 @@ namespace ProjectPSX {
 
         private long counter;
 
-        public ProjectPSX(Window window) {
+        public ProjectPSX(Window window, string biospath, string cdpath) {
             this.window = window;
             window.getScreen().MouseDoubleClick += new MouseEventHandler(toggleDebug);
 
-            bus = new BUS();
+            bus = new BUS(cdpath);
             cpu = new CPU(bus);
 
-            bus.loadBios();
+            bus.loadBios(biospath);
 
             bus.setWindow(window);
         }

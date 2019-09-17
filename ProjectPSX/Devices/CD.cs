@@ -12,9 +12,8 @@ namespace ProjectPSX.Devices {
         private FileStream stream;
         private BinaryReader reader;
 
-        public CD() {
-            //temporary hard coded Ideally this should be set from a simple drag and drop to the emu
-            stream = new FileStream("../rr.bin", FileMode.Open, FileAccess.Read);
+        public CD(string filepath) {
+            stream = new FileStream(filepath, FileMode.Open, FileAccess.Read);
             reader = new BinaryReader(stream);
         }
 

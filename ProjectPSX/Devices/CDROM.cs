@@ -64,8 +64,8 @@ namespace ProjectPSX.Devices {
 
         private CD cd;
 
-        public CDROM() {
-            cd = new CD();
+        public CDROM(string cdpath) {
+            cd = new CD(cdpath);
         }
 
         public bool tick(int cycles) {

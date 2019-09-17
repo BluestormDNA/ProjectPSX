@@ -88,7 +88,7 @@
             this.btnSelectCD.Name = "btnSelectCD";
             this.btnSelectCD.Size = new System.Drawing.Size(75, 23);
             this.btnSelectCD.TabIndex = 4;
-            this.btnSelectCD.Text = "select Cd";
+            this.btnSelectCD.Text = "select Game File";
             this.btnSelectCD.UseVisualStyleBackColor = true;
             this.btnSelectCD.Click += new System.EventHandler(this.BtnSelectCD_Click);
             // 
@@ -97,18 +97,18 @@
             this.lblCD.AutoSize = true;
             this.lblCD.Location = new System.Drawing.Point(28, 124);
             this.lblCD.Name = "lblCD";
-            this.lblCD.Size = new System.Drawing.Size(45, 13);
+            this.lblCD.Size = new System.Drawing.Size(60, 13);
             this.lblCD.TabIndex = 3;
-            this.lblCD.Text = "Cd Path";
+            this.lblCD.Text = "Game Path";
             this.lblCD.TextAlign = System.Drawing.ContentAlignment.BottomLeft;
             // 
             // btnStart
             // 
-            this.btnStart.Location = new System.Drawing.Point(197, 226);
+            this.btnStart.Location = new System.Drawing.Point(68, 226);
             this.btnStart.Name = "btnStart";
-            this.btnStart.Size = new System.Drawing.Size(75, 23);
+            this.btnStart.Size = new System.Drawing.Size(204, 23);
             this.btnStart.TabIndex = 6;
-            this.btnStart.Text = "Start";
+            this.btnStart.Text = "Launch Game";
             this.btnStart.UseVisualStyleBackColor = true;
             this.btnStart.Click += new System.EventHandler(this.BtnStart_Click);
             // 

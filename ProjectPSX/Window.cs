@@ -29,7 +29,7 @@ namespace ProjectPSX {
         private int displayY1;
         private int displayY2;
 
-        public Window() {
+        public Window(string biospath, string gamepath) {
             this.Text = "ProjectPSX";
             this.AutoSize = true;
             this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -42,7 +42,7 @@ namespace ProjectPSX {
 
             Controls.Add(screen);
 
-            psx = new ProjectPSX(this);
+            psx = new ProjectPSX(this, biospath, gamepath);
             psx.POWER_ON();
         }
 

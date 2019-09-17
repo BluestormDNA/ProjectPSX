@@ -35,15 +35,13 @@ namespace ProjectPSX {
         private MDEC mdec;
 
         //temporary hardcoded bios/ex1
-        private static string bios = "./SCPH1001.BIN";
-        private static string nocashBios = "./nocashBios.ROM";
         private static string ex1 = "./caetlaEXP.BIN";
 
-        public BUS() {
+        public BUS(string cdpath) {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
             dma = new DMA();
             gpu = new GPU();
-            cdrom = new CDROM();
+            cdrom = new CDROM(cdpath);
             timers = new TIMERS();
             joypad = new JOYPAD();
             mdec = new MDEC();
@@ -430,8 +428,8 @@ namespace ProjectPSX {
             return addr & RegionMask[i];
         }
 
-        internal void loadBios() {
-            byte[] rom = File.ReadAllBytes(bios);
+        internal void loadBios(string biospath) {
+            byte[] rom = File.ReadAllBytes(biospath);
             Marshal.Copy(rom, 0, BIOS, rom.Length);
         }
 

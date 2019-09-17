@@ -118,7 +118,10 @@ namespace ProjectPSX
 
         private void BtnStart_Click(object sender, EventArgs e)
         {
-
+            var bios = GetUserSetting<string>("BiosLocation");
+            var game = GetUserSetting<string>("CDLocation");
+            Window form = new Window(bios, game);
+            form.Show();
         }
     }
 }
