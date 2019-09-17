@@ -113,9 +113,6 @@
     <Compile Include="Core\ProjectPSX.cs" />
     <Compile Include="Util\DirectBitmap.cs" />
     <Compile Include="Util\DMA_Transfer.cs" />
-    <EmbeddedResource Include="Launch.resx">
-      <DependentUpon>Launch.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
