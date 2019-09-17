@@ -59,6 +59,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Configuration.Install" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
@@ -82,6 +83,12 @@
     <Compile Include="Devices\DigitalController.cs" />
     <Compile Include="Devices\GPU.cs" />
     <Compile Include="Devices\MDEC.cs" />
+    <Compile Include="Launch.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Launch.Designer.cs">
+      <DependentUpon>Launch.cs</DependentUpon>
+    </Compile>
     <Compile Include="Util\BIOS_Disassembler.cs" />
     <Compile Include="Core\GTE.cs" />
     <Compile Include="Devices\JOYPAD.cs" />
@@ -106,6 +113,9 @@
     <Compile Include="Core\ProjectPSX.cs" />
     <Compile Include="Util\DirectBitmap.cs" />
     <Compile Include="Util\DMA_Transfer.cs" />
+    <EmbeddedResource Include="Launch.resx">
+      <DependentUpon>Launch.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
