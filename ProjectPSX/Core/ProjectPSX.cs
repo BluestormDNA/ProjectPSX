@@ -68,16 +68,14 @@ namespace ProjectPSX {
         }
 
 
-        private void OnTimedEvent(object sender, ElapsedEventArgs e)
-        {
+        private void OnTimedEvent(object sender, ElapsedEventArgs e) {
             SetWindowText("ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK)) * SYNC_CYCLES) + "%" + " | Fps " + window.getFPS());
             counter = 0;
         }
 
         // Thread safe write Window Text
         private delegate void SafeCallDelegate(string text);
-        private void SetWindowText(string text)
-        {
+        private void SetWindowText(string text) {
             if (window.InvokeRequired)
             {
                 SafeCallDelegate d = new SafeCallDelegate(SetWindowText);
