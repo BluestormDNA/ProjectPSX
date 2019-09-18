@@ -7,7 +7,9 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX {
     //TODO:
     //Do loadX and WriteX simple functions that return a value based on a generic load and write giant switch pointer return
-    //like the test loadRAM and get rid of the multiple giant switchs
+    // WIP: Already got rid of the multiple loadX writeX variants need to adress the giant switches but then how to handle the individual
+    // components? they expect allways an uint and they transform to variables. (uint)(object) is out probably because it kills perf and
+    // Unsafe.As is still noticeable so... some rework needed on the interaction between components and bus.
     public class BUS : DMA_Transfer {
 
         //Memory
@@ -72,11 +74,11 @@ namespace ProjectPSX {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             if (addr < 0x1F00_0000) {
-                return load32(addr & 0x1F_FFFF, ramPtr);
+                return load<uint>(addr & 0x1F_FFFF, ramPtr);
             } else if (addr < 0x1F08_0000) {
-                return load32(addr & 0x7_FFFF, ex1Ptr);
+                return load<uint>(addr & 0x7_FFFF, ex1Ptr);
             } else if (addr >= 0x1f80_0000 && addr < 0x1f80_0400) {
-                return load32(addr & 0xFFF, scrathpadPtr);
+                return load<uint>(addr & 0xFFF, scrathpadPtr);
             } else if (addr >= 0x1F80_1000 && addr < 0x1F80_2000) {
                 if (addr == 0x1F801070) {
                     return interruptController.loadISTAT();
@@ -100,12 +102,12 @@ namespace ProjectPSX {
                 } else if (addr == 0x1F80_1824) {
                     return mdec.readMDEC1_Status();
                 } else {
-                    return load32(addr & 0xFFF, registersPtr);
+                    return load<uint>(addr & 0xFFF, registersPtr);
                 }
             } else if (addr >= 0x1FC0_0000 && addr < 0x1FC8_0000) {
-                return load32(addr & 0x7_FFFF, biosPtr);
+                return load<uint>(addr & 0x7_FFFF, biosPtr);
             } else if (addr >= 0xFFFE_0000 && addr < 0xFFFE_0200) {
-                return load32(addr & 0x1FF, ioPtr);
+                return load<uint>(addr & 0x1FF, ioPtr);
             } else {
                 Console.WriteLine("[BUS] Load32 Unsupported: " + addr.ToString("x8"));
                 return 0xFFFF_FFFF;
@@ -118,13 +120,13 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    return load16(addr & 0x1F_FFFF, ramPtr);
+                    return load<ushort>(addr & 0x1F_FFFF, ramPtr);
 
                 case uint _ when addr < 0x1F08_0000:
-                    return load16(addr & 0x7_FFFF, ex1Ptr);
+                    return load<ushort>(addr & 0x7_FFFF, ex1Ptr);
 
                 case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    return load16(addr & 0xFFF, scrathpadPtr);
+                    return load<ushort>(addr & 0xFFF, scrathpadPtr);
 
                 case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                     switch (addr) {
@@ -147,17 +149,17 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
                         default:
-                            return load16(addr & 0xFFF, registersPtr);
+                            return load<ushort>(addr & 0xFFF, registersPtr);
                     }
 
                 case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
                     return 0; //nocash bios tests
 
                 case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    return load16(addr & 0x7_FFFF, biosPtr);
+                    return load<ushort>(addr & 0x7_FFFF, biosPtr);
 
                 case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    return load16(addr & 0x1FF, ioPtr);
+                    return load<ushort>(addr & 0x1FF, ioPtr);
 
                 default:
                     Console.WriteLine("[BUS] Load16 Unsupported: " + addr.ToString("x8"));
@@ -171,13 +173,13 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    return load8(addr & 0x1F_FFFF, ramPtr);
+                    return load<byte>(addr & 0x1F_FFFF, ramPtr);
 
                 case uint _ when addr < 0x1F08_0000:
-                    return load8(addr & 0x7_FFFF, ex1Ptr);
+                    return load<byte>(addr & 0x7_FFFF, ex1Ptr);
 
                 case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    return load8(addr & 0xFFF, scrathpadPtr);
+                    return load<byte>(addr & 0xFFF, scrathpadPtr);
 
                 case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                     switch (addr) {
@@ -200,17 +202,17 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
                         default:
-                            return load8(addr & 0xFFF, registersPtr);
+                            return load<byte>(addr & 0xFFF, registersPtr);
                     }
 
                 case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
                     return 0; //nocash bios tests
 
                 case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    return load8(addr & 0x7_FFFF, biosPtr);
+                    return load<byte>(addr & 0x7_FFFF, biosPtr);
 
                 case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    return load8(addr & 0x1FF, ioPtr);
+                    return load<byte>(addr & 0x1FF, ioPtr);
 
                 default:
                     Console.WriteLine("[BUS] Load8 Unsupported: " + addr.ToString("x8"));
@@ -219,21 +221,19 @@ namespace ProjectPSX {
         }
 
         internal unsafe void write32(uint address, uint value) {
-            //Console.WriteLine(addr.ToString("x8"));
-            //addr &= RegionMask[addr >> 29];
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint _ when addr < 0x1F00_0000:
-                    write32(addr & 0x1F_FFFF, value, ramPtr);
+                    write(addr & 0x1F_FFFF, value, ramPtr);
                     break;
 
                 case uint _ when addr < 0x1F08_0000:
-                    write32(addr & 0x7_FFFF, value, ex1Ptr);
+                    write(addr & 0x7_FFFF, value, ex1Ptr);
                     break;
 
                 case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write32(addr & 0xFFF, value, scrathpadPtr);
+                    write(addr & 0xFFF, value, scrathpadPtr);
                     break;
 
                 case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
@@ -272,7 +272,7 @@ namespace ProjectPSX {
 
                         default:
                             addr &= 0xFFF;
-                            write32(addr, value, registersPtr);
+                            write(addr, value, registersPtr);
                             break;
                     }
                     break;
@@ -282,7 +282,7 @@ namespace ProjectPSX {
                     break;
 
                 case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write32(addr & 0x1FF, value, ioPtr);
+                    write(addr & 0x1FF, value, ioPtr);
                     break;
 
                 default:
@@ -297,15 +297,15 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint KUSEG when addr < 0x1F00_0000:
-                    write16(addr & 0x1F_FFFF, value, ramPtr);
+                    write(addr & 0x1F_FFFF, value, ramPtr);
                     break;
 
                 case uint KUSEG when addr < 0x1F08_0000:
-                    write16(addr & 0x7_FFFF, value, ex1Ptr);
+                    write(addr & 0x7_FFFF, value, ex1Ptr);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write16(addr & 0xFFF, value, scrathpadPtr);
+                    write(addr & 0xFFF, value, scrathpadPtr);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
@@ -339,7 +339,7 @@ namespace ProjectPSX {
 
                         default:
                             addr &= 0xFFF;
-                            write16(addr, value, registersPtr);
+                            write(addr, value, registersPtr);
                             break;
                     }
                     break;
@@ -349,7 +349,7 @@ namespace ProjectPSX {
                     break;
 
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write16(addr & 0x1FF, value, ioPtr);
+                    write(addr & 0x1FF, value, ioPtr);
                     break;
 
                 default:
@@ -364,15 +364,15 @@ namespace ProjectPSX {
             uint addr = address & RegionMask[i];
             switch (addr) {
                 case uint KUSEG when addr < 0x1F00_0000:
-                    write8(addr & 0x1F_FFFF, value, ramPtr);
+                    write(addr & 0x1F_FFFF, value, ramPtr);
                     break;
 
                 case uint KUSEG when addr < 0x1F08_0000:
-                    write8(addr & 0x7_FFFF, value, ex1Ptr);
+                    write(addr & 0x7_FFFF, value, ex1Ptr);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write8(addr & 0xFFF, value, scrathpadPtr);
+                    write(addr & 0xFFF, value, scrathpadPtr);
                     break;
 
                 case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
@@ -406,7 +406,7 @@ namespace ProjectPSX {
 
                         default:
                             addr &= 0xFFF;
-                            write8(addr, value, registersPtr);
+                            write(addr, value, registersPtr);
                             break;
                     }
                     break;
@@ -416,7 +416,7 @@ namespace ProjectPSX {
                     break;
 
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write8(addr & 0x1FF, value, ioPtr);
+                    write(addr & 0x1FF, value, ioPtr);
                     break;
 
                 default:
@@ -482,7 +482,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void tick(int cycles) {
             if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
-            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM);
+            if (cdrom.tick()) interruptController.set(Interrupt.CDROM);
             if (dma.tick()) interruptController.set(Interrupt.DMA);
 
             timers.syncGPU(gpu.getBlanksAndDot()); //test
@@ -494,33 +494,13 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe uint load32(uint addr, byte* ptr) {
-            return *(uint*)(ptr + addr);
+        private unsafe T load<T>(uint addr, byte* ptr) where T : unmanaged {
+            return *(T*)(ptr + addr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void write32(uint addr, uint value, byte* ptr) {
-            *(uint*)(ptr + addr) = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe uint load16(uint addr, byte* ptr) {
-            return *(ushort*)(ptr + addr);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe uint load8(uint addr, byte* ptr) {
-            return *(ptr + addr);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void write16(uint addr, ushort value, byte* ptr) {
-            *(ushort*)(ptr + addr) = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private unsafe void write8(uint addr, byte value, byte* ptr) {
-            *(ptr + addr) = value;
+        private unsafe void write<T>(uint addr, T value, byte* ptr) where T : unmanaged {
+            *(T*)(ptr + addr) = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
