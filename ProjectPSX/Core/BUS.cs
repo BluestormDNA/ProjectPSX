@@ -482,7 +482,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void tick(int cycles) {
             if (gpu.tick(cycles)) interruptController.set(Interrupt.VBLANK);
-            if (cdrom.tick()) interruptController.set(Interrupt.CDROM);
+            if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM);
             if (dma.tick()) interruptController.set(Interrupt.DMA);
 
             timers.syncGPU(gpu.getBlanksAndDot()); //test
