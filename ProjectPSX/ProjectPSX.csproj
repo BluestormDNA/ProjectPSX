@@ -104,7 +104,6 @@
     <Compile Include="Util\Constants.cs" />
     <Compile Include="Core\CPU.cs" />
     <Compile Include="Core\ProjectPSX.cs" />
-    <Compile Include="Util\DirectBitmap.cs" />
     <Compile Include="Util\DMA_Transfer.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>

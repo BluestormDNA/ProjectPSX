@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 
@@ -23,16 +24,19 @@ namespace ProjectPSX {
             Bitmap = new Bitmap(Width, Height, Width * 4, PixelFormat.Format32bppRgb, BitsHandle.AddrOfPinnedObject());
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetPixel(int x, int y, int color) {
             int index = x + (y * Width);
             Bits[index] = color;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetPixelRGB888(int x, int y) {
             int index = x + (y * Width);
             return Bits[index];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort GetPixelBGR555(int x, int y) {
             int index = x + (y * Width);
             int color = Bits[index];

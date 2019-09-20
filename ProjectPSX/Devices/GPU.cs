@@ -8,8 +8,6 @@ namespace ProjectPSX.Devices {
 
         private uint GPUREAD;     //1F801810h-Read GPUREAD Receive responses to GP0(C0h) and GP1(10h) commands
 
-        private int area;
-
         private uint command;
         private int commandSize;
         //private Queue<uint> commandBuffer = new Queue<uint>(16);
@@ -17,11 +15,14 @@ namespace ProjectPSX.Devices {
         private uint[] emptyBuffer = new uint[16]; //fallback to rewrite
         private int pointer;
 
+        private int scanLine = 0;
+
         private static readonly int[] resolutions = { 256, 320, 512, 640, 368 };//gpustat res index
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
         private Window window;
-        private DirectBitmap VRAM = new DirectBitmap();
+       // private DirectBitmap VRAM = new DirectBitmap();
+        private Display VRAM = new Display(1024, 512);
 
         public bool debug;
 
@@ -34,7 +35,7 @@ namespace ProjectPSX.Devices {
         }
         private Mode mode;
 
-        private struct Primitive {
+        private ref struct Primitive {
             public bool isShaded;
             public bool isTextured;
             public bool isSemiTransparent;
@@ -143,7 +144,6 @@ namespace ProjectPSX.Devices {
             GP1_ResetGPU();
         }
 
-        int scanLine = 0;
         public bool tick(int cycles) {
             //Video clock is the cpu clock multiplied by 11/7.
             videoCycles += cycles * 11 / 7;
@@ -401,7 +401,7 @@ namespace ProjectPSX.Devices {
             rasterizeLine(v1, v2, color1, color2, isTransparent);
 
             if (!isPoly) return;
-            renderline = 0;
+            //renderline = 0;
             while (/*arguments < 0xF &&*/ (commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
                 //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
                 arguments++;
@@ -440,9 +440,6 @@ namespace ProjectPSX.Devices {
             x2 += drawingXOffset;
             y2 += drawingYOffset;
 
-            //Console.WriteLine("x y : " + x + " " + y);
-            //Console.WriteLine("x2 y2 : " + x2 + " " + y2);
-
             int w = x2 - x;
             int h = y2 - y;
             int dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
@@ -467,13 +464,16 @@ namespace ProjectPSX.Devices {
                 float ratio = (float)i / longest;
                 int color = interpolate(color1, color2, ratio);
 
-                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
+                x = (short)Math.Min(Math.Max(x, drawingAreaLeft), drawingAreaRight);
+                y = (short)Math.Min(Math.Max(y, drawingAreaTop), drawingAreaBottom);
+
+                //if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
                     //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
                     if (isTransparent) {
                         color = handleSemiTransp(x, y, color, transparency);
                     }
                     VRAM.SetPixel(x, y, color);
-                }
+                //}
 
                 numerator += shortest;
                 if (!(numerator < longest)) {
@@ -555,14 +555,10 @@ namespace ProjectPSX.Devices {
         }
 
         //Mother of parameters. this should be better when c#8 ranges come into play. I could declare 2 new arrays segments but i dont like them
-        //or 4 new arrays  but i think that tests implied slower performance
-        //or not pass asnything and use fields but then how to handle quad...
-        //Atm passing structs as parameters is pretty lol..
-        //well anyway not an "issue" right now. (priority low)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Primitive primitive) {
 
-            area = orient2d(v0, v1, v2);
+            int area = orient2d(v0, v1, v2);
 
             if (area == 0) {
                 return;
@@ -621,7 +617,7 @@ namespace ProjectPSX.Devices {
                         // reset default color of the triangle calculated outside the for as it gets overwriten as follows...
                         int color = baseColor;
 
-                        if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2);
+                        if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2, area);
 
                         if (primitive.isTextured) {
                             (int texelX, int texelY) = interpolateCoords(w0, w1, w2, t0, t1, t2, area);
@@ -749,8 +745,8 @@ namespace ProjectPSX.Devices {
             short xo = signed11bit(vertex & 0xFFFF);
             short yo = signed11bit((vertex >> 16) & 0xFFFF);
 
-            uint[] c = new uint[4];
-            c[0] = color;
+            //uint[] c = new uint[4];
+            //c[0] = color;
             //c[1] = color;
             //c[2] = color;
             //c[3] = color;
@@ -810,10 +806,10 @@ namespace ProjectPSX.Devices {
 
             //rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
             //rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
-            rasterizeRect(v, t, c, palette, texpage, primitive);
+            rasterizeRect(v, t, color, palette, texpage, primitive);
         }
 
-        private void rasterizeRect(Point2D[] vec, TextureData[] t, uint[] c, ushort palette, uint texpage, Primitive primitive) {
+        private void rasterizeRect(Point2D[] vec, TextureData[] t, uint c, ushort palette, uint texpage, Primitive primitive) {
             int xOrigin = Math.Max(vec[0].x, drawingAreaLeft);
             int yOrigin = Math.Max(vec[0].y, drawingAreaTop);
             int width = Math.Min(vec[3].x, drawingAreaRight);
@@ -833,7 +829,7 @@ namespace ProjectPSX.Devices {
             int uOrigin = t[0].x;
             int vOrigin = t[0].y;
 
-            int baseColor = GetRgbColor(c[0]);
+            int baseColor = GetRgbColor(c);
 
             for (int y = yOrigin, v = vOrigin; y < height; y++, v++) {
                 for (int x = xOrigin, u = uOrigin; x < width; x++, u++) {
@@ -939,14 +935,14 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getShadedColor(int w0, int w1, int w2, uint color0, uint color1, uint color2) {
-            this.color0.val = color0;
-            this.color1.val = color1;
-            this.color2.val = color2;
+        private int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
+            color0.val = c0;
+            color1.val = c1;
+            color2.val = c2;
 
-            int r = (this.color0.r * w0 + this.color1.r * w1 + this.color2.r * w2) / area;
-            int g = (this.color0.g * w0 + this.color1.g * w1 + this.color2.g * w2) / area;
-            int b = (this.color0.b * w0 + this.color1.b * w1 + this.color2.b * w2) / area;
+            int r = (color0.r * w0 + color1.r * w1 + color2.r * w2) / area;
+            int g = (color0.g * w0 + color1.g * w1 + color2.g * w2) / area;
+            int b = (color0.b * w0 + color1.b * w1 + color2.b * w2) / area;
 
             return (r << 16 | g << 8 | b);
         }
