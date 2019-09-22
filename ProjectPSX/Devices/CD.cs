@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System;
+using System.Windows.Forms;
 
 namespace ProjectPSX.Devices {
     internal class CD {
@@ -13,8 +14,11 @@ namespace ProjectPSX.Devices {
         private BinaryReader reader;
 
         public CD() {
-            //temporary hard coded Ideally this should be set from a simple drag and drop to the emu
-            stream = new FileStream("../rr.bin", FileMode.Open, FileAccess.Read);
+            //Show the user a dialog so they can pick the bin they want to load.
+            var file = new OpenFileDialog();
+            file.Filter = "BIN files (*.bin)|*.bin";
+            file.ShowDialog();
+            stream = new FileStream(file.FileName, FileMode.Open, FileAccess.Read);
             reader = new BinaryReader(stream);
         }
 
