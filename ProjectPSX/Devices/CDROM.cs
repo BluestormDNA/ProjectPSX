@@ -68,6 +68,10 @@ namespace ProjectPSX.Devices {
             cd = new CD();
         }
 
+        public void loadCD(string cdromLocation) {
+            cd = new CD(cdromLocation);
+        }
+
         public bool tick(int cycles) {
             counter += cycles;
 

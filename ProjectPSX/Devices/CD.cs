@@ -14,7 +14,16 @@ namespace ProjectPSX.Devices {
 
         public CD() {
             //temporary hard coded Ideally this should be set from a simple drag and drop to the emu
-            stream = new FileStream("../rr.bin", FileMode.Open, FileAccess.Read);
+            //stream = new FileStream("../rr.bin", FileMode.Open, FileAccess.Read);
+            //reader = new BinaryReader(stream);
+        }
+
+        public CD(string cdromLocation) {
+            string filepath = "../rr.bin";
+            if (File.Exists(cdromLocation)) {
+                filepath = cdromLocation;
+            }
+            stream = new FileStream(filepath, FileMode.Open, FileAccess.Read);
             reader = new BinaryReader(stream);
         }
 

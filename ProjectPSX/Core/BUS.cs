@@ -69,6 +69,10 @@ namespace ProjectPSX {
             joypad.setWindow(window);
         }
 
+        internal CDROM GetCDROM() {
+            return this.cdrom;
+        }
+
         internal unsafe uint load32(uint address) {
             //addr &= RegionMask[addr >> 29]; 
             uint i = address >> 29;

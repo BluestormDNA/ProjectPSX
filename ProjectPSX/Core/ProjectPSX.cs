@@ -40,6 +40,12 @@ namespace ProjectPSX {
             }
         }
 
+        public void initializeFromArguments(string[] arguments) {
+            if(arguments.Length > 0) {
+                bus.GetCDROM().loadCD(arguments[0]);
+            }
+        }
+
         public void POWER_ON() {
             Task t = Task.Factory.StartNew(EXECUTE, TaskCreationOptions.LongRunning);
         }

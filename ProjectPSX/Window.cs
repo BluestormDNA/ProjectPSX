@@ -29,7 +29,7 @@ namespace ProjectPSX {
         private int displayY1;
         private int displayY2;
 
-        public Window() {
+        public Window(string[] dragAndDropArgs) {
             this.Text = "ProjectPSX";
             this.AutoSize = true;
             this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -43,6 +43,7 @@ namespace ProjectPSX {
             Controls.Add(screen);
 
             psx = new ProjectPSX(this);
+            psx.initializeFromArguments(dragAndDropArgs);
             psx.POWER_ON();
         }
 
