@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace ProjectPSX.Devices {
@@ -13,12 +14,27 @@ namespace ProjectPSX.Devices {
         private FileStream stream;
         private BinaryReader reader;
 
-        public CD() {
-            //Show the user a dialog so they can pick the bin they want to load.
-            var file = new OpenFileDialog();
-            file.Filter = "BIN files (*.bin)|*.bin";
-            file.ShowDialog();
-            stream = new FileStream(file.FileName, FileMode.Open, FileAccess.Read);
+        public string CdFilePath;
+
+        public CD()
+        {
+
+            var cla = Environment.GetCommandLineArgs();
+            if (cla.Any(s => s.EndsWith(".bin")))
+            {
+                CdFilePath = cla.First(s => s.EndsWith(".bin"));
+            }
+            else
+            {
+                //Show the user a dialog so they can pick the bin they want to load.
+                var file = new OpenFileDialog();
+                file.Filter = "BIN files (*.bin)|*.bin";
+                file.ShowDialog();
+                CdFilePath = file.FileName;
+            }
+
+            
+            stream = new FileStream(CdFilePath, FileMode.Open, FileAccess.Read);
             reader = new BinaryReader(stream);
         }
 
