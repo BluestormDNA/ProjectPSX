@@ -806,10 +806,10 @@ namespace ProjectPSX.Devices {
 
             //rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
             //rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
-            rasterizeRect(v, t, color, palette, texpage, primitive);
+            rasterizeRect(v, t[0], color, palette, texpage, primitive);
         }
 
-        private void rasterizeRect(Point2D[] vec, TextureData[] t, uint c, ushort palette, uint texpage, Primitive primitive) {
+        private void rasterizeRect(Point2D[] vec, TextureData t, uint c, ushort palette, uint texpage, Primitive primitive) {
             int xOrigin = Math.Max(vec[0].x, drawingAreaLeft);
             int yOrigin = Math.Max(vec[0].y, drawingAreaTop);
             int width = Math.Min(vec[3].x, drawingAreaRight);
@@ -826,8 +826,8 @@ namespace ProjectPSX.Devices {
             textureBase.x = (short)((texpage & 0xF) << 6);
             textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
 
-            int uOrigin = t[0].x;
-            int vOrigin = t[0].y;
+            int uOrigin = t.x + (xOrigin - vec[0].x);
+            int vOrigin = t.y + (yOrigin - vec[0].y);
 
             int baseColor = GetRgbColor(c);
 
