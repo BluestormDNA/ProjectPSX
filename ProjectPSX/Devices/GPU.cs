@@ -464,16 +464,16 @@ namespace ProjectPSX.Devices {
                 float ratio = (float)i / longest;
                 int color = interpolate(color1, color2, ratio);
 
-                x = (short)Math.Min(Math.Max(x, drawingAreaLeft), drawingAreaRight);
-                y = (short)Math.Min(Math.Max(y, drawingAreaTop), drawingAreaBottom);
+                //x = (short)Math.Min(Math.Max(x, drawingAreaLeft), drawingAreaRight); //this generates glitches on RR4
+                //y = (short)Math.Min(Math.Max(y, drawingAreaTop), drawingAreaBottom);
 
-                //if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
+                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
                     //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
                     if (isTransparent) {
                         color = handleSemiTransp(x, y, color, transparency);
                     }
                     VRAM.SetPixel(x, y, color);
-                //}
+                }
 
                 numerator += shortest;
                 if (!(numerator < longest)) {
