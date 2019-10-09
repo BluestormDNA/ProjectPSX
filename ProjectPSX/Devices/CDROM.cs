@@ -55,6 +55,7 @@ namespace ProjectPSX.Devices {
 
         private enum Mode {
             Idle,
+            Seek,
             Read,
         }
         Mode mode = Mode.Idle;
@@ -88,6 +89,15 @@ namespace ProjectPSX.Devices {
                     }
                     counter = 0;
                     //Console.WriteLine("[CDROM] MODE IDLE");
+                    break;
+
+                case Mode.Seek:
+                    if (interruptQueue.Count != 0) {
+                        return false;
+                    }
+                    counter = 0;
+                    mode = Mode.Read;
+                    //Console.WriteLine("[CDROM] MODE SEEK");
                     break;
 
                 case Mode.Read:
@@ -220,7 +230,7 @@ namespace ProjectPSX.Devices {
 
         private void ExecuteCommand(uint value) {
             //Console.WriteLine("[CDROM] Command " + value.ToString("x4"));
-            interruptQueue.Clear(); //this fixes the badhankakus on bios, but it confirms our cdrom timming problems...
+            //interruptQueue.Clear(); //this fixes the badhankakus on bios, but it confirms our cdrom timming problems...
             //responseBuffer.Clear();
             switch (value) {
                 case 0x01: getStat(); break;
@@ -450,6 +460,8 @@ namespace ProjectPSX.Devices {
         private void seekL() {
             SeekL = Loc;
             STAT = 0x42; // seek
+
+            mode = Mode.Seek;
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
