@@ -371,13 +371,13 @@ namespace ProjectPSX.Devices {
             isInterruptRequested = true;
         }
 
-        int renderline;
-        int rasterizeline;
+        //int renderline;
+        //int rasterizeline;
         private void GP0_RenderLine() {
             //Console.WriteLine("size " + commandBuffer.Count);
-            int arguments = 0;
+            //int arguments = 0;
             uint command = commandBuffer[pointer++];
-            arguments++;
+            //arguments++;
 
             uint color1 = command & 0xFFFFFF;
             uint color2 = color1;
@@ -389,14 +389,14 @@ namespace ProjectPSX.Devices {
             //if (isTextureMapped /*isRaw*/) return;
 
             uint v1 = commandBuffer[pointer++];
-            arguments++;
+            //arguments++;
 
             if (isShaded) {
                 color2 = commandBuffer[pointer++];
-                arguments++;
+                //arguments++;
             }
             uint v2 = commandBuffer[pointer++];
-            arguments++;
+            //arguments++;
 
             rasterizeLine(v1, v2, color1, color2, isTransparent);
 
@@ -404,11 +404,11 @@ namespace ProjectPSX.Devices {
             //renderline = 0;
             while (/*arguments < 0xF &&*/ (commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
                 //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
-                arguments++;
+                //arguments++;
                 color1 = color2;
                 if (isShaded) {
                     color2 = commandBuffer[pointer++];
-                    arguments++;
+                    //arguments++;
                 }
                 v1 = v2;
                 v2 = commandBuffer[pointer++];
@@ -422,17 +422,18 @@ namespace ProjectPSX.Devices {
             pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
         }
 
-        private short signed11bit(uint n) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static short signed11bit(uint n) {
             return (short)(((int)n << 21) >> 21);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void rasterizeLine(uint v1, uint v2, uint color1, uint color2, bool isTransparent) {
             short x = signed11bit(v1 & 0xFFFF);
-            short y = signed11bit((v1 >> 16) & 0xFFFF);
+            short y = signed11bit(v1 >> 16);
 
             short x2 = signed11bit(v2 & 0xFFFF);
-            short y2 = signed11bit((v2 >> 16) & 0xFFFF);
+            short y2 = signed11bit(v2 >> 16);
 
             x += drawingXOffset;
             y += drawingYOffset;
@@ -543,9 +544,9 @@ namespace ProjectPSX.Devices {
                     uint textureData = commandBuffer[pointer++];
                     t[i].val = (ushort)textureData;
                     if (i == 0) {
-                        palette = textureData >> 16 & 0xFFFF;
+                        palette = textureData >> 16;
                     } else if (i == 1) {
-                        texpage = textureData >> 16 & 0xFFFF;
+                        texpage = textureData >> 16;
                     }
                 }
             }
@@ -730,7 +731,7 @@ namespace ProjectPSX.Devices {
             //4rd (3rd non textured) Width + Height(YsizXsizh)(variable opcode only)(max 1023x511)
             uint command = commandBuffer[pointer++];
             uint color = command & 0xFFFFFF;
-            uint opcode = (command >> 24) & 0xFF;
+            uint opcode = command >> 24;
 
             bool isTextured = (command & (1 << 26)) != 0;
             bool isSemiTransparent = (command & (1 << 25)) != 0;
@@ -743,7 +744,7 @@ namespace ProjectPSX.Devices {
 
             uint vertex = commandBuffer[pointer++];
             short xo = signed11bit(vertex & 0xFFFF);
-            short yo = signed11bit((vertex >> 16) & 0xFFFF);
+            short yo = signed11bit(vertex >> 16);
 
             //uint[] c = new uint[4];
             //c[0] = color;
@@ -768,7 +769,7 @@ namespace ProjectPSX.Devices {
                 case 0x0:
                     uint hw = commandBuffer[pointer++];
                     width = (short)(hw & 0xFFFF);
-                    heigth = (short)((hw >> 16) & 0xFFFF);
+                    heigth = (short)(hw >> 16);
                     break;
                 case 0x1:
                     width = 1; heigth = 1;
@@ -1208,11 +1209,11 @@ namespace ProjectPSX.Devices {
         private uint getTexpageFromGPU() {
             uint texpage = 0;
 
-            texpage |= (isTexturedRectangleYFlipped ? 1u : 0u) << 13;
-            texpage |= (isTexturedRectangleXFlipped ? 1u : 0u) << 12;
-            texpage |= (isTextureDisabled ? 1u : 0u) << 11;
-            texpage |= (isDrawingToDisplayAllowed ? 1u : 0u) << 10;
-            texpage |= (isDithered ? 1u : 0u) << 9;
+            texpage |= (isTexturedRectangleYFlipped ? 1u : 0) << 13;
+            texpage |= (isTexturedRectangleXFlipped ? 1u : 0) << 12;
+            texpage |= (isTextureDisabled ? 1u : 0) << 11;
+            texpage |= (isDrawingToDisplayAllowed ? 1u : 0) << 10;
+            texpage |= (isDithered ? 1u : 0) << 9;
             texpage |= (uint)(textureDepth << 7);
             texpage |= (uint)(transparency << 5);
             texpage |= (uint)(textureYBase << 4);
