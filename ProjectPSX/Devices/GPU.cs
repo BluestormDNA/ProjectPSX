@@ -592,21 +592,26 @@ namespace ProjectPSX.Devices {
 
             //TEST
             area = w0_row + w1_row + w2_row;
-            int depth = (int)(texpage >> 7) & 0x3;
+            int depth = 0;
             int semiTransp = (int)((texpage >> 5) & 0x3);
 
             Point2D clut = new Point2D();
-            clut.x = (short)((palette & 0x3f) << 4);
-            clut.y = (short)((palette >> 6) & 0x1FF);
-
             Point2D textureBase = new Point2D();
-            textureBase.x = (short)((texpage & 0xF) << 6);
-            textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
+
+            if (primitive.isTextured) {
+                depth = (int)(texpage >> 7) & 0x3;
+
+                clut.x = (short)((palette & 0x3f) << 4);
+                clut.y = (short)((palette >> 6) & 0x1FF);
+
+                textureBase.x = (short)((texpage & 0xF) << 6);
+                textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
+
+                forceSetE1(texpage);
+            }
 
             int baseColor = GetRgbColor(c0);
             //TESTING END
-
-            forceSetE1(texpage);
 
             // Rasterize
             for (int y = min.y; y < max.y; y++) {
