@@ -84,6 +84,8 @@ namespace ProjectPSX.Devices {
         private Color color2;
         private Color color3;
 
+        private bool isTextureDisabledAllowed;
+
         //GP0
         private byte textureXBase;
         private byte textureYBase;
@@ -604,6 +606,7 @@ namespace ProjectPSX.Devices {
             int baseColor = GetRgbColor(c0);
             //TESTING END
 
+            forceSetE1(texpage);
 
             // Rasterize
             for (int y = min.y; y < max.y; y++) {
@@ -1041,6 +1044,16 @@ namespace ProjectPSX.Devices {
             pointer++;
         }
 
+        private void forceSetE1(uint texpage) {
+            textureXBase = (byte)(texpage & 0xF);
+            textureYBase = (byte)((texpage >> 4) & 0x1);
+            transparency = (byte)((texpage >> 5) & 0x3);
+            textureDepth = (byte)((texpage >> 7) & 0x3);
+            isTextureDisabled = isTextureDisabledAllowed ? ((texpage >> 11) & 0x1) != 0 : false;
+
+            //Console.WriteLine("[GPU] [GP0] Force DrawMode ");
+        }
+
         private void GP0_SetDrawMode() {
             uint val = commandBuffer[pointer++];
 
@@ -1050,7 +1063,7 @@ namespace ProjectPSX.Devices {
             textureDepth = (byte)((val >> 7) & 0x3);
             isDithered = ((val >> 9) & 0x1) != 0;
             isDrawingToDisplayAllowed = ((val >> 10) & 0x1) != 0;
-            isTextureDisabled = ((val >> 11) & 0x1) != 0;
+            isTextureDisabled = isTextureDisabledAllowed ? ((val >> 11) & 0x1) != 0 : false;
             isTexturedRectangleXFlipped = ((val >> 12) & 0x1) != 0;
             isTexturedRectangleYFlipped = ((val >> 13) & 0x1) != 0;
 
@@ -1086,10 +1099,15 @@ namespace ProjectPSX.Devices {
                 case 0x06: GP1_DisplayHorizontalRange(value); break;
                 case 0x07: GP1_DisplayVerticalRange(value); break;
                 case 0x08: GP1_DisplayMode(value); break;
+                case 0x09: GP1_TextureDisable(value); break;
                 case uint _ when opcode >= 0x10 && opcode <= 0x1F:
                     GP1_GPUInfo(value); break;
                 default: Console.WriteLine("[GPU] Unsupported GP1 Command " + opcode.ToString("x8")); Console.ReadLine(); break;
             }
+        }
+
+        private void GP1_TextureDisable(uint value) {
+            isTextureDisabledAllowed = (value & 0x1) != 0;
         }
 
         private void GP1_GPUInfo(uint value) {
