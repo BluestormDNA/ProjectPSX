@@ -136,6 +136,13 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void handleInterrupts() {
+            uint load = bus.load32(PC);
+            uint instr = load >> 26;
+            if (instr == 0x12) { //COP2
+                //Console.WriteLine("WARNING COP2 OPCODE ON INTERRUPT");
+                return;
+            }
+
             if (bus.interruptController.interruptPending()) {
                 COP0_GPR[CAUSE] |= 0x400;
             } else {
