@@ -14,18 +14,16 @@ namespace ProjectPSX.Devices {
         private FileStream stream;
         private BinaryReader reader;
 
-        public string CdFilePath;
+        private string CdFilePath;
 
-        public CD()
-        {
+        private int lba;
+
+        public CD() {
 
             var cla = Environment.GetCommandLineArgs();
-            if (cla.Any(s => s.EndsWith(".bin")))
-            {
+            if (cla.Any(s => s.EndsWith(".bin"))) {
                 CdFilePath = cla.First(s => s.EndsWith(".bin"));
-            }
-            else
-            {
+            } else {
                 //Show the user a dialog so they can pick the bin they want to load.
                 var file = new OpenFileDialog();
                 file.Filter = "BIN files (*.bin)|*.bin";
@@ -33,18 +31,21 @@ namespace ProjectPSX.Devices {
                 CdFilePath = file.FileName;
             }
 
-            
             stream = new FileStream(CdFilePath, FileMode.Open, FileAccess.Read);
             reader = new BinaryReader(stream);
+
+            lba = (int)(stream.Length / BytesPerSectorRaw);
+
+            Console.WriteLine($"[CD] LBA: {lba:x8}");
         }
 
         public byte[] Read(bool isSectorSizeRaw, int loc) {
             int bytesToRead;
             int sectorHeaderOffset;
-            if (isSectorSizeRaw){
+            if (isSectorSizeRaw) {
                 bytesToRead = BytesPerSectorRaw - BytesPerSectorRawSyncHeader;
                 sectorHeaderOffset = BytesPerSectorRawSyncHeader;
-                //Console.WriteLine("[CD] WARNING RAW READ !!!");
+                //Console.WriteLine("[CD] [Warning] RAW READ");
                 //Console.ReadLine();
             } else {
                 bytesToRead = BytesPerSectorData;
@@ -58,8 +59,12 @@ namespace ProjectPSX.Devices {
             byte[] ret = reader.ReadBytes(bytesToRead);
             if (ret.Length != 0) return ret;
 
-            Console.WriteLine("[CD] READ BEYOND SIZE! returning zeros");
+            //Console.WriteLine("[CD] [Warning] READ BEYOND LBA: Returning 0");
             return new byte[bytesToRead];
+        }
+
+        public int getLBA() {
+            return lba;
         }
 
     }
