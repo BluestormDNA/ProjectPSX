@@ -20,8 +20,6 @@ namespace ProjectPSX {
 
         public abstract uint fromCD();
 
-        public abstract byte[] fromCD(uint size);
-
         public abstract void toMDECin(uint[] load);
 
         public abstract uint fromMDECout();

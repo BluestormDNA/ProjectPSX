@@ -547,11 +547,6 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override byte[] fromCD(uint size) { //test
-            return cdrom.getDataBuffer();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void toMDECin(uint[] load) { //todo: actual process the whole array
             foreach (uint word in load)
                 mdec.writeMDEC0_Command(word);
