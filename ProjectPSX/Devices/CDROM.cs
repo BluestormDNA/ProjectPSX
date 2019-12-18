@@ -11,9 +11,6 @@ namespace ProjectPSX.Devices {
         private Queue<byte> dataBuffer = new Queue<byte>();
         private Queue<byte> cdBuffer = new Queue<byte>();
 
-        byte[] testDataBuffer = null;
-        byte[] testCDBuffer = null;
-
         private bool isBusy;
 
         private byte IE; // InterruptEnableRegister
@@ -30,9 +27,8 @@ namespace ProjectPSX.Devices {
         //1  Spindle Motor(0=Motor off, or in spin-up phase, 1=Motor on)
         //0  Error Invalid Command/parameters(followed by Error Byte)
 
-        private int Loc;
-        private int SeekL;
-        private int ReadN;
+        private int seekLoc;
+        private int readLoc;
 
         //Mode
         //7   Speed(0 = Normal speed, 1 = Double speed)
@@ -43,7 +39,6 @@ namespace ProjectPSX.Devices {
         //2   Report(0 = Off, 1 = Enable Report - Interrupts for Audio Play)
         //1   AutoPause(0 = Off, 1 = Auto Pause upon End of Track); for Audio Play
         //0   CDDA(0 = Off, 1 = Allow to Read CD - DA Sectors; ignore missing EDC)
-
         private bool isDoubleSpeed;
         private bool XA_ADPCM;
         private bool isSectorSizeRAW;
@@ -57,6 +52,7 @@ namespace ProjectPSX.Devices {
             Idle,
             Seek,
             Read,
+            TOC
         }
         Mode mode = Mode.Idle;
 
@@ -69,16 +65,19 @@ namespace ProjectPSX.Devices {
             cd = new CD();
         }
 
+        bool edgeTrigger;
         public bool tick(int cycles) {
             counter += cycles;
 
-            if (interruptQueue.Count != 0 && IF == 0) {
-                //Console.WriteLine("[CD INT] Queue is " + interruptQueue.Count + " Dequeue = IF | " + interruptQueue.Peek());
+            if (/*counter > 6000 && */interruptQueue.Count != 0 && IF == 0) {
+                //Console.WriteLine($"[CDROM] Interrupt Queue is size: {interruptQueue.Count} dequeue to IF next Interrupt: {interruptQueue.Peek()}");
                 IF |= interruptQueue.Dequeue();
+                //edgeTrigger = true;
             }
 
-            if ((IF & IE) != 0) {
-                //Console.WriteLine("[CD INT] Triggering " + IF.ToString("x8"));
+            if (/*edgeTrigger && */(IF & IE) != 0) {
+                //Console.WriteLine($"[CD INT] Triggering {IF:x8}");
+                //edgeTrigger = false;
                 return true;
             }
 
@@ -92,30 +91,41 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case Mode.Seek:
-                    if (interruptQueue.Count != 0) {
+                    if (counter < 100000 || interruptQueue.Count != 0) {
                         return false;
                     }
                     counter = 0;
-                    mode = Mode.Read;
                     //Console.WriteLine("[CDROM] MODE SEEK");
                     break;
 
                 case Mode.Read:
-                    if (counter < 33868800 / (isDoubleSpeed ? 150 : 75) || interruptQueue.Count != 0) {
+                    if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) /*&& dataBuffer.Count > 0*/) {
                         return false;
                     }
                     //if (dataBuffer.Count == 0) {
                     //Console.ForegroundColor = ConsoleColor.DarkGreen;
-                    //Console.WriteLine("Reading Loc: " + (Loc - 1));
+                    //Console.WriteLine($"Reading readLoc: {readLoc} seekLoc: {seekLoc}");
                     //Console.ResetColor();
-                    testCDBuffer = cd.Read(isSectorSizeRAW, Loc++);
-                    cdBuffer = new Queue<byte>(testCDBuffer);
+                    cdBuffer = new Queue<byte>(cd.Read(isSectorSizeRAW, readLoc++));
 
+                    if(interruptQueue.Count != 0) {
+                        return false;
+                    }
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
                     counter = 0;
 
                     //Console.WriteLine("[CDROM] MODE READ");
+                    break;
+
+                case Mode.TOC:
+                    if (counter < 33868800 / (isDoubleSpeed ? 150 : 75) || interruptQueue.Count != 0) {
+                        return false;
+                    }
+                    mode = Mode.Idle;
+                    responseBuffer.Enqueue(STAT);
+                    interruptQueue.Enqueue(0x2);
+                    counter = 0;
                     break;
             }
             return false;
@@ -125,19 +135,31 @@ namespace ProjectPSX.Devices {
         public uint load(Width w, uint addr) {
             switch (addr) {
                 case 0x1F801800:
-                    //Console.WriteLine("[CDROM] [L00] STATUS = {0}", STATUS().ToString("x8"));
+                    //Console.WriteLine($"[CDROM] [L00] STATUS: {STATUS():x2}");
                     return STATUS();
+
                 case 0x1F801801:
                     //Console.WriteLine("[CDROM] [L01] RESPONSE " + responseBuffer.Peek().ToString("x8"));
                     //Console.ReadLine();
+                    //if (w == Width.HALF || w == Width.WORD) Console.WriteLine("WARNING RESPONSE BUFFER LOAD " + w);
+
                     if (responseBuffer.Count > 0)
-                    return responseBuffer.Dequeue();
+                        return responseBuffer.Dequeue();
+
                     return 0xFF;
+
                 case 0x1F801802:
-                    //Console.WriteLine("[CDROM] [L02] DATA");// Console.ReadLine();
+                    //Console.WriteLine("[CDROM] [L02] DATA");
                     //Console.WriteLine(dataBuffer.Count);
                     //Console.ReadLine();
-                    return dataBuffer.Dequeue(); //TODO
+                    if (w == Width.BYTE) {
+                        return dataBuffer.Dequeue();
+                    } else {
+                        byte b0 = dataBuffer.Dequeue();
+                        byte b1 = dataBuffer.Dequeue();
+                        return (uint)(b1 << 8 | b0);
+                    }
+
                 case 0x1F801803:
                     switch (INDEX) {
                         case 0:
@@ -152,6 +174,7 @@ namespace ProjectPSX.Devices {
                             //Console.WriteLine("[CDROM] [L03.x] Unimplemented");
                             return 0;
                     }
+
                 default: return 0;
             }
         }
@@ -159,31 +182,31 @@ namespace ProjectPSX.Devices {
         public void write(Width w, uint addr, uint value) {
             switch (addr) {
                 case 0x1F801800:
-                    //Console.WriteLine("[CDROM] [W00] I: {0}", value.ToString("x8"));
+                    //Console.WriteLine($"[CDROM] [W00] I: {value:x8}");
                     INDEX = (byte)(value & 0x3);
                     break;
                 case 0x1F801801:
                     if (INDEX == 0) {
                         //Console.BackgroundColor = ConsoleColor.Yellow;
-                        //Console.WriteLine("[CDROM] [W01.0]     -------     COMMAND: {0}", value.ToString("x8"));
+                        //Console.WriteLine($"[CDROM] [W01.0] [COMMAND] >>> {value:x2}");
                         //Console.ResetColor();
                         ExecuteCommand(value);
                     } else {
-                        //Console.WriteLine("[CDROM] [Unhandled Write] Index: {0} Access: {1} Value: {2}", INDEX.ToString("x8"), addr.ToString("x8"), value.ToString("x8"));
+                        //Console.WriteLine($"[CDROM] [Unhandled Write] Index: {INDEX:x8} Access: {addr:x8} Value: {value:x8}");
                     }
                     break;
                 case 0x1F801802:
                     switch (INDEX) {
                         case 0:
-                            //Console.WriteLine("[CDROM] [W02.0] Parameter: {0}", value.ToString("x8"));
+                            //Console.WriteLine($"[CDROM] [W02.0] Parameter: {value:x8}");
                             parameterBuffer.Enqueue(value);
                             break;
                         case 1:
-                            //Console.WriteLine("[CDROM] [W02.1] Set IE: {0}", value.ToString("x8"));
+                            //Console.WriteLine($"[CDROM] [W02.1] Set IE: {value:x8}");
                             IE = (byte)(value & 0x1F);
                             break;
                         default:
-                            //Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                            //Console.WriteLine($"[CDROM] [Unhandled Write] Access: {addr:x8} Value: {value:x8}");
                             break;
                     }
                     break;
@@ -197,33 +220,31 @@ namespace ProjectPSX.Devices {
                             //7   BFRD Want Data(0 = No / Reset Data Fifo, 1 = Yes / Load Data Fifo)
                             if ((value & 0x80) != 0) {
                                 //Console.WriteLine("[CDROM] [W03.0]  Want Data (Copy from cd buffer to databuffer)");
-                                testDataBuffer = testCDBuffer;
+                                if (dataBuffer.Count > 0) { /*Console.WriteLine(">>>>>>> CDROM BUFFER WAS NOT EMPTY <<<<<<<<<");*/ return; }
                                 dataBuffer = cdBuffer;
                             } else {
                                 //Console.ForegroundColor = ConsoleColor.Red;
                                 //Console.WriteLine("[CDROM] [W03.0] Data Clear");
                                 //Console.ResetColor();
-                                testDataBuffer = null;
                                 dataBuffer.Clear();
                             }
                             break;
                         case 1:
-                            //Console.WriteLine("[CDROM] [W03.1] Set IF {0}", value.ToString("x8"));
                             IF &= (byte)~(value & 0x1F);
+                            //Console.WriteLine($"[CDROM] [W03.1] Set IF: {value:x8} -> IF = {IF:x8}");
                             if (value == 0x40) {
-                                //Console.WriteLine("[CDROM] [W03.1 Parameter Buffer Clear] value {0}", value.ToString("x8"));
+                                //Console.WriteLine($"[CDROM] [W03.1 Parameter Buffer Clear] value {value:x8}");
                                 parameterBuffer.Clear();
                             }
-                            //Console.WriteLine("IF Writed" + IF.ToString("x8"));
                             break;
 
                         default:
-                            //Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                            //Console.WriteLine($"[CDROM] [Unhandled Write] Access: {addr:x8} Value: {value:x8}");
                             break;
                     }
                     break;
                 default:
-                    Console.WriteLine("[CDROM] [Unhandled Write] Access: {0} Value: {1}", addr.ToString("x8"), value.ToString("x8"));
+                    //Console.WriteLine($"[CDROM] [Unhandled Write] Access: {addr:x8} Value: {value:x8}");
                     break;
             }
         }
@@ -268,11 +289,9 @@ namespace ProjectPSX.Devices {
         }
 
         private void readTOC() {
+            mode = Mode.TOC;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
         private void motorOn() {
@@ -286,11 +305,21 @@ namespace ProjectPSX.Devices {
         }
 
         private void getLocL() { //HARDCODED,THIS NEEDS CUE PARSER
+            //Console.ForegroundColor = ConsoleColor.Red;
+            //Console.WriteLine("[CDROM] getLocL WARNING BROKEN COMMAND");
+            //Console.ReadLine();
+            //Console.ResetColor();
+
             responseBuffer.EnqueueRange<uint>(0, 0, 0, 0, 0, 0, 0, 0);
             interruptQueue.Enqueue(0x3);
         }
 
         private void getLocP() { //HARDCODED, THIS NEEDS CUE PARSER
+            //Console.ForegroundColor = ConsoleColor.Red;
+            //Console.WriteLine("[CDROM] getLocP WARNING BROKEN COMMAND");
+            //Console.ReadLine();
+            //Console.ResetColor();
+
             responseBuffer.EnqueueRange<uint>(0, 0, 0, 0, 0, 0, 0, 0);
             interruptQueue.Enqueue(0x3);
         }
@@ -324,8 +353,9 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x3);
         }
 
-        private void readS() { //broken tekken asks for it
-            //todo actual read
+        private void readS() {
+            readLoc = seekLoc;
+
             STAT = 0x2;
             STAT |= 0x20;
 
@@ -336,11 +366,16 @@ namespace ProjectPSX.Devices {
             //isBusy = true;
         }
 
-        private void seekP() { // broken but gets Ridge Racer ingame
+        private void seekP() {
+            readLoc = seekLoc;
+            STAT = 0x42; // seek
+
+            mode = Mode.Seek;
+
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
-            STAT = 0x42;
+            STAT = 0x2;
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x2);
@@ -349,7 +384,7 @@ namespace ProjectPSX.Devices {
 
         private void play() { //broken hardcoded to push puzzle bubble 2 to play
             STAT = 0x82;
-
+            mode = Mode.Read;
             //int track = BcdToDec((byte)parameterBuffer.Dequeue());
             // Console.WriteLine("Track " + track);
 
@@ -371,14 +406,27 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x2);
         }
 
-        private void getTD() { //todo
+        private void getTD() {
             int track = BcdToDec((byte)parameterBuffer.Dequeue());
-            //Console.WriteLine("Track " + track);
-            responseBuffer.EnqueueRange<uint>(STAT, 0, 0);
+
+            if (track == 0) {
+                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
+                responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
+            } else {
+                //assuming only 1 track BIN. Anything beyond would require a CUE parser
+                responseBuffer.EnqueueRange<uint>(STAT, 0, 2);
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} HardCoded Track 1 00:02");
+            }
+
+            //Console.ReadLine();
             interruptQueue.Enqueue(0x3);
         }
 
-        private void getTN() {//todo hardcoded number of traks!
+        private void getTN() {
+            //todo: Hardcoded tracks: 1. Anything beyond would require a CUE parser
+            Console.WriteLine("[CDROM] getTN HardCoded Tracks: 1 1");
+            //Console.ReadLine();
             responseBuffer.EnqueueRange<uint>(STAT, 1, 1);
             interruptQueue.Enqueue(0x3);
         }
@@ -412,7 +460,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void readN() {
-            //todo actual read
+            readLoc = seekLoc;
+
             STAT = 0x2;
             STAT |= 0x20;
 
@@ -433,6 +482,8 @@ namespace ProjectPSX.Devices {
             //1   AutoPause(0 = Off, 1 = Auto Pause upon End of Track); for Audio Play
             //0   CDDA(0 = Off, 1 = Allow to Read CD - DA Sectors; ignore missing EDC)
             uint mode = parameterBuffer.Dequeue();
+
+            //Console.WriteLine($"[CDROM] SetMode: {mode:x8}");
 
             isDoubleSpeed = ((mode >> 7) & 0x1) == 1;
             XA_ADPCM = ((mode >> 6) & 0x1) == 1;
@@ -458,7 +509,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void seekL() {
-            SeekL = Loc;
+            readLoc = seekLoc;
             STAT = 0x42; // seek
 
             mode = Mode.Seek;
@@ -466,30 +517,36 @@ namespace ProjectPSX.Devices {
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
+            STAT = 0x2;
+
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x2);
         }
 
         private void setLoc() {
-            byte m = (byte)parameterBuffer.Dequeue();
-            byte s = (byte)parameterBuffer.Dequeue();
-            byte f = (byte)parameterBuffer.Dequeue();
+            byte mm = (byte)parameterBuffer.Dequeue();
+            byte ss = (byte)parameterBuffer.Dequeue();
+            byte ff = (byte)parameterBuffer.Dequeue();
 
-            //Console.WriteLine("[CDROM] setLoc BCD" + m + ":" + s + ":" + f);
+            //Console.WriteLine($"[CDROM] setLoc BCD {mm:x2}:{ss:x2}:{ff:x2}");
 
-            int minute = BcdToDec(m);
-            int second = BcdToDec(s);
-            int sector = BcdToDec(f);
 
+            int minute = BcdToDec(mm);
+            int second = BcdToDec(ss);
+            int sector = BcdToDec(ff);
 
             //temporal bin hack to bypass cue parse - 2 secs
+            //WARNING this can wreck some games that setLoc to s0 or s1
             second -= 2;
 
             //There are 75 sectors on a second
-            Loc = sector + (second * 75) + (minute * 60 * 75);
-            if (Loc < 0) Loc = 0;
+            seekLoc = sector + (second * 75) + (minute * 60 * 75);
+            if (seekLoc < 0) {
+                Console.WriteLine($"[CDROM] WARNING NEGATIVE setLOC {seekLoc:x8}");
+                seekLoc = 0;
+            }
             //Console.ForegroundColor = ConsoleColor.DarkGreen;
-            //Console.WriteLine("[CDROM] setLoc " + minute + ":" + second + ":" + sector + " Loc: " + Loc);
+            //Console.WriteLine($"[CDROM] setLoc {minute:x2}:{second:x2}:{sector:x2} Loc: {seekLoc:x8}");
             //Console.ReadLine();
             //Console.ResetColor();
 
@@ -531,8 +588,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void UnimplementedCDCommand(uint value) {
-            Console.WriteLine("[CDROM] Unimplemented CD Command " + value.ToString("x8"));
-            Console.ReadLine();
+            Console.WriteLine($"[CDROM] Unimplemented CD Command {value}");
+            //Console.ReadLine();
         }
 
         private void test() {
@@ -540,13 +597,13 @@ namespace ProjectPSX.Devices {
             responseBuffer.Clear(); //we need to clear the delay on response to get the actual 0 0 to bypass antimodchip protection
             switch (command) {
                 case 0x04://Com 19h,04h   ;ResetSCExInfo (reset GetSCExInfo response to 0,0) Used for antimodchip games like Dino Crisis
-                    Console.WriteLine("TRIGGERING 19 04");
+                    Console.WriteLine("[CDROM] Command 19 04 ResetSCExInfo Anti Mod Chip Meassures");
                     STAT = 0x2;
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x3);
                     break;
                 case 0x05:// 05h      -   INT3(total,success);Stop SCEx reading and get counters
-                    Console.WriteLine("TRIGGERING 19 05");
+                    Console.WriteLine("[CDROM] Command 19 05 GetSCExInfo Hack 0 0 Bypass Response");
                     responseBuffer.EnqueueRange<uint>(0, 0);
                     interruptQueue.Enqueue(0x3);
                     break;
@@ -563,7 +620,7 @@ namespace ProjectPSX.Devices {
                     interruptQueue.Enqueue(0x3);
                     break;
                 default:
-                    Console.WriteLine("[CDROM] Unimplemented test command " + command.ToString("x8"));
+                    Console.WriteLine($"[CDROM] Unimplemented 0x19 Test Command {command:x8}");
                     break;
             }
         }
@@ -591,7 +648,6 @@ namespace ProjectPSX.Devices {
 
         private int dataBuffer_hasData() {
             return (dataBuffer.Count > 0) ? 1 : 0;
-            //return (testDataBuffer != null) ? 1 : 0;
         }
 
         private int parametterBuffer_isEmpty() {
@@ -606,19 +662,24 @@ namespace ProjectPSX.Devices {
             return (responseBuffer.Count > 0) ? 1 : 0;
         }
 
-        int DecToBcd(byte value) {
-            return value + 6 * (value / 10);
+        byte DecToBcd(byte value) {
+            return (byte)(value + 6 * (value / 10));
         }
 
         int BcdToDec(byte value) {
             return value - 6 * (value >> 4);
         }
 
-        internal byte[] getDataBuffer() {
-            byte[] test = new byte[testDataBuffer.Length];
-            Array.Copy(testDataBuffer, test, testDataBuffer.Length);
-            testDataBuffer = null;
-            return test;
+        private static (byte mm, byte ss, byte ff) getMMSSFFfromLBA(int lba) {
+            int ff = lba % 75;
+            lba /= 75;
+
+            int ss = lba % 60;
+            lba /= 60;
+
+            int mm = lba;
+
+            return ((byte)mm, (byte)ss, (byte)ff);
         }
 
     }
