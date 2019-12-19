@@ -28,6 +28,7 @@ namespace ProjectPSX.Devices {
 
         public void setWindow(Window window) {
             this.window = window;
+            GP1_ResetGPU();
         }
         private enum Mode {
             COMMAND,
@@ -143,7 +144,6 @@ namespace ProjectPSX.Devices {
 
         public GPU() {
             mode = Mode.COMMAND;
-            GP1_ResetGPU();
         }
 
         public bool tick(int cycles) {
@@ -155,15 +155,18 @@ namespace ProjectPSX.Devices {
             if (videoCycles >= horizontalTiming) {
                 videoCycles -= horizontalTiming;
                 scanLine++;
+
                 if (!isVerticalResolution480) {
                     isOddLine = (scanLine & 0x1) != 0;
                 }
 
                 if (scanLine >= verticalTiming) {
                     scanLine = 0;
+
                     if (isVerticalInterlace && isVerticalResolution480) {
                         isOddLine = !isOddLine;
                     }
+
                     window.update(VRAM.Bits);
                     return true;
                 }
@@ -1174,6 +1177,8 @@ namespace ProjectPSX.Devices {
             horizontalResolution2 = (byte)((value & 0x40) >> 6);
             isReverseFlag = (value & 0x80) != 0;
 
+            isInterlaceField = isVerticalInterlace ? true : false;
+
             horizontalTiming = isPal ? 3406 : 3413;
             verticalTiming = isPal ? 314 : 263;
 
@@ -1184,49 +1189,47 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_ResetGPU() {
+            GP1_ResetCommandBuffer();
+            GP1_AckGPUInterrupt();
+            GP1_DisplayEnable(1);
+            GP1_DMADirection(0);
+            GP1_DisplayVRAMStart(0);
+            GP1_DisplayHorizontalRange(0xC00200);
+            GP1_DisplayVerticalRange(0x100010);
+            GP1_DisplayMode(0);
+
+            //GP0 E1
             textureXBase = 0;
             textureYBase = 0;
             transparency = 0;
             textureDepth = 0;
-
             isDithered = false;
             isDrawingToDisplayAllowed = false;
             isTextureDisabled = false;
-
             isTexturedRectangleXFlipped = false;
             isTexturedRectangleYFlipped = false;
 
-            isMasked = false;
-            isMaskedPriority = false;
-            dmaDirection = 0;
-            isDisplayDisabled = true;
-            horizontalResolution2 = 0;
-            horizontalResolution1 = 0;
-            isVerticalResolution480 = false;
-            isPal = false;
-            isVerticalInterlace = false;
-            is24BitDepth = false;
-            isInterruptRequested = false;
-            isInterlaceField = true;
-
+            //GP0 E2
             textureWindowMaskX = 0;
             textureWindowMaskY = 0;
             textureWindowOffsetX = 0;
             textureWindowOffsetY = 0;
 
-            drawingAreaLeft = 0;
-            drawingAreaRight = 0;
+            //GP0 E3
             drawingAreaTop = 0;
+            drawingAreaLeft = 0;
+
+            //GP0 E4
             drawingAreaBottom = 0;
+            drawingAreaRight = 0;
+
+            //GP0 E5
             drawingXOffset = 0;
             drawingYOffset = 0;
 
-            displayVRAMXStart = 0;
-            displayVRAMYStart = 0;
-            displayX1 = 0x200;
-            displayX2 = 0xc00;
-            displayY1 = 0x10;
-            displayY2 = 0x100;
+            //GP0 E6
+            isMasked = false;
+            isMaskedPriority = false;
         }
 
         private uint getTexpageFromGPU() {
