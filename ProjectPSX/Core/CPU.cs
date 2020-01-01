@@ -91,35 +91,39 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
-            //if(debug) mips.disassemble(instr, PC_Now, PC_Predictor);
             Execute();
             MemAccess();
             WriteBack();
 
             /*debug*/
-            //TTY();
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <----------------------------------------------------------------------------------
+            if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
             //if (isEX1) forceEX1();
 
-            //bios.verbose(PC_Now, GPR);
             //if (debug) {
-            //
             //mips.PrintRegs();
+            //mips.disassemble(instr, PC_Now, PC_Predictor);
             //}
+
+            TTY();
+            //bios.verbose(PC_Now, GPR);
         }
 
         string tcpu = "./psxtest_cpu.exe";
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./oxy.exe";
+        string demo = "./otc-test.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
-                Console.WriteLine("SideLoading PSX EXE: PC {0} R28 {1} R29 {2} R30 {3}", PC.ToString("x8"), R28.ToString("x8"), R29.ToString("x8"), R30.ToString("x8"));
-                GPR[29] = R29;
+                Console.WriteLine($"SideLoading PSX EXE: PC {PC:x8} R28 {R28:x8} R29 {R29:x8} R30 {R30:x8}");
                 GPR[28] = R28;
-                GPR[30] = R30;
+
+                if(R29 != 0) {
+                    GPR[29] = R29;
+                    GPR[30] = R30;
+                }
+
                 PC = _PC;
                 PC_Predictor = PC + 4;
 
@@ -287,7 +291,7 @@ namespace ProjectPSX {
 
         private void COP2() {
             switch (instr.rs & 0x10) {
-                case 0x0:
+                case 0x00:
                     switch (instr.rs) {
                         case 0b0_0000: MFC2(); break;
                         case 0b0_0010: CFC2(); break;
@@ -385,7 +389,7 @@ namespace ProjectPSX {
                 case 3: value = (aligned_load & 0x00FF_FFFF) | (GPR[instr.rt] << 24); break;
             }
 
-            bus.write32(addr & 0xFFFF_FFFC, value);
+            bus.write32(aligned_addr, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -402,7 +406,7 @@ namespace ProjectPSX {
                 case 3: value = GPR[instr.rt]; break;
             }
 
-            bus.write32(addr & 0xFFFF_FFFC, value);
+            bus.write32(aligned_addr, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -688,8 +692,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BRANCH() {
             opcodeTookBranch = true;
-            PC_Predictor -= 4;
-            PC_Predictor += instr.imm_s << 2;
+            PC_Predictor = PC + (instr.imm_s << 2);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
