@@ -80,7 +80,7 @@ namespace ProjectPSX {
             opcode = command & 0x3F;
         }
         internal void execute(uint command) {
-            //Console.WriteLine("GTE EXECUTE" + (command & 0x3F).ToString("x8"));
+            //Console.WriteLine($"GTE EXECUTE {(command & 0x3F):x2}");
 
             decodeCommand(command);
             FLAG = 0;
@@ -342,7 +342,7 @@ namespace ProjectPSX {
             IR[3] = setIR(3, MAC3, lm);
         }
 
-        int matrix;
+        //int matrix;
         private void MVMVA() { //WIP
             //Console.WriteLine("[GTE] MVMVA " + ++matrix);
             //Mx = matrix specified by mx; RT / LLM / LCM - Rotation, light or color matrix
@@ -730,21 +730,20 @@ namespace ProjectPSX {
             return (value << 20) >> 20;
         }
 
-        private short saturateRGB(int v) {
+        private static short saturateRGB(int v) {
             short saturate = (short)v;
             if (saturate < 0x00) return 0x00;
             else if (saturate > 0x1F) return 0x1F;
             else return saturate;
         }
 
-        private int leadingCount(uint v) {
-            int sign = (int)((v & 0x80000000) >> 31);
+        private static int leadingCount(uint v) {
+            uint sign = (v >> 31);
             int leadingCount = 0;
-            int n = (int)v;
             for (int i = 0; i < 32; i++) {
-                if ((n & 0x80000000) >> 31 != sign) break;
+                if (v >> 31 != sign) break;
                 leadingCount++;
-                n <<= 1;
+                v <<= 1;
             }
             return leadingCount;
         }
@@ -930,17 +929,15 @@ namespace ProjectPSX {
         }
 
         private void debug() {
-            string gteDebug = $"GTE CONTROL\n";
+            string gteDebug = "GTE CONTROL\n";
             for (uint i = 0; i < 32; i++) {
-                string register = i <= 9 ? "0" + i : i.ToString();
-                gteDebug += " " + register + ": " + loadControl(i).ToString("x8");
+                gteDebug += $" {i:00}: {loadControl(i):x8}";
                 if ((i + 1) % 4 == 0) gteDebug += "\n";
             }
 
-            gteDebug += $"GTE DATA\n";
+            gteDebug += "GTE DATA\n";
             for (uint i = 0; i < 32; i++) {
-                string register = i <= 9 ? "0" + i : i.ToString();
-                gteDebug += " " + register + ": " + loadData(i).ToString("x8");
+                gteDebug += $" {i:00}: {loadData(i):x8}";
                 if ((i + 1) % 4 == 0) gteDebug += "\n";
             }
 
