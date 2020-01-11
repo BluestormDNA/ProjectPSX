@@ -42,6 +42,7 @@ namespace ProjectPSX {
             screen.BackgroundImage = display.Bitmap;// TESTING
             screen.Size = _640x480;
             screen.Margin = new Padding(0);
+            screen.BackColor = Color.Black;
 
             Controls.Add(screen);
 
