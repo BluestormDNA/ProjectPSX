@@ -45,7 +45,12 @@ namespace ProjectPSX {
         }
 
         private void EXECUTE() {
-            Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+            if (Environment.OSVersion.Platform != PlatformID.Unix) {
+                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+            }
+            
+
+            
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
 
             var timer = new System.Timers.Timer(1000);
