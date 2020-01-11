@@ -26,7 +26,7 @@ namespace ProjectPSX.Devices {
             } else {
                 //Show the user a dialog so they can pick the bin they want to load.
                 var file = new OpenFileDialog();
-                file.Filter = "BIN files (*.bin)|*.bin";
+                file.Filter = "Image files (*.bin, *.iso)|*.bin;*.iso";
                 file.ShowDialog();
                 CdFilePath = file.FileName;
             }
