@@ -597,6 +597,10 @@ namespace ProjectPSX.Devices {
             int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
             int A20 = v2.y - v0.y, B20 = v0.x - v2.x;
 
+            int bias0 = isTopLeft(v1, v2) ? 0 : -1;
+            int bias1 = isTopLeft(v2, v0) ? 0 : -1;
+            int bias2 = isTopLeft(v0, v1) ? 0 : -1;
+
             int w0_row = orient2d(v1, v2, min);
             int w1_row = orient2d(v2, v0, min);
             int w2_row = orient2d(v0, v1, min);
@@ -630,7 +634,11 @@ namespace ProjectPSX.Devices {
 
                 for (int x = min.x; x < max.x; x++) {
                     // If p is on or inside all edges, render pixel.
-                    if ((w0 | w1 | w2) >= 0) {
+                    if ((w0 + bias0 | w1 + bias1 | w2 + bias2) >= 0) {
+                        //Adjustements per triangle instead of per pixel can be done at area level
+                        //but it still does some little by 1 error apreciable on some textured quads
+                        //I assume it could be handled recalculating AXX and BXX offsets but those maths are beyond my scope
+
                         // reset default color of the triangle calculated outside the for as it gets overwriten as follows...
                         int color = baseColor;
 
@@ -680,6 +688,10 @@ namespace ProjectPSX.Devices {
             //    //window.update(VRAM.Bits);
             //    Console.ReadLine();
             //}
+        }
+
+        private static bool isTopLeft(Point2D a, Point2D b) {
+            return a.y == b.y && b.x > a.x || b.y < a.y;
         }
 
         private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
