@@ -632,7 +632,8 @@ namespace ProjectPSX.Devices {
                         if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2, area);
 
                         if (primitive.isTextured) {
-                            (int texelX, int texelY) = interpolateCoords(w0, w1, w2, t0, t1, t2, area);
+                            int texelX = interpolateCoords(w0, w1, w2, t0.x, t1.x, t2.x, area);
+                            int texelY = interpolateCoords(w0, w1, w2, t0.y, t1.y, t2.y, area);
                             int texel = getTexel(texelX, texelY, clut, textureBase, depth);
                             if (texel == 0) {
                                 w0 += A12;
@@ -960,12 +961,9 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private (int x, int y) interpolateCoords(int w0, int w1, int w2, TextureData t0, TextureData t1, TextureData t2, int area) {
+        private static int interpolateCoords(int w0, int w1, int w2, int t0, int t1, int t2, int area) {
             //https://codeplea.com/triangular-interpolation
-            int x = (t0.x * w0 + t1.x * w1 + t2.x * w2) / area;
-            int y = (t0.y * w0 + t1.y * w1 + t2.y * w2) / area;
-
-            return (x, y);
+            return (t0 * w0 + t1 * w1 + t2 * w2) / area;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
