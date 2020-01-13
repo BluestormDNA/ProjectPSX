@@ -80,10 +80,18 @@ namespace ProjectPSX.Devices {
             [FieldOffset(3)] public byte m;
         }
 
+        [StructLayout(LayoutKind.Explicit)]
+        private ref struct ColorRef {
+            [FieldOffset(0)] public uint val;
+            [FieldOffset(0)] public byte r;
+            [FieldOffset(1)] public byte g;
+            [FieldOffset(2)] public byte b;
+            [FieldOffset(3)] public byte m;
+        }
+
         private Color color0;
         private Color color1;
         private Color color2;
-        private Color color3;
 
         private bool isTextureDisabledAllowed;
 
@@ -150,7 +158,6 @@ namespace ProjectPSX.Devices {
             //Video clock is the cpu clock multiplied by 11/7.
             videoCycles += cycles * 11 / 7;
 
-            //int horizontalResolution = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
 
             if (videoCycles >= horizontalTiming) {
                 videoCycles -= horizontalTiming;
@@ -229,6 +236,7 @@ namespace ProjectPSX.Devices {
             return value;
         }
         //All this should be cleaner if delegate function calls werent so slow :\
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void writeGP0(uint value) {
             //Console.WriteLine("Direct " + value.ToString("x8"));
             //Console.WriteLine(mode);
@@ -239,6 +247,7 @@ namespace ProjectPSX.Devices {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void writeGP0(uint[] buffer) {
             //Console.WriteLine("buffer");
             //Console.WriteLine(mode);
@@ -289,7 +298,7 @@ namespace ProjectPSX.Devices {
 
         //This needs to go away once a BGR bitmap is achieved
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int get555Color(ushort val) {
+        private static int get555Color(ushort val) {
             byte m = (byte)(val >> 15);
             byte r = (byte)((val & 0x1F) << 3);
             byte g = (byte)(((val >> 5) & 0x1F) << 3);
@@ -298,6 +307,7 @@ namespace ProjectPSX.Devices {
             return (m << 24 | r << 16 | g << 8 | b);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DecodeGP0Command(uint value) {
             if (pointer == 0) {
                 command = value >> 24;
@@ -315,6 +325,8 @@ namespace ProjectPSX.Devices {
                 pointer = 0;
             }
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DecodeGP0Command(uint[] buffer) {
             commandBuffer = buffer;
 
@@ -506,6 +518,7 @@ namespace ProjectPSX.Devices {
             return (r << 16 | g << 8 | b);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void GP0_RenderPolygon() {
             uint command = commandBuffer[pointer];
             //Console.WriteLine(command.ToString("x8") +  " "  + commandBuffer.Length + " " + pointer);
@@ -571,15 +584,10 @@ namespace ProjectPSX.Devices {
             }
 
             if (area < 0) {
-                Point2D vertexAux = v1;
-                v1 = v2;
-                v2 = vertexAux;
-                TextureData textureAux = t1;
-                t1 = t2;
-                t2 = textureAux;
-                uint colorAux = c1;
-                c1 = c2;
-                c2 = colorAux;
+                (v1, v2) = (v2, v1);
+                (t1, t2) = (t2, t1);
+                (c1, c2) = (c2, c1);
+                area *= -1;
             }
 
             /*(Point2D min, Point2D max) = */
@@ -593,11 +601,8 @@ namespace ProjectPSX.Devices {
             int w1_row = orient2d(v2, v0, min);
             int w2_row = orient2d(v0, v1, min);
 
-            //TEST
-            area = w0_row + w1_row + w2_row;
             int depth = 0;
             int semiTransp = (int)((texpage >> 5) & 0x3);
-
             Point2D clut = new Point2D();
             Point2D textureBase = new Point2D();
 
@@ -705,12 +710,14 @@ namespace ProjectPSX.Devices {
             return (int)color2.val;
         }
 
-        private byte clampToZero(int v) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte clampToZero(int v) {
             if (v < 0) return 0;
             else return (byte)v;
         }
 
-        private byte clampToFF(int v) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte clampToFF(int v) {
             if (v > 0xFF) return 0xFF;
             else return (byte)v;
         }
@@ -758,12 +765,6 @@ namespace ProjectPSX.Devices {
             short xo = signed11bit(vertex & 0xFFFF);
             short yo = signed11bit(vertex >> 16);
 
-            //uint[] c = new uint[4];
-            //c[0] = color;
-            //c[1] = color;
-            //c[2] = color;
-            //c[3] = color;
-
             ushort palette = 0;
             byte textureX = 0;
             byte textureY = 0;
@@ -800,25 +801,14 @@ namespace ProjectPSX.Devices {
             v[0].x = (short)x;
             v[0].y = (short)y;
 
-            //v[1].x = (short)(x + width);
-            //v[1].y = (short)y;
-
-            //v[2].x = (short)x;
-            //v[2].y = (short)(y + heigth);
-
             v[3].x = (short)(x + width);
             v[3].y = (short)(y + heigth);
 
-
-            t[0].x = textureX; t[0].y = textureY;
-            //t[1].x = textureX + width; t[1].y = textureY;
-            //t[2].x = textureX; t[2].y = textureY + heigth;
-            //t[3].x = textureX + width; t[3].y = textureY + heigth;
+            t[0].x = textureX;
+            t[0].y = textureY;
 
             uint texpage = getTexpageFromGPU();
 
-            //rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
-            //rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
             rasterizeRect(v, t[0], color, palette, texpage, primitive);
         }
 
@@ -948,9 +938,12 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
+        private static int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
+            ColorRef color0 = new ColorRef();
             color0.val = c0;
+            ColorRef color1 = new ColorRef();
             color1.val = c1;
+            ColorRef color2 = new ColorRef();
             color2.val = c2;
 
             int r = (color0.r * w0 + color1.r * w1 + color2.r * w2) / area;
@@ -971,17 +964,16 @@ namespace ProjectPSX.Devices {
             x &= 255;
             y &= 255;
 
-            // Texture masking
-            // texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
+            // Texture masking: texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
             x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
 
-            switch (depth) {
-                case 0: return get4bppTexel(x, y, clut, textureBase);
-                case 1: return get8bppTexel(x, y, clut, textureBase);
-                case 2: return get16bppTexel(x, y, textureBase);
-                case 3: return get16bppTexel(x, y, textureBase);
-                default: return 0x00FF00FF;
+            if (depth == 0) {
+                return get4bppTexel(x, y, clut, textureBase);
+            } else if (depth == 1) {
+                return get8bppTexel(x, y, clut, textureBase);
+            } else {
+                return get16bppTexel(x, y, textureBase);
             }
         }
 
@@ -1005,7 +997,7 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int orient2d(Point2D a, Point2D b, Point2D c) {
+        private static int orient2d(Point2D a, Point2D b, Point2D c) {
             return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
         }
 
