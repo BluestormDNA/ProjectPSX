@@ -2,6 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 
 namespace ProjectPSX {
@@ -49,6 +50,7 @@ namespace ProjectPSX {
             psx.POWER_ON();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void update(int[] vramBits) {
 
             if (isVramViewer) {
@@ -63,9 +65,14 @@ namespace ProjectPSX {
             screen.Invalidate();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void blit24bpp(int[] vramBits) {
             int range = (240 - (displayY2 - displayY1)) / 2;
-            int yRangeOffset = range < 0 ? 0 : range;
+
+            int yRangeOffset;
+            if (range < 0) yRangeOffset = 0;
+            else yRangeOffset = range;
+
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
                 int offset = 0;
                 for (int x = 0; x < horizontalRes; x += 2) {
@@ -96,11 +103,16 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void blit16bpp(int[] vramBits) {
             //Console.WriteLine($"x1 {displayX1} x2 {displayX2} y1 {displayY1} y2 {displayY2}");
             //Console.WriteLine($"Display Height {display.Height}  Width {display.Width}");
             int range = (240 - (displayY2 - displayY1)) / 2;
-            int yRangeOffset = range < 0 ? 0 : range;
+
+            int yRangeOffset;
+            if (range < 0) yRangeOffset = 0;
+            else yRangeOffset = range;
+
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
                 for (int x = 0; x < display.Width; x++) {
                     int pixel = vramBits[(x + displayVRAMXStart) + ((y - yRangeOffset + displayVRAMYStart) * 1024)];
@@ -110,7 +122,8 @@ namespace ProjectPSX {
             }
         }
 
-        private ushort GetPixelBGR555(int color) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ushort GetPixelBGR555(int color) {
             byte m = (byte)((color & 0xFF000000) >> 24);
             byte r = (byte)((color & 0x00FF0000) >> 16 + 3);
             byte g = (byte)((color & 0x0000FF00) >> 8 + 3);
