@@ -590,8 +590,19 @@ namespace ProjectPSX.Devices {
                 area *= -1;
             }
 
-            /*(Point2D min, Point2D max) = */
-            boundingBox(v0, v1, v2);
+            /*boundingBox*/
+            int minX = Math.Min(v0.x, Math.Min(v1.x, v2.x));
+            int minY = Math.Min(v0.y, Math.Min(v1.y, v2.y));
+            int maxX = Math.Max(v0.x, Math.Max(v1.x, v2.x));
+            int maxY = Math.Max(v0.y, Math.Max(v1.y, v2.y));
+
+            if ((maxX - minX) > 1024 || (maxY - maxY) > 512) return;
+
+            /*clip*/
+            min.x = (short)Math.Max(minX, drawingAreaLeft);
+            min.y = (short)Math.Max(minY, drawingAreaTop);
+            max.x = (short)Math.Min(maxX, drawingAreaRight);
+            max.y = (short)Math.Min(maxY, drawingAreaBottom);
 
             int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
             int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
@@ -1011,20 +1022,6 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int orient2d(Point2D a, Point2D b, Point2D c) {
             return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-        }
-
-        private /*(Point2D min, Point2D max)*/ void boundingBox(Point2D p0, Point2D p1, Point2D p2) {
-            int minX = Math.Min(p0.x, Math.Min(p1.x, p2.x));
-            int minY = Math.Min(p0.y, Math.Min(p1.y, p2.y));
-            int maxX = Math.Max(p0.x, Math.Max(p1.x, p2.x));
-            int maxY = Math.Max(p0.y, Math.Max(p1.y, p2.y));
-
-            min.x = (short)Math.Max(minX, drawingAreaLeft);
-            min.y = (short)Math.Max(minY, drawingAreaTop);
-            max.x = (short)Math.Min(maxX, drawingAreaRight);
-            max.y = (short)Math.Min(maxY, drawingAreaBottom);
-
-            //return (min, max);
         }
 
         private void GP0_SetTextureWindow() {
