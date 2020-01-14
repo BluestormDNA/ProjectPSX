@@ -8,7 +8,6 @@ namespace ProjectPSX.Devices {
         public abstract class AChannel {
             public abstract void write(uint register, uint value);
             public abstract uint load(uint regiter);
-            public abstract void setDMA_Transfer(DMA_Transfer dma_transfer);
         }
 
         private class InterruptChannel : AChannel {
@@ -67,10 +66,6 @@ namespace ProjectPSX.Devices {
                 masterFlag = updateMasterFlag();
             }
 
-            public override void setDMA_Transfer(DMA_Transfer dma_transfer) {
-                //throw new NotImplementedException();
-            }
-
             public void handleInterrupt(int channel) {
                 //IRQ flags in Bit(24 + n) are set upon DMAn completion - but caution - they are set ONLY if enabled in Bit(16 + n).
                 if ((irqEnable & (1 << channel)) != 0) {
@@ -117,13 +112,14 @@ namespace ProjectPSX.Devices {
             private bool enable;
             private bool trigger;
 
-            private DMA_Transfer dma_transfer;
+            private BUS bus;
             private InterruptChannel interrupt;
             private int channelNumber;
 
-            public Channel(int channelNumber, InterruptChannel interrupt) {
+            public Channel(int channelNumber, InterruptChannel interrupt, BUS bus) {
                 this.channelNumber = channelNumber;
                 this.interrupt = interrupt;
+                this.bus = bus;
             }
 
             public override uint load(uint register) {
@@ -157,10 +153,6 @@ namespace ProjectPSX.Devices {
                     case 8: writeChannelControl(value); break;
                     default: Console.WriteLine("Unhandled Write on register " + register); break;
                 }
-            }
-
-            public override void setDMA_Transfer(DMA_Transfer dma_transfer) {
-                this.dma_transfer = dma_transfer;
             }
 
             private void writeChannelControl(uint value) {
@@ -205,14 +197,14 @@ namespace ProjectPSX.Devices {
                             switch (channelNumber) {
                                 case 1: //MDECout
                                     //Console.WriteLine("[DMA] MdecOut to ram " + size);
-                                    data = dma_transfer.fromMDECout();
+                                    data = bus.DmaFromMdecOut();
                                     break;
                                 case 2: //GPU
-                                    data = dma_transfer.fromGPU();
+                                    data = bus.DmaFromGpu();
                                     //Console.WriteLine("[DMA] [C2 GPU] Address: {0} Data: {1} Size {2}", (baseAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
                                     break;
                                 case 3: //CD
-                                    data = dma_transfer.fromCD();
+                                    data = bus.DmaFromCD();
                                     //if(step == -4) {
                                     //    Console.WriteLine("WARNING !!! UNHANDLED REVERSE ON BUFFER CD TRANSFER");
                                     //    Console.ReadLine();
@@ -238,20 +230,20 @@ namespace ProjectPSX.Devices {
                                     //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channelNumber);
                                     break;
                             }
-                            dma_transfer.toRAM(baseAddress & 0x1F_FFFC, data);
+                            bus.DmaToRam(baseAddress & 0x1F_FFFC, data);
 
                             break;
                         case 1: //From Ram
                                 //Console.WriteLine("Size " + size);
-                            uint[] load = dma_transfer.fromRAM(baseAddress & 0x1F_FFFC, size);
+                            uint[] load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
 
                             switch (channelNumber) {
                                 case 0: //MDECin
                                     Console.WriteLine("[DMA] MDEC IN blockCopy " + size);
-                                    dma_transfer.toMDECin(load);
+                                    bus.DmaToMdecIn(load);
                                     return;
                                 case 2: //GPU
-                                    dma_transfer.toGPU(load);
+                                    bus.DmaToGpu(load);
                                     return;
                                 default: //MDECin and SPU
                                     //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channelNumber);
@@ -270,13 +262,13 @@ namespace ProjectPSX.Devices {
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
-                    header = dma_transfer.fromRAM(baseAddress);
+                    header = bus.DmaFromRam(baseAddress);
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8") + " value: " + header.ToString("x8"));
                     uint size = header >> 24;
 
                     if (size > 0) {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
-                        uint[] load = dma_transfer.fromRAM(baseAddress, size);
+                        uint[] load = bus.DmaFromRam(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
                         //dma_transfer.toGPU(load);
                         //dma_transfer.toGPU();
@@ -287,7 +279,7 @@ namespace ProjectPSX.Devices {
                     baseAddress = header & 0x1ffffc;
                 }
 
-                dma_transfer.toGPU(queue.ToArray());
+                bus.DmaToGpu(queue.ToArray());
             }
 
             private bool isActive() {
@@ -301,15 +293,15 @@ namespace ProjectPSX.Devices {
 
         AChannel[] channels = new AChannel[8];
 
-        public DMA() {
+        public DMA(BUS bus) {
             InterruptChannel interrupt = new InterruptChannel();
-            channels[0] = new Channel(0, interrupt);
-            channels[1] = new Channel(1, interrupt);
-            channels[2] = new Channel(2, interrupt);
-            channels[3] = new Channel(3, interrupt);
-            channels[4] = new Channel(4, interrupt);
-            channels[5] = new Channel(5, interrupt);
-            channels[6] = new Channel(6, interrupt);
+            channels[0] = new Channel(0, interrupt, bus);
+            channels[1] = new Channel(1, interrupt, bus);
+            channels[2] = new Channel(2, interrupt, bus);
+            channels[3] = new Channel(3, interrupt, bus);
+            channels[4] = new Channel(4, interrupt, bus);
+            channels[5] = new Channel(5, interrupt, bus);
+            channels[6] = new Channel(6, interrupt, bus);
             channels[7] = interrupt;
         }
 
@@ -329,12 +321,6 @@ namespace ProjectPSX.Devices {
         }
 
         public bool tick() => ((InterruptChannel)channels[7]).tick();
-
-        public void setDMA_Transfer(DMA_Transfer dma_transfer) {
-            for (int i = 0; i < channels.Length; i++) {
-                channels[i].setDMA_Transfer(dma_transfer);
-            }
-        }
 
     }
 }

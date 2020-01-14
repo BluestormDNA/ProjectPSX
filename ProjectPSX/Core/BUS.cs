@@ -10,7 +10,7 @@ namespace ProjectPSX {
     // WIP: Already got rid of the multiple loadX writeX variants need to adress the giant switches but then how to handle the individual
     // components? they expect allways an uint and they transform to variables. (uint)(object) is out probably because it kills perf and
     // Unsafe.As is still noticeable so... some rework needed on the interaction between components and bus.
-    public class BUS : DMA_Transfer {
+    public class BUS {
 
         //Memory
         IntPtr RAM = Marshal.AllocHGlobal(2048 * 1024);
@@ -43,14 +43,12 @@ namespace ProjectPSX {
 
         public BUS() {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
-            dma = new DMA();
+            dma = new DMA(this);
             gpu = new GPU();
             cdrom = new CDROM();
             timers = new TIMERS();
             joypad = new JOYPAD();
             mdec = new MDEC();
-
-            dma.setDMA_Transfer(this);
 
             initMem();
         }
@@ -504,56 +502,56 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe override uint fromRAM(uint addr) {
+        public unsafe uint DmaFromRam(uint addr) {
             return *(uint*)(ramPtr + (addr & 0x1F_FFFF));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe override uint[] fromRAM(uint addr, uint size) {
+        public unsafe uint[] DmaFromRam(uint addr, uint size) {
             int[] buffer = new int[size];
             Marshal.Copy((IntPtr)(ramPtr + (addr & 0x1F_FFFF)), buffer, 0, (int)size);
             return Unsafe.As<int[], uint[]>(ref buffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe override void toRAM(uint addr, uint value) {
+        public unsafe void DmaToRam(uint addr, uint value) {
             *(uint*)(ramPtr + (addr & 0x1F_FFFF)) = value;
 
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe override void toRAM(uint addr, byte[] buffer, uint size) {
+        public unsafe void DmaToRam(uint addr, byte[] buffer, uint size) {
             Marshal.Copy(buffer, 0, (IntPtr)(ramPtr + (addr & 0x1F_FFFF)), (int)size * 4);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override uint fromGPU() {
+        public uint DmaFromGpu() {
             return gpu.loadGPUREAD();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void toGPU(uint value) {
+        public void DmaToGpu(uint value) {
             gpu.writeGP0(value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void toGPU(uint[] buffer) {
+        public void DmaToGpu(uint[] buffer) {
             gpu.writeGP0(buffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override uint fromCD() {
+        public uint DmaFromCD() {
             return cdrom.getData();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void toMDECin(uint[] load) { //todo: actual process the whole array
+        public void DmaToMdecIn(uint[] load) { //todo: actual process the whole array
             foreach (uint word in load)
                 mdec.writeMDEC0_Command(word);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override uint fromMDECout() {
+        public uint DmaFromMdecOut() {
             return mdec.readMDEC0_Data();
         }
 
