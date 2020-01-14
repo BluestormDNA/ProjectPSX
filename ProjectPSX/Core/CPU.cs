@@ -96,7 +96,7 @@ namespace ProjectPSX {
             WriteBack();
 
             /*debug*/
-            if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
+            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
             //if (isEX1) forceEX1();
 
             //if (debug) {
@@ -104,7 +104,7 @@ namespace ProjectPSX {
             //mips.disassemble(instr, PC_Now, PC_Predictor);
             //}
 
-            TTY();
+            //TTY();
             //bios.verbose(PC_Now, GPR);
         }
 
@@ -112,7 +112,7 @@ namespace ProjectPSX {
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./otc-test.exe";
+        string demo = "./bench.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
@@ -142,7 +142,7 @@ namespace ProjectPSX {
         public void handleInterrupts() {
             uint load = bus.load32(PC);
             uint instr = load >> 26;
-            if (instr == 0x12) { //COP2
+            if (instr == 0x12) { //COP2 MTC2
                 //Console.WriteLine("WARNING COP2 OPCODE ON INTERRUPT");
                 return;
             }
