@@ -25,6 +25,7 @@ namespace ProjectPSX.Devices {
             public InterruptChannel() {
                 control = 0x07654321;
             }
+
             public override uint load(uint register) {
                 switch (register) {
                     case 0: return control;
@@ -72,11 +73,10 @@ namespace ProjectPSX.Devices {
                     irqFlag |= (uint)(1 << channel);
                 }
 
-                //Console.WriteLine("MasterFlag" + masterFlag + " irqEnable16 " + irqEnable.ToString("x8") + " irqFlag24 " + irqFlag.ToString("x8") + forceIRQ +  " "  + masterEnable + " " +  ((irqEnable & irqFlag) > 0));
-
-                bool prevMasterFlag = masterFlag;
+                //Console.WriteLine($"MasterFlag: {masterFlag} irqEnable16: {irqEnable:x8} irqFlag24: {irqFlag:x8} {forceIRQ} {masterEnable} {((irqEnable & irqFlag) > 0)}");
                 masterFlag = updateMasterFlag();
-                if (masterFlag && !prevMasterFlag) {
+
+                if (masterFlag) {
                     edgeInterruptTrigger = true;
                 }
             }
