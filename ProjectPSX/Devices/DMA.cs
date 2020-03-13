@@ -239,7 +239,7 @@ namespace ProjectPSX.Devices {
 
                             switch (channelNumber) {
                                 case 0: //MDECin
-                                    Console.WriteLine("[DMA] MDEC IN blockCopy " + size);
+                                    //Console.WriteLine("[DMA] MDEC IN blockCopy " + size);
                                     bus.DmaToMdecIn(load);
                                     return;
                                 case 2: //GPU
@@ -276,6 +276,8 @@ namespace ProjectPSX.Devices {
                             queue.Enqueue(load[i]);
                         }
                     }
+
+                    if (baseAddress == (header & 0x1ffffc)) break; //Tekken2 hangs here if not handling this posible forever loop
                     baseAddress = header & 0x1ffffc;
                 }
 
