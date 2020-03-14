@@ -21,8 +21,10 @@ namespace ProjectPSX.Devices {
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
         private Window window;
-       // private DirectBitmap VRAM = new DirectBitmap();
+        // private DirectBitmap VRAM = new DirectBitmap();
         private Display VRAM = new Display(1024, 512);
+
+        private delegate void Command();
 
         public bool debug;
 
@@ -754,13 +756,19 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GP0_FillRectVRAM() {
             color0.val = commandBuffer[pointer++];
-            v[0].val = commandBuffer[pointer++];
-            v[1].val = commandBuffer[pointer++];
+            uint yx = commandBuffer[pointer++];
+            uint hw = commandBuffer[pointer++];
+
+            ushort x = (ushort)(yx & 0x3F0);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
+
+            ushort w = (ushort)(((hw & 0x3FF) + 0xF) & ~0xF);
+            ushort h = (ushort)((hw >> 16) & 0x1FF);
 
             int color = (color0.r << 16 | color0.g << 8 | color0.b);
 
-            for (int yPos = v[0].y; yPos < v[1].y + v[0].y; yPos++) {
-                for (int xPos = v[0].x; xPos < v[1].x + v[0].x; xPos++) {
+            for (int yPos = y; yPos < h + y; yPos++) {
+                for (int xPos = x; xPos < w + x; xPos++) {
                     VRAM.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
                 }
             }
@@ -895,11 +903,11 @@ namespace ProjectPSX.Devices {
             uint yx = commandBuffer[pointer++];
             uint wh = commandBuffer[pointer++];
 
-            ushort x = (ushort)(yx & 0xFFFF);
-            ushort y = (ushort)(yx >> 16);
+            ushort x = (ushort)(yx & 0x3FF);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
 
-            ushort w = (ushort)(wh & 0xFFFF);
-            ushort h = (ushort)(wh >> 16);
+            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
+            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
 
             vram_coord.x = x;
             vram_coord.origin_x = x;
@@ -909,18 +917,16 @@ namespace ProjectPSX.Devices {
             vram_coord.size = h * w;
         }
 
-        public delegate void Command();
-
         private void GP0_MemCopyRectCPUtoVRAM() { //todo rewrite VRAM coord struct mess
             pointer++; //Command/Color parameter unused
             uint yx = commandBuffer[pointer++];
             uint wh = commandBuffer[pointer++];
 
-            ushort x = (ushort)(yx & 0xFFFF);
-            ushort y = (ushort)(yx >> 16);
+            ushort x = (ushort)(yx & 0x3FF);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
 
-            ushort w = (ushort)(wh & 0xFFFF);
-            ushort h = (ushort)(wh >> 16);
+            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
+            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
 
             vram_coord.x = x;
             vram_coord.origin_x = x;
@@ -938,14 +944,14 @@ namespace ProjectPSX.Devices {
             uint destinationXY = commandBuffer[pointer++];
             uint wh = commandBuffer[pointer++];
 
-            short sx = (short)(sourceXY & 0xFFFF);
-            short sy = (short)(sourceXY >> 16);
+            ushort sx = (ushort)(sourceXY & 0x3FF);
+            ushort sy = (ushort)((sourceXY >> 16) & 0x1FF);
 
-            short dx = (short)(destinationXY & 0xFFFF);
-            short dy = (short)(destinationXY >> 16);
+            ushort dx = (ushort)(destinationXY & 0x3FF);
+            ushort dy = (ushort)((destinationXY >> 16) & 0x1FF);
 
-            short w = (short)(wh & 0xFFFF);
-            short h = (short)(wh >> 16);
+            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
+            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
 
             for (int yPos = 0; yPos < h; yPos++) {
                 for (int xPos = 0; xPos < w; xPos++) {
@@ -954,7 +960,6 @@ namespace ProjectPSX.Devices {
                 }
             }
         }
-
 
         private void GP0_MemClearCache() {
             pointer++;
