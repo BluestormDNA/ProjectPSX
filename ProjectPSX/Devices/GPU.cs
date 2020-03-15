@@ -365,20 +365,19 @@ namespace ProjectPSX.Devices {
                 case 0xE5: GP0_SetDrawingOffset(); break;
                 case 0xE6: GP0_SetMaskBit(); break;
 
-                case uint polygon when opcode >= 0x20 && opcode <= 0x3F:
+                case uint _ when opcode >= 0x20 && opcode <= 0x3F:
                     GP0_RenderPolygon(); break;
-                case uint line when opcode >= 0x40 && opcode <= 0x5F:
+                case uint _ when opcode >= 0x40 && opcode <= 0x5F:
                     GP0_RenderLine(); break;
-                case uint rect when opcode >= 0x60 && opcode <= 0x7F:
+                case uint _ when opcode >= 0x60 && opcode <= 0x7F:
                     GP0_RenderRectangle(); break;
-                case uint vramToVram when opcode >= 0x80 && opcode <= 0x9F:
+                case uint _ when opcode >= 0x80 && opcode <= 0x9F:
                     GP0_MemCopyRectVRAMtoVRAM(); break;
-                case uint cpuToVram when opcode >= 0xA0 && opcode <= 0xBF:
+                case uint _ when opcode >= 0xA0 && opcode <= 0xBF:
                     GP0_MemCopyRectCPUtoVRAM(); break;
-                case uint vramToCpu when opcode >= 0xC0 && opcode <= 0xDF:
+                case uint _ when opcode >= 0xC0 && opcode <= 0xDF:
                     GP0_MemCopyRectVRAMtoCPU(); break;
-
-                case uint nop when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
+                case uint _ when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
                     GP0_NOP(); break;
 
                 default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_NOP(); break;
@@ -542,7 +541,7 @@ namespace ProjectPSX.Devices {
 
             //Point2D[] v = new Point2D[vertexN];
             //TextureData[] t = new TextureData[vertexN];
-            uint[] c = new uint[vertexN];
+            Span<uint> c = stackalloc uint[vertexN];
 
             if (!isShaded) {
                 uint color = commandBuffer[pointer++];
@@ -598,7 +597,7 @@ namespace ProjectPSX.Devices {
             int maxX = Math.Max(v0.x, Math.Max(v1.x, v2.x));
             int maxY = Math.Max(v0.y, Math.Max(v1.y, v2.y));
 
-            if ((maxX - minX) > 1024 || (maxY - maxY) > 512) return;
+            if ((maxX - minX) > 1024 || (maxY - minY) > 512) return;
 
             /*clip*/
             min.x = (short)Math.Max(minX, drawingAreaLeft);
