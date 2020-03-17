@@ -205,16 +205,6 @@ namespace ProjectPSX.Devices {
                                     break;
                                 case 3: //CD
                                     data = bus.DmaFromCD();
-                                    //if(step == -4) {
-                                    //    Console.WriteLine("WARNING !!! UNHANDLED REVERSE ON BUFFER CD TRANSFER");
-                                    //    Console.ReadLine();
-                                    //}
-                                    //cdTest = dma_transfer.fromCD(size);
-                                    //for (int i = 0; i < cdTest.Length; i++) {
-                                    //    Console.WriteLine(cdTest[i].ToString("x2"));
-                                    //}
-                                    //dma_transfer.toRAM(dmaAddress & 0x1F_FFFC, cdTest, size);
-                                    //return;
                                     //Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (baseAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
                                     break;
                                 case 6: //OTC
@@ -245,7 +235,7 @@ namespace ProjectPSX.Devices {
                                 case 2: //GPU
                                     bus.DmaToGpu(load);
                                     return;
-                                default: //MDECin and SPU
+                                default: //SPU
                                     //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channelNumber);
                                     return;
                             }
@@ -256,9 +246,9 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            private void linkedList() { //WARNING QUEUE ARRAY TESTS !!!!
+            private void linkedList() {
                 uint header = 0;
-                Queue<uint> queue = new Queue<uint>(); //test
+                List<uint> list = new List<uint>(); //test
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
@@ -270,18 +260,14 @@ namespace ProjectPSX.Devices {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
                         uint[] load = bus.DmaFromRam(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
-                        //dma_transfer.toGPU(load);
-                        //dma_transfer.toGPU();
-                        for (int i = 0; i < load.Length; i++) {
-                            queue.Enqueue(load[i]);
-                        }
+                        list.AddRange(load);
                     }
 
                     if (baseAddress == (header & 0x1ffffc)) break; //Tekken2 hangs here if not handling this posible forever loop
                     baseAddress = header & 0x1ffffc;
                 }
 
-                bus.DmaToGpu(queue.ToArray());
+                bus.DmaToGpu(list.ToArray());
             }
 
             private bool isActive() {
