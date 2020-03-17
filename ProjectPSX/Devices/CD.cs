@@ -10,12 +10,13 @@ namespace ProjectPSX.Devices {
         private const int BytesPerSectorData = 2048;
         private const int BytesPerSectorHeader = 24;
         private const int BytesPerSectorRawSyncHeader = 12;
+        private const int BytesPerSubChannelInfo = 12;
+
+        private byte[] rawSectorBuffer = new byte[BytesPerSectorRaw - BytesPerSectorRawSyncHeader];
+        private byte[] dataSectorBuffer = new byte[BytesPerSectorData + BytesPerSubChannelInfo];
 
         private FileStream stream;
-        private BinaryReader reader;
-
         private string CdFilePath;
-
         private int lba;
 
         public CD() {
@@ -32,7 +33,6 @@ namespace ProjectPSX.Devices {
             }
 
             stream = new FileStream(CdFilePath, FileMode.Open, FileAccess.Read);
-            reader = new BinaryReader(stream);
 
             lba = (int)(stream.Length / BytesPerSectorRaw);
 
@@ -40,27 +40,14 @@ namespace ProjectPSX.Devices {
         }
 
         public byte[] Read(bool isSectorSizeRaw, int loc) {
-            int bytesToRead;
-            int sectorHeaderOffset;
+            stream.Seek(loc * BytesPerSectorRaw + BytesPerSectorRawSyncHeader, SeekOrigin.Begin);
             if (isSectorSizeRaw) {
-                bytesToRead = BytesPerSectorRaw - BytesPerSectorRawSyncHeader;
-                sectorHeaderOffset = BytesPerSectorRawSyncHeader;
-                //Console.WriteLine("[CD] [Warning] RAW READ");
-                //Console.ReadLine();
+                stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
+                return rawSectorBuffer;
             } else {
-                bytesToRead = BytesPerSectorData;
-                sectorHeaderOffset = BytesPerSectorHeader;
+                stream.Read(dataSectorBuffer, 0, dataSectorBuffer.Length);
+                return dataSectorBuffer;
             }
-
-            long read = stream.Seek(loc * BytesPerSectorRaw + sectorHeaderOffset, 0);
-
-            //Console.WriteLine("LOC = " + loc  + " " + ((loc * BYTES_PER_SECTOR_RAW) + sectorHeaderOffset).ToString("x8"));
-
-            byte[] ret = reader.ReadBytes(bytesToRead);
-            if (ret.Length != 0) return ret;
-
-            //Console.WriteLine("[CD] [Warning] READ BEYOND LBA: Returning 0");
-            return new byte[bytesToRead];
         }
 
         public int getLBA() {
