@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace ProjectPSX {
     internal class DigitalController : Controller {
 
-        ushort CONTROLLER_TYPE = 0x5A41; //digital
-
+        private ushort CONTROLLER_TYPE = 0x5A41; //digital
+        private bool enabled;
         private enum Mode {
             Idle,
             Transfer
@@ -23,35 +23,33 @@ namespace ProjectPSX {
                             ack = true;
                             return 0xFF;
                         default:
-                            //Console.WriteLine("[Controller] Idle value WARNING " + b);
+                            Console.WriteLine($"[Controller] Idle Process Warning: {b:x2}");
                             ack = false;
                             return 0xFF;
                     }
 
                 case Mode.Transfer:
                     switch (b) {
-                        case 0x01:
-                            //Console.WriteLine("[Controller] ERROR Transfer Process 0x1");
-                            ack = true;
-                                return 0xFF;
                         case 0x42:
-                            //Console.WriteLine("[Controller] Transfer Process 0x42");
-                            mode = Mode.Transfer;
-                            ack = true;
+                            //Console.WriteLine("[Controller] Init Transfer Process 0x42");
                             generateResponse();
+                            ack = true;
                             return transferDataFifo.Dequeue();
                         default:
-                            //Console.WriteLine("[Controller] Transfer Process" + b.ToString("x2"));
                             byte data;
-                            if (transferDataFifo.Count == 0) {
-                                //Console.WriteLine("Changing to mode IDLE");
+                            bool pendingBytes = transferDataFifo.Count > 0;
+                            if (pendingBytes) {
+                                data = transferDataFifo.Dequeue();
+                            } else {
+                                data = 0xFF;
+                            }
+                            ack = pendingBytes;
+                            if (!ack) {
+                                //Console.WriteLine("[Controller] Changing to idle");
                                 enabled = false;
                                 mode = Mode.Idle;
-                                ack = false;
-                                data = 0xFF;
-                            } else {
-                                data = transferDataFifo.Dequeue();
                             }
+                            //Console.WriteLine($"[Controller] Transfer Process value:{b:x2} response: {data:x2} queueCount: {transferDataFifo.Count} ack: {ack}");
                             return data;
                     }
                 default:
@@ -60,8 +58,6 @@ namespace ProjectPSX {
                     return 0xFF;
             }
         }
-
-        bool enabled;
 
         public void generateResponse() {
             byte b0 = (byte)(CONTROLLER_TYPE & 0xFF);
