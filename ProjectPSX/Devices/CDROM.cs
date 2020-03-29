@@ -664,13 +664,13 @@ namespace ProjectPSX.Devices {
             //STAT = 0x2; //0x40 seek
             //responseBuffer.Enqueue(STAT);
             //interruptQueue.Enqueue(0x3);
-
-            //responseBuffer.AddRange<uint>(0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+            //
+            //responseBuffer.EnqueueRange<uint>(0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
             //interruptQueue.Enqueue(0x5);
 
             //Door Open              INT5(11h,80h)  N/A
             //STAT = 0x10; //Shell Open
-            //responseBuffer.AddRange<uint>(0x11, 0x80, 0x00, 0x00);
+            //responseBuffer.EnqueueRange<uint>(0x11, 0x80, 0x00, 0x00);
             //interruptQueue.Enqueue(0x5);
 
             //Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
@@ -678,9 +678,8 @@ namespace ProjectPSX.Devices {
             STAT |= 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            responseBuffer.EnqueueRange<uint>(0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41); //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe) 
-
+            
+            responseBuffer.EnqueueRange<uint>(0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41); //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
             interruptQueue.Enqueue(0x2);
         }
 
