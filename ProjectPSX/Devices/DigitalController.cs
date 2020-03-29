@@ -1,14 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace ProjectPSX {
+﻿namespace ProjectPSX {
     internal class DigitalController : Controller {
 
         private ushort CONTROLLER_TYPE = 0x5A41; //digital
-        private bool enabled;
+
         private enum Mode {
             Idle,
-            Transfer
+            Connected,
+            Transfering,
         }
         Mode mode = Mode.Idle;
 
@@ -18,43 +16,43 @@ namespace ProjectPSX {
                     switch (b) {
                         case 0x01:
                             //Console.WriteLine("[Controller] Idle Process 0x01");
-                            mode = Mode.Transfer;
-                            enabled = true;
+                            mode = Mode.Connected;
                             ack = true;
                             return 0xFF;
                         default:
-                            Console.WriteLine($"[Controller] Idle Process Warning: {b:x2}");
+                            //Console.WriteLine($"[Controller] Idle Process Warning: {b:x2}");
+                            transferDataFifo.Clear();
                             ack = false;
                             return 0xFF;
                     }
 
-                case Mode.Transfer:
+                case Mode.Connected:
                     switch (b) {
                         case 0x42:
-                            //Console.WriteLine("[Controller] Init Transfer Process 0x42");
+                            //Console.WriteLine("[Controller] Connected Init Transfer Process 0x42");
+                            mode = Mode.Transfering;
                             generateResponse();
                             ack = true;
                             return transferDataFifo.Dequeue();
                         default:
-                            byte data;
-                            bool pendingBytes = transferDataFifo.Count > 0;
-                            if (pendingBytes) {
-                                data = transferDataFifo.Dequeue();
-                            } else {
-                                data = 0xFF;
-                            }
-                            ack = pendingBytes;
-                            if (!ack) {
-                                //Console.WriteLine("[Controller] Changing to idle");
-                                enabled = false;
-                                mode = Mode.Idle;
-                            }
-                            //Console.WriteLine($"[Controller] Transfer Process value:{b:x2} response: {data:x2} queueCount: {transferDataFifo.Count} ack: {ack}");
-                            return data;
+                            //Console.WriteLine("[Controller] Connected Transfer Process unknow command {b:x2} RESET TO IDLE");
+                            mode = Mode.Idle;
+                            transferDataFifo.Clear();
+                            ack = false;
+                            return 0xFF;
                     }
+
+                case Mode.Transfering:
+                    byte data = transferDataFifo.Dequeue();
+                    ack = transferDataFifo.Count > 0;
+                    if (!ack) {
+                        //Console.WriteLine("[Controller] Changing to idle");
+                        mode = Mode.Idle;
+                    }
+                    //Console.WriteLine($"[Controller] Transfer Process value:{b:x2} response: {data:x2} queueCount: {transferDataFifo.Count} ack: {ack}");
+                    return data;
                 default:
-                    //Console.WriteLine("[JOYPAD] Mode Warning");
-                    ack = false;
+                    //Console.WriteLine("[Controller] This should be unreachable");
                     return 0xFF;
             }
         }
@@ -72,12 +70,8 @@ namespace ProjectPSX {
             transferDataFifo.Enqueue(b3);
         }
 
-        public override void idle() {
+        public override void resetToIdle() {
             mode = Mode.Idle;
-        }
-
-        public override bool isEnabled() {
-            return enabled;
         }
     }
 }

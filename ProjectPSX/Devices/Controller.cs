@@ -11,14 +11,7 @@ namespace ProjectPSX {
         public bool ack;
 
         public abstract byte process(byte b);
-        public abstract void idle();
-
-        public abstract bool isEnabled();
-
-        public bool isReady() {
-            //Console.WriteLine("[JOYPAD] Isready: " + (transferDataFifo.Count == 0));
-            return transferDataFifo.Count == 0;
-        }
+        public abstract void resetToIdle();
 
         public void setWindow(Window window) {
             this.window = window;
