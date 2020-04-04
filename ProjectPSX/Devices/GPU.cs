@@ -453,6 +453,8 @@ namespace ProjectPSX.Devices {
             short x2 = signed11bit(v2 & 0xFFFF);
             short y2 = signed11bit(v2 >> 16);
 
+            if (Math.Abs(x - x2) > 0x3FF || Math.Abs(y - y2) > 0x1FF) return;
+
             x += drawingXOffset;
             y += drawingYOffset;
 
@@ -556,8 +558,8 @@ namespace ProjectPSX.Devices {
                 if (isShaded) c[i] = commandBuffer[pointer++];
 
                 v[i].val = commandBuffer[pointer++];
-                v[i].x += drawingXOffset;
-                v[i].y += drawingYOffset;
+                v[i].x = (short)(signed11bit((uint)v[i].x) + drawingXOffset);
+                v[i].y = (short)(signed11bit((uint)v[i].y) + drawingYOffset);
 
                 if (isTextured) {
                     uint textureData = commandBuffer[pointer++];
@@ -638,13 +640,13 @@ namespace ProjectPSX.Devices {
             //TESTING END
 
             // Rasterize
-            for (int y = min.y; y < max.y; y++) {
+            for (int y = min.y; y <= max.y; y++) {
                 // Barycentric coordinates at start of row
                 int w0 = w0_row;
                 int w1 = w1_row;
                 int w2 = w2_row;
 
-                for (int x = min.x; x < max.x; x++) {
+                for (int x = min.x; x <= max.x; x++) {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 + bias0 | w1 + bias1 | w2 + bias2) >= 0) {
                         //Adjustements per triangle instead of per pixel can be done at area level
@@ -766,11 +768,11 @@ namespace ProjectPSX.Devices {
 
             int color = (color0.r << 16 | color0.g << 8 | color0.b);
 
-            for (int yPos = y; yPos < h + y; yPos++) {
-                for (int xPos = x; xPos < w + x; xPos++) {
-                    VRAM.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
-                }
-            }
+           for (int yPos = y; yPos < h + y; yPos++) {
+               for (int xPos = x; xPos < w + x; xPos++) {
+                   VRAM.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
+               }
+           }
         }
 
         private void GP0_RenderRectangle() {
