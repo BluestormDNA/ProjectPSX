@@ -480,20 +480,24 @@ namespace ProjectPSX.Devices {
         }
 
 
-        private void play() { //broken hardcoded to push puzzle bubble 2 to play
-            if (cdDebug) Console.WriteLine("[CDROM] Broken Warning: CDDA Play Triggered");
-            //Console.ReadLine();
+        private void play() {
+            //If theres a trackN param it seeks and plays from the start location of it
+            int track = 0;
+            if (parameterBuffer.Count > 0) {
+                track = BcdToDec((byte)parameterBuffer.Dequeue());
+                readLoc = seekLoc = cd.tracks[track].lbaStart;
+            //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
+            } else {
+                readLoc = seekLoc;
+            }
+
+            Console.WriteLine($"[CDROM] CDDA Play Triggered Track: {track} readLoc: {readLoc}");
+
             STAT = 0x82;
             mode = Mode.Play;
-            //int track = BcdToDec((byte)parameterBuffer.Dequeue());
-            // Console.WriteLine("Track " + track);
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-
-            //responseBuffer.Enqueue(STAT);
-            //interruptQueue.Enqueue(0x1);
         }
 
         private void stop() {
@@ -509,14 +513,14 @@ namespace ProjectPSX.Devices {
         private void getTD() {
             int track = BcdToDec((byte)parameterBuffer.Dequeue());
 
-            if (track == 0) {
+            if (track == 0) { //returns CD LBA / End of last track
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
                 responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
                 if (cdDebug) Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
-            } else {
-                //assuming only 1 track BIN. Anything beyond would require a CUE parser
-                responseBuffer.EnqueueRange<uint>(STAT, 0, 2);
-                if (cdDebug) Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} HardCoded Track 1 00:02");
+            } else { //returns Track Start
+                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
+                responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
+                if (cdDebug) Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             }
 
             //Console.ReadLine();
@@ -524,10 +528,9 @@ namespace ProjectPSX.Devices {
         }
 
         private void getTN() {
-            //todo: Hardcoded tracks: 1. Anything beyond would require a CUE parser
-            if (cdDebug) Console.WriteLine("[CDROM] getTN HardCoded Tracks: 1 1");
+            if (cdDebug)  Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
             //Console.ReadLine();
-            responseBuffer.EnqueueRange<uint>(STAT, 1, 1);
+            responseBuffer.EnqueueRange<uint>(STAT, 1, DecToBcd((byte)cd.tracks.Count));
             interruptQueue.Enqueue(0x3);
         }
 
