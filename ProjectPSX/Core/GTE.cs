@@ -646,9 +646,7 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= 0x1000;
                 return 0;
-            }
-
-            if (value > 0x1000) {
+            } else if (value > 0x1000) {
                 FLAG |= 0x1000;
                 return 0x1000;
             }
@@ -659,9 +657,7 @@ namespace ProjectPSX {
             if (value < -0x400) {
                 FLAG |= (uint)(0x4000 >> (i - 1));
                 return -0x400;
-            }
-
-            if (value > 0x3FF) {
+            } else if (value > 0x3FF) {
                 FLAG |= (uint)(0x4000 >> (i - 1));
                 return 0x3FF;
             }
@@ -672,9 +668,7 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= 0x4_0000;
                 return 0;
-            }
-
-            if (value > 0xFFFF) {
+            } else if (value > 0xFFFF) {
                 FLAG |= 0x4_0000;
                 return 0xFFFF;
             }
@@ -686,9 +680,7 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= (uint)0x20_0000 >> (i - 1);
                 return 0;
-            }
-
-            if (value > 0xFF) {
+            } else if (value > 0xFF) {
                 FLAG |= (uint)0x20_0000 >> (i - 1);
                 return 0xFF;
             }
@@ -700,14 +692,10 @@ namespace ProjectPSX {
             if (lm && value < 0) {
                 FLAG |= (uint)(0x100_0000 >> (i - 1));
                 return 0;
-            }
-
-            if (!lm && (value < -0x8000)) {
+            } else if (!lm && (value < -0x8000)) {
                 FLAG |= (uint)(0x100_0000 >> (i - 1));
                 return -0x8000;
-            }
-
-            if (value > 0x7FFF) {
+            } else if (value > 0x7FFF) {
                 FLAG |= (uint)(0x100_0000 >> (i - 1));
                 return 0x7FFF;
             }
@@ -720,9 +708,7 @@ namespace ProjectPSX {
             if (value < -0x800_0000_0000) {
                 //Console.WriteLine("under");
                 FLAG |= (uint)(0x800_0000 >> (i - 1));
-            }
-
-            if (value > 0x7FF_FFFF_FFFF) {
+            } else if (value > 0x7FF_FFFF_FFFF) {
                 //Console.WriteLine("over");
                 FLAG |= (uint)(0x4000_0000 >> (i - 1));
             }
