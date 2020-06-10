@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+//using NAudio.Wave;
+using ProjectPSX.Devices.CdRom;
 
 namespace ProjectPSX.Devices {
     //TODO This is class is pretty much broken and the culprit ofc that many games dosnt work.
@@ -53,6 +55,10 @@ namespace ProjectPSX.Devices {
 
         private bool cdDebug = false;
 
+        //private WaveOut waveout = new WaveOut();
+        //private BufferedWaveProvider buffer = new BufferedWaveProvider(new WaveFormat());
+
+
         private struct SectorHeader {
             public byte mm;
             public byte ss;
@@ -93,6 +99,8 @@ namespace ProjectPSX.Devices {
         private CD cd;
 
         public CDROM() {
+            //buffer.DiscardOnBufferOverflow = true;
+            //buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 150);
             cd = new CD();
         }
 
@@ -139,13 +147,38 @@ namespace ProjectPSX.Devices {
                     }
                     //if (dataBuffer.Count == 0) {
 
-                    Queue<byte> sector = new Queue<byte>(cd.Read(isSectorSizeRAW, readLoc++));
+                    bool readRaw = isSectorSizeRAW;
+
+                    //During Play, only bit 7,2,1 of Setmode are used, all other Setmode bits are ignored
+                    //(that, including bit0, ie. during Play the drive is always in CD-DA mode, regardless of that bit).
+                    //Bit7(double speed) should be usually off, although it can be used for a fast forward effect(with audible output).
+                    //Bit2(report) activates an optional interrupt for Play, Forward, and Backward commands(see below).Bit1(autopause) pauses play at the end of the track.
+                    if (mode == Mode.Play) {
+                        readRaw = true;
+                    }
+
+                    Queue<byte> sector = new Queue<byte>(cd.Read(readRaw, readLoc++));
 
                     //if (cdDebug) {
                     //Console.ForegroundColor = ConsoleColor.DarkGreen;
                     //Console.WriteLine($"Reading readLoc: {readLoc - 1} seekLoc: {seekLoc} size: {sector.Count}");
                     //Console.ResetColor();
                     //}
+
+                    if (mode == Mode.Play) {
+                        //Console.WriteLine("isSectorsizeRaw " + isSectorSizeRAW);
+                        //buffer.AddSamples(sector.ToArray(), 0, sector.Count);
+
+                        //if (waveout.PlaybackState != PlaybackState.Playing) {
+                        //    waveout.Init(buffer);
+                        //    waveout.Play();
+                        //}
+
+                    }
+
+                    for (int i = 0; i < 12; i++) {
+                        sector.Dequeue(); //dismiss sync header
+                    }
 
                     if (!isSectorSizeRAW) { //header tests
                         sectorHeader.mm = sector.Dequeue();
@@ -169,7 +202,7 @@ namespace ProjectPSX.Devices {
                     //if ((STAT & 0x80) != 0) Console.WriteLine("is play");
                     //if (sectorSubHeader.isVideo) Console.WriteLine("is video");
                     //if (sectorSubHeader.isData) Console.WriteLine("is data");
-                    //if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
+                    if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
 
                     if (isXAADPCM && sectorSubHeader.isForm2) {
                         if (sectorSubHeader.isEndOfFile) {
@@ -184,8 +217,13 @@ namespace ProjectPSX.Devices {
                                 return false;
                             }
 
-                            //Here we should send the XA to SPU but...
-                            if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio >> Skipping as no SPU");
+                            if (cdDebug) 
+                                Console.WriteLine("[CDROM] XA ON: Realtime + Audio >> Skipping as no SPU");
+                            //buffer.AddSamples(sector.ToArray(), 0, sector.Count);
+                            //if (waveout.PlaybackState != PlaybackState.Playing) {
+                            //    waveout.Init(XaAdpcm.Decode(buffer));
+                            //    waveout.Play();
+                            //}
 
                             return false;
                         }
@@ -486,7 +524,7 @@ namespace ProjectPSX.Devices {
             if (parameterBuffer.Count > 0) {
                 track = BcdToDec((byte)parameterBuffer.Dequeue());
                 readLoc = seekLoc = cd.tracks[track].lbaStart;
-            //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
+                //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
             } else {
                 readLoc = seekLoc;
             }
@@ -516,11 +554,13 @@ namespace ProjectPSX.Devices {
             if (track == 0) { //returns CD LBA / End of last track
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
                 responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
-                if (cdDebug) Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
+                //if (cdDebug)
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             } else { //returns Track Start
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
                 responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
-                if (cdDebug) Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
+                //if (cdDebug)
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             }
 
             //Console.ReadLine();
@@ -528,7 +568,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void getTN() {
-            if (cdDebug)  Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
+            //if (cdDebug)
+            Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
             //Console.ReadLine();
             responseBuffer.EnqueueRange<uint>(STAT, 1, DecToBcd((byte)cd.tracks.Count));
             interruptQueue.Enqueue(0x3);
@@ -642,7 +683,7 @@ namespace ProjectPSX.Devices {
 
             //temporal bin hack to bypass cue parse - 2 secs
             //WARNING this can wreck some games that setLoc to s0 or s1
-            seekLoc -= 150; // -2 seconds
+            //seekLoc -= 150; // -2 seconds
 
             if (seekLoc < 0) {
                 Console.WriteLine($"[CDROM] WARNING NEGATIVE setLOC {seekLoc:x8}");
@@ -681,7 +722,7 @@ namespace ProjectPSX.Devices {
             STAT |= 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-            
+
             responseBuffer.EnqueueRange<uint>(0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41); //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
             interruptQueue.Enqueue(0x2);
         }

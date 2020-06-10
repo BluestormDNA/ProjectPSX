@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace ProjectPSX.Util {
+namespace ProjectPSX.Devices.CdRom {
     public class TrackBuilder {
 
         private const int BytesPerSectorRaw = 2352;
@@ -44,7 +44,7 @@ namespace ProjectPSX.Util {
                         lbaStart += 150;
                     }
 
-                    int lbaEnd = lbaCounter + lba - 1;
+                    int lbaEnd = lbaCounter + lba;
 
                     lbaCounter += lba;
 
@@ -65,7 +65,7 @@ namespace ProjectPSX.Util {
             long size = new FileInfo(file).Length;
             int lba = (int)(size / BytesPerSectorRaw);
             int lbaStart = 150; // 150 frames (2 seconds) offset from track 1
-            int lbaEnd = lba - 1;
+            int lbaEnd = lba;
 
             tracks.Add(new Track(file, size, lba, lbaStart, lbaEnd));
 

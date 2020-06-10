@@ -2,21 +2,18 @@
 using System;
 using System.Linq;
 using System.Windows.Forms;
-using ProjectPSX.Util;
 using System.Collections.Generic;
-using static ProjectPSX.Util.TrackBuilder;
+using static ProjectPSX.Devices.CdRom.TrackBuilder;
 
-namespace ProjectPSX.Devices {
+namespace ProjectPSX.Devices.CdRom {
     internal class CD {
 
         private const int BytesPerSectorRaw = 2352;
         private const int BytesPerSectorData = 2048;
-        private const int BytesPerSectorHeader = 24;
-        private const int BytesPerSectorRawSyncHeader = 12;
-        private const int BytesPerSubChannelInfo = 12;
+        private const int BytesPerSubChannelHeader = 24;
 
-        private byte[] rawSectorBuffer = new byte[BytesPerSectorRaw - BytesPerSectorRawSyncHeader];
-        private byte[] dataSectorBuffer = new byte[BytesPerSectorData + BytesPerSubChannelInfo];
+        private byte[] rawSectorBuffer = new byte[BytesPerSectorRaw];
+        private byte[] dataSectorBuffer = new byte[BytesPerSectorData + BytesPerSubChannelHeader];
 
         public List<Track> tracks;
 
@@ -41,12 +38,24 @@ namespace ProjectPSX.Devices {
                     tracks = TrackBuilder.fromCue(file);
                 }
             }
+
+            for(int i = 0; i < tracks.Count; i++) {
+                Console.WriteLine($"Track {i} size: {tracks[i].size} lbaStart: {tracks[i].lbaStart} lbaEnd: {tracks[i].lbaEnd}");
+            }
         }
 
         public byte[] Read(bool isSectorSizeRaw, int loc) {
-            string currentTrack = getTrackFromLoc(loc);
-            using FileStream stream = new FileStream(currentTrack, FileMode.Open, FileAccess.Read);
-            stream.Seek(loc * BytesPerSectorRaw + BytesPerSectorRawSyncHeader, SeekOrigin.Begin);
+
+            Track currentTrack = getTrackFromLoc(loc);
+
+            //Console.WriteLine("Loc: " + loc + " TrackLbaStart: " + currentTrack.lbaStart);
+            //Console.WriteLine("readPos = " + (loc - currentTrack.lbaStart));
+
+            int position = (loc - currentTrack.lbaStart);
+            if (position < 0) position = 0;
+
+            using FileStream stream = new FileStream(currentTrack.file, FileMode.Open, FileAccess.Read);
+            stream.Seek(position * BytesPerSectorRaw, SeekOrigin.Begin);
             if (isSectorSizeRaw) {
                 stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
                 return rawSectorBuffer;
@@ -57,13 +66,13 @@ namespace ProjectPSX.Devices {
 
         }
 
-        private string getTrackFromLoc(int loc) {
+        private Track getTrackFromLoc(int loc) {
             foreach(Track track in tracks) {
                 //Console.WriteLine(loc + " " + track.file + track.lbaEnd);
-                if (track.lbaEnd > loc) return track.file;
+                if (track.lbaEnd > loc) return track;
             }
             Console.WriteLine("[CD] WARNING: LBA beyond tracks!");
-            return tracks[0].file; //and explode ¯\_(ツ)_/¯ 
+            return tracks[0]; //and explode ¯\_(ツ)_/¯ 
         }
 
         public int getLBA() {
