@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace ProjectPSX {
+namespace ProjectPSX.Disassembler {
     internal class BIOS_Disassembler {
 
         private BUS bus;

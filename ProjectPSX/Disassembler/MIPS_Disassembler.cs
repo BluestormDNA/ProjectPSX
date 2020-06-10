@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static ProjectPSX.CPU;
 
-namespace ProjectPSX {
+namespace ProjectPSX.Disassembler {
     internal class MIPS_Disassembler {
 
         public MIPS_Disassembler(ref uint HI, ref uint LO, uint[] GPR, uint[] COP0_GPR) { //TODO FIX HI LO

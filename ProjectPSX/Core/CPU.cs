@@ -1,7 +1,6 @@
 ﻿using System;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
+using ProjectPSX.Disassembler;
 
 namespace ProjectPSX {
     internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
@@ -290,29 +289,24 @@ namespace ProjectPSX {
         }
 
         private void COP2() {
-            switch (instr.rs & 0x10) {
-                case 0x00:
-                    switch (instr.rs) {
-                        case 0b0_0000: MFC2(); break;
-                        case 0b0_0010: CFC2(); break;
-                        case 0b0_0100: MTC2(); break;
-                        case 0b0_0110: CTC2(); break;
-                        default: EXCEPTION(EX.ILLEGAL_INSTR, instr.id); break;
-                    }
-                    break;
-                case 0x10:
-                    gte.execute(instr.value);
-                    break;
+            if ((instr.rs & 0x10) == 0) {
+                switch (instr.rs) {
+                    case 0b0_0000: MFC2(); break;
+                    case 0b0_0010: CFC2(); break;
+                    case 0b0_0100: MTC2(); break;
+                    case 0b0_0110: CTC2(); break;
+                    default: EXCEPTION(EX.ILLEGAL_INSTR, instr.id); break;
+                }
+            } else {
+                gte.execute(instr.value);
             }
         }
 
         private void COP0() {
-            switch (instr.rs) {
-                case 0b0_0000: MFC0(); break;
-                case 0b0_0100: MTC0(); break;
-                case 0b1_0000: RFE(); break;
-                default: EXCEPTION(EX.ILLEGAL_INSTR, instr.id); break;
-            }
+            if (instr.rs == 0b0_0000) MFC0();
+            else if (instr.rs == 0b0_0100) MTC0();
+            else if (instr.rs == 0b1_0000) RFE();
+            else EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
