@@ -45,8 +45,13 @@ namespace ProjectPSX {
         }
         JoypadDevice joypadDevice = JoypadDevice.None;
 
-        Controller controller = new DigitalController();
-        MemoryCard memoryCard = new MemoryCard();
+        Controller controller;
+        MemoryCard memoryCard;
+
+        public JOYPAD(Controller controller) {
+            this.controller = controller;
+            memoryCard = new MemoryCard();
+        }
 
         int counter;
 
@@ -270,10 +275,5 @@ namespace ProjectPSX {
 
             return joy_stat;
         }
-
-        public void setWindow(Window window) {
-            controller.setWindow(window);
-        }
-
     }
 }

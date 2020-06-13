@@ -3,7 +3,8 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using System.Windows.Forms;
+using ProjectPSX.Devices;
+using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
     class ProjectPSX {
@@ -13,16 +14,19 @@ namespace ProjectPSX {
 
         private CPU cpu;
         private BUS bus;
+        private CDROM cdrom;
+        private Controller controller;
 
-        private Window window;
+        private IHostWindow window;
 
         private long counter;
 
-        public ProjectPSX(Window window) {
+        public ProjectPSX(IHostWindow window, string diskFilename) {
             this.window = window;
-            window.getScreen().MouseDoubleClick += new MouseEventHandler(toggleDebug);
 
-            bus = new BUS();
+            controller = new DigitalController();
+            cdrom = new CDROM(diskFilename);
+            bus = new BUS(controller, cdrom);
             cpu = new CPU(bus);
 
             bus.loadBios();
@@ -30,7 +34,7 @@ namespace ProjectPSX {
             bus.setWindow(window);
         }
 
-        public void toggleDebug(object sender, MouseEventArgs e) {
+        public void toggleDebug() {
             if (!cpu.debug) {
                 cpu.debug = true;
                 bus.gpu.debug = true;
@@ -67,27 +71,18 @@ namespace ProjectPSX {
             }
         }
 
+        internal void JoyPadUp(GamepadInputsEnum button) {
+            controller.handleJoyPadUp(button);
+        }
+
+        internal void JoyPadDown(GamepadInputsEnum button) {
+            controller.handleJoyPadDown(button);
+        }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
-            SetWindowText("ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK)) * SYNC_CYCLES) + "%" + " | Fps " + window.getFPS());
+            window.SetWindowText("ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK)) * SYNC_CYCLES) + "%" + " | Fps " + window.GetFPS());
             counter = 0;
         }
 
-        // Thread safe write Window Text
-        private delegate void SafeCallDelegate(string text);
-        private void SetWindowText(string text) {
-            if (window.InvokeRequired)
-            {
-                SafeCallDelegate d = new SafeCallDelegate(SetWindowText);
-                if (window != null)
-                {
-                    window.Invoke(d, new object[] { text });
-                }
-            }
-            else
-            {
-                window.Text = text;
-            }
-        }
     }
 }

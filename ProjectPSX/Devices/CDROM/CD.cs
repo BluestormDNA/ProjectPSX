@@ -1,7 +1,5 @@
 ﻿using System.IO;
 using System;
-using System.Linq;
-using System.Windows.Forms;
 using System.Collections.Generic;
 using static ProjectPSX.Devices.CdRom.TrackBuilder;
 
@@ -17,26 +15,14 @@ namespace ProjectPSX.Devices.CdRom {
 
         public List<Track> tracks;
 
-        public CD() {
+        public CD(string diskFilename) {
+            string ext = Path.GetExtension(diskFilename);
 
-            var cla = Environment.GetCommandLineArgs();
-            if (cla.Any(s => s.EndsWith(".bin"))) {
-                String file = cla.First(s => s.EndsWith(".bin"));
-                tracks = TrackBuilder.fromBin(file);
-            } else {
-                //Show the user a dialog so they can pick the bin they want to load.
-                var fileDialog = new OpenFileDialog();
-                fileDialog.Filter = "BIN/CUE files (*.bin, *.cue)|*.bin;*.cue";
-                fileDialog.ShowDialog();
-
-                string file = fileDialog.FileName;
-                string ext = Path.GetExtension(file);
-
-                if(ext == ".bin") {
-                    tracks = TrackBuilder.fromBin(file);
-                } else if (ext == ".cue"){
-                    tracks = TrackBuilder.fromCue(file);
-                }
+            if (ext == ".bin") {
+                tracks = TrackBuilder.fromBin(diskFilename);
+            }
+            else if (ext == ".cue") {
+                tracks = TrackBuilder.fromCue(diskFilename);
             }
 
             for(int i = 0; i < tracks.Count; i++) {

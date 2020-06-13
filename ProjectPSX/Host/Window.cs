@@ -1,12 +1,15 @@
-﻿using ProjectPSX.Util;
+﻿using ProjectPSX.Devices.Input;
+using ProjectPSX.Util;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 
 namespace ProjectPSX {
-    public class Window : Form {
+    public class Window : Form, IHostWindow {
 
         private Size vramSize = new Size(1024, 512);
         private Size _640x480 = new Size(640, 480);
@@ -33,6 +36,8 @@ namespace ProjectPSX {
         private int displayY1;
         private int displayY2;
 
+        Dictionary<Keys, GamepadInputsEnum> _gamepadKeyMap;
+
         public Window() {
             Text = "ProjectPSX";
             AutoSize = true;
@@ -46,12 +51,77 @@ namespace ProjectPSX {
 
             Controls.Add(screen);
 
-            psx = new ProjectPSX(this);
+            string diskFilename = GetDiskFilename();
+            psx = new ProjectPSX(this, diskFilename);
             psx.POWER_ON();
+
+
+            this.getScreen().MouseDoubleClick += new MouseEventHandler(toggleDebug);
+
+            KeyDown += new KeyEventHandler(handleJoyPadDown);
+            KeyUp += new KeyEventHandler(handleJoyPadUp);
+
+            _gamepadKeyMap = new Dictionary<Keys, GamepadInputsEnum>() {
+                { Keys.Space, GamepadInputsEnum.Space},
+                { Keys.Z , GamepadInputsEnum.Z },
+                { Keys.C , GamepadInputsEnum.C },
+                { Keys.Enter , GamepadInputsEnum.Enter },
+                { Keys.Up , GamepadInputsEnum.Up },
+                { Keys.Right , GamepadInputsEnum.Right },
+                { Keys.Down , GamepadInputsEnum.Down },
+                { Keys.Left , GamepadInputsEnum.Left },
+                { Keys.D1 , GamepadInputsEnum.D1 },
+                { Keys.D3 , GamepadInputsEnum.D3 },
+                { Keys.Q , GamepadInputsEnum.Q },
+                { Keys.E , GamepadInputsEnum.E },
+                { Keys.W , GamepadInputsEnum.W },
+                { Keys.D , GamepadInputsEnum.D },
+                { Keys.S , GamepadInputsEnum.S },
+                { Keys.A , GamepadInputsEnum.A },
+            };
+        }
+
+        private string GetDiskFilename() {
+            var cla = Environment.GetCommandLineArgs();
+            if (cla.Any(s => s.EndsWith(".bin") || s.EndsWith(".cue"))) {
+                String filename = cla.First(s => s.EndsWith(".bin") || s.EndsWith(".cue"));
+                return filename;
+            }
+            else {
+                //Show the user a dialog so they can pick the bin they want to load.
+                var fileDialog = new OpenFileDialog();
+                fileDialog.Filter = "BIN/CUE files (*.bin, *.cue)|*.bin;*.cue";
+                fileDialog.ShowDialog();
+
+                string file = fileDialog.FileName;
+                return file;
+            }
+        }
+
+        private void handleJoyPadUp(object sender, KeyEventArgs e) {
+            GamepadInputsEnum? button = GetGamepadButton(e.KeyCode);
+            if(button != null)
+                psx.JoyPadUp(button.Value);
+        }
+
+        private GamepadInputsEnum? GetGamepadButton(Keys keyCode) {
+            if (_gamepadKeyMap.TryGetValue(keyCode, out GamepadInputsEnum gamepadButtonValue))
+                return gamepadButtonValue;
+            return null;
+        }
+
+        private void handleJoyPadDown(object sender, KeyEventArgs e) {
+            GamepadInputsEnum? button = GetGamepadButton(e.KeyCode);
+            if (button != null)
+                psx.JoyPadDown(button.Value);
+        }
+
+        private void toggleDebug(object sender, MouseEventArgs e) {
+            psx.toggleDebug();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void update(int[] vramBits) {
+        public void Update(int[] vramBits) {
 
             if (isVramViewer) {
                 Buffer.BlockCopy(vramBits, 0, display.Bits, 0, 0x200000);
@@ -136,13 +206,13 @@ namespace ProjectPSX {
             return screen;
         }
 
-        internal int getFPS() {
+        public int GetFPS() {
             int currentFps = fps;
             fps = 0;
             return currentFps;
         }
 
-        internal void setDisplayMode(int horizontalRes, int verticalRes, bool is24BitDepth) {
+        public void SetDisplayMode(int horizontalRes, int verticalRes, bool is24BitDepth) {
             this.is24BitDepth = is24BitDepth;
 
             if (horizontalRes != this.horizontalRes || verticalRes != this.verticalRes) {
@@ -159,7 +229,7 @@ namespace ProjectPSX {
 
         }
 
-        internal void setVRAMStart(ushort displayVRAMXStart, ushort displayVRAMYStart) {
+        public void SetVRAMStart(ushort displayVRAMXStart, ushort displayVRAMYStart) {
             //if (isVramViewer) return;
 
             this.displayVRAMXStart = displayVRAMXStart;
@@ -168,7 +238,7 @@ namespace ProjectPSX {
             //Console.WriteLine($"Vram Start {displayVRAMXStart} {displayVRAMYStart}");
         }
 
-        internal void setVerticalRange(ushort displayY1, ushort displayY2) {
+        public void SetVerticalRange(ushort displayY1, ushort displayY2) {
             //if (isVramViewer) return;
 
             this.displayY1 = displayY1;
@@ -177,7 +247,7 @@ namespace ProjectPSX {
             //Console.WriteLine($"Vertical Range {displayY1} {displayY2}");
         }
 
-        internal void setHorizontalRange(ushort displayX1, ushort displayX2) {
+        public void SetHorizontalRange(ushort displayX1, ushort displayX2) {
             //if (isVramViewer) return;
 
             this.displayX1 = displayX1;
@@ -199,5 +269,20 @@ namespace ProjectPSX {
                 screen.BackgroundImage = display.Bitmap;
             }
         }
+
+        public void SetWindowText(string newText) {
+            if (InvokeRequired) {
+                SafeCallDelegate d = new SafeCallDelegate(SetWindowText);                
+                    Invoke(d, new object[] { newText });                
+            }
+            else {
+                Text = newText;
+            }
+        }
+
+
+        // Thread safe write Window Text
+        private delegate void SafeCallDelegate(string text);
+        
     }
 }
