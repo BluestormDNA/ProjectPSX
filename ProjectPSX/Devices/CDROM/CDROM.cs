@@ -698,9 +698,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
         private void getID() {
