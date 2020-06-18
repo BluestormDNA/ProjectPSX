@@ -130,7 +130,7 @@ namespace ProjectPSX.Devices {
                     //Console.WriteLine("[CDROM] MODE IDLE");
                     break;
 
-                case Mode.Seek:
+                case Mode.Seek: //Hardcoded seek time...
                     if (counter < 100000 || interruptQueue.Count != 0) {
                         return false;
                     }
@@ -138,6 +138,9 @@ namespace ProjectPSX.Devices {
                     //Console.WriteLine("[CDROM] MODE SEEK");
                     mode = Mode.Idle;
                     STAT = (byte)(STAT & (~0x40));
+
+                    responseBuffer.Enqueue(STAT);
+                    interruptQueue.Enqueue(0x2);
                     break;
 
                 case Mode.Read:
@@ -510,11 +513,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
 
@@ -659,11 +657,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
         private void setLoc() {
