@@ -145,10 +145,10 @@ namespace ProjectPSX.Devices {
 
                 case Mode.Read:
                 case Mode.Play:
-                    if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) /*&& dataBuffer.Count > 0*/) {
+                    if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) || interruptQueue.Count != 0) {
                         return false;
                     }
-                    //if (dataBuffer.Count == 0) {
+                    counter = 0;
 
                     bool readRaw = isSectorSizeRAW;
 
@@ -205,7 +205,7 @@ namespace ProjectPSX.Devices {
                     //if ((STAT & 0x80) != 0) Console.WriteLine("is play");
                     //if (sectorSubHeader.isVideo) Console.WriteLine("is video");
                     //if (sectorSubHeader.isData) Console.WriteLine("is data");
-                    if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
+                    //if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
 
                     if (isXAADPCM && sectorSubHeader.isForm2) {
                         if (sectorSubHeader.isEndOfFile) {
@@ -235,18 +235,10 @@ namespace ProjectPSX.Devices {
 
 
                     cdBuffer = new Queue<byte>(sector);
-                    //Console.WriteLine(cdBuffer.Count);
 
-                    isCDDA = !sectorSubHeader.isData;
-
-                    if (interruptQueue.Count != 0) {
-                        return false;
-                    }
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
-                    counter = 0;
 
-                    //Console.WriteLine("[CDROM] MODE READ");
                     break;
 
                 case Mode.TOC:
