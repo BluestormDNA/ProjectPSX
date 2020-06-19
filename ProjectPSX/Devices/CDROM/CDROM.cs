@@ -130,7 +130,7 @@ namespace ProjectPSX.Devices {
                     //Console.WriteLine("[CDROM] MODE IDLE");
                     break;
 
-                case Mode.Seek:
+                case Mode.Seek: //Hardcoded seek time...
                     if (counter < 100000 || interruptQueue.Count != 0) {
                         return false;
                     }
@@ -138,14 +138,17 @@ namespace ProjectPSX.Devices {
                     //Console.WriteLine("[CDROM] MODE SEEK");
                     mode = Mode.Idle;
                     STAT = (byte)(STAT & (~0x40));
+
+                    responseBuffer.Enqueue(STAT);
+                    interruptQueue.Enqueue(0x2);
                     break;
 
                 case Mode.Read:
                 case Mode.Play:
-                    if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) /*&& dataBuffer.Count > 0*/) {
+                    if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) || interruptQueue.Count != 0) {
                         return false;
                     }
-                    //if (dataBuffer.Count == 0) {
+                    counter = 0;
 
                     bool readRaw = isSectorSizeRAW;
 
@@ -202,7 +205,7 @@ namespace ProjectPSX.Devices {
                     //if ((STAT & 0x80) != 0) Console.WriteLine("is play");
                     //if (sectorSubHeader.isVideo) Console.WriteLine("is video");
                     //if (sectorSubHeader.isData) Console.WriteLine("is data");
-                    if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
+                    //if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
 
                     if (isXAADPCM && sectorSubHeader.isForm2) {
                         if (sectorSubHeader.isEndOfFile) {
@@ -232,18 +235,10 @@ namespace ProjectPSX.Devices {
 
 
                     cdBuffer = new Queue<byte>(sector);
-                    //Console.WriteLine(cdBuffer.Count);
 
-                    isCDDA = !sectorSubHeader.isData;
-
-                    if (interruptQueue.Count != 0) {
-                        return false;
-                    }
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
-                    counter = 0;
 
-                    //Console.WriteLine("[CDROM] MODE READ");
                     break;
 
                 case Mode.TOC:
@@ -510,11 +505,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
 
@@ -659,11 +649,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
         private void setLoc() {
@@ -698,9 +683,6 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
         }
 
         private void getID() {
