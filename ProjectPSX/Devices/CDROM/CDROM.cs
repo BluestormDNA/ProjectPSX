@@ -420,6 +420,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void getLocL() {
+            if (cdDebug) {
+                Console.WriteLine($"mm: {sectorHeader.mm} ss: {sectorHeader.ss} ff: {sectorHeader.ff} mode: {sectorHeader.mode}" +
+                    $" file: {sectorSubHeader.file} channel: {sectorSubHeader.channel} subMode: {sectorSubHeader.subMode} codingInfo: {sectorSubHeader.codingInfo}");
+            }
+
             responseBuffer.EnqueueRange(
                 sectorHeader.mm, sectorHeader.ss, sectorHeader.ff, sectorHeader.mode, sectorSubHeader.file,
                 sectorSubHeader.channel, sectorSubHeader.subMode, sectorSubHeader.codingInfo);
@@ -427,14 +432,17 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x3);
         }
 
-        private void getLocP() { //HARDCODED, THIS NEEDS SubChannelQ
-            if (cdDebug) {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("[CDROM] getLocP WARNING BROKEN COMMAND");
-                Console.ResetColor();
-            }
+        private void getLocP() { //This is probably wrong so make sure its visible...
+            //if (cdDebug) {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[CDROM] getLocP WARNING BROKEN COMMAND");
+            Console.ResetColor();
+            //}
 
-            responseBuffer.EnqueueRange<uint>(0, 0, 0, 0, 0, 0, 0, 0);
+            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc);
+            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(cd.getLBA() - readLoc);
+
+            responseBuffer.EnqueueRange<uint>(1, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff));
             interruptQueue.Enqueue(0x3);
         }
 
