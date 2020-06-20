@@ -6,7 +6,7 @@ using System.Drawing;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
-//using NAudio.Wave;
+using NAudio.Wave;
 
 namespace ProjectPSX {
     public class Window : Form, IHostWindow {
@@ -37,8 +37,8 @@ namespace ProjectPSX {
 
         Dictionary<Keys, GamepadInputsEnum> _gamepadKeyMap;
 
-        //private WaveOut waveout = new WaveOut();
-        //private BufferedWaveProvider buffer = new BufferedWaveProvider(new WaveFormat());
+        private WaveOut waveout = new WaveOut();
+        private BufferedWaveProvider buffer = new BufferedWaveProvider(new WaveFormat());
 
         public Window() {
             Text = "ProjectPSX";
@@ -82,8 +82,8 @@ namespace ProjectPSX {
                 { Keys.A , GamepadInputsEnum.A },
             };
 
-            //buffer.DiscardOnBufferOverflow = true;
-            //buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 150);
+            buffer.DiscardOnBufferOverflow = true;
+            buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
         }
 
         private string GetDiskFilename() {
@@ -286,13 +286,12 @@ namespace ProjectPSX {
         }
 
         public void Play(byte[] samples) {
-            //Soon...
-            //buffer.AddSamples(samples, 0, samples.Length);
+            buffer.AddSamples(samples, 0, samples.Length);
 
-            //if (waveout.PlaybackState != PlaybackState.Playing) {
-            //    waveout.Init(buffer);
-            //    waveout.Play();
-            //}
+            if (waveout.PlaybackState != PlaybackState.Playing) {
+                waveout.Init(buffer);
+                waveout.Play();
+            }
         }
 
         // Thread safe write Window Text
