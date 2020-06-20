@@ -150,17 +150,7 @@ namespace ProjectPSX.Devices {
                     }
                     counter = 0;
 
-                    bool readRaw = isSectorSizeRAW;
-
-                    //During Play, only bit 7,2,1 of Setmode are used, all other Setmode bits are ignored
-                    //(that, including bit0, ie. during Play the drive is always in CD-DA mode, regardless of that bit).
-                    //Bit7(double speed) should be usually off, although it can be used for a fast forward effect(with audible output).
-                    //Bit2(report) activates an optional interrupt for Play, Forward, and Backward commands(see below).Bit1(autopause) pauses play at the end of the track.
-                    if (mode == Mode.Play) {
-                        readRaw = true;
-                    }
-
-                    Queue<byte> sector = new Queue<byte>(cd.Read(readRaw, readLoc++));
+                    byte[] rawSector = cd.Read(readLoc++);
 
                     //if (cdDebug) {
                     //Console.ForegroundColor = ConsoleColor.DarkGreen;
@@ -169,40 +159,27 @@ namespace ProjectPSX.Devices {
                     //}
 
                     if (mode == Mode.Play) {
-                        //Console.WriteLine("isSectorsizeRaw " + isSectorSizeRAW);
-                        //buffer.AddSamples(sector.ToArray(), 0, sector.Count);
+                        //buffer.AddSamples(rawSector, 0, rawSector.Count);
 
                         //if (waveout.PlaybackState != PlaybackState.Playing) {
                         //    waveout.Init(buffer);
                         //    waveout.Play();
                         //}
 
+                        //return false; //CDDA isn't delvered to CPU and doesn't raise interrupt
                     }
 
-                    for (int i = 0; i < 12; i++) {
-                        sector.Dequeue(); //dismiss sync header
-                    }
+                    //first 12 are the sync header
+                    sectorHeader.mm = rawSector[12];
+                    sectorHeader.ss = rawSector[13];
+                    sectorHeader.ff = rawSector[14];
+                    sectorHeader.mode = rawSector[15];
 
-                    if (!isSectorSizeRAW) { //header tests
-                        sectorHeader.mm = sector.Dequeue();
-                        sectorHeader.ss = sector.Dequeue();
-                        sectorHeader.ff = sector.Dequeue();
-                        sectorHeader.mode = sector.Dequeue();
+                    sectorSubHeader.file = rawSector[16];
+                    sectorSubHeader.channel = rawSector[17];
+                    sectorSubHeader.subMode = rawSector[18];
+                    sectorSubHeader.codingInfo = rawSector[19];
 
-                        sectorSubHeader.file = sector.Dequeue();
-                        sectorSubHeader.channel = sector.Dequeue();
-                        sectorSubHeader.subMode = sector.Dequeue();
-                        sectorSubHeader.codingInfo = sector.Dequeue();
-
-                        //copy of subheader
-                        sector.Dequeue();
-                        sector.Dequeue();
-                        sector.Dequeue();
-                        sector.Dequeue();
-                    }
-
-                    //Console.WriteLine(mode);
-                    //if ((STAT & 0x80) != 0) Console.WriteLine("is play");
                     //if (sectorSubHeader.isVideo) Console.WriteLine("is video");
                     //if (sectorSubHeader.isData) Console.WriteLine("is data");
                     //if (sectorSubHeader.isAudio) Console.WriteLine("is audio");
@@ -210,31 +187,37 @@ namespace ProjectPSX.Devices {
                     if (isXAADPCM && sectorSubHeader.isForm2) {
                         if (sectorSubHeader.isEndOfFile) {
                             if (cdDebug) Console.WriteLine("[CDROM] XA ON: End of File!");
-                            //Console.ReadLine();
-                            //mode = Mode.Idle; STAT = 0x2;
+                            //is this even needed? There seems to not be an AutoPause flag like on CDDA
+                            //RR4, Castlevania and others hang sound here if hard stoped to STAT 0x2
                         }
 
                         if (sectorSubHeader.isRealTime && sectorSubHeader.isAudio) {
 
                             if (isXAFilter && (filterFile != sectorSubHeader.file || filterChannel != sectorSubHeader.channel)) {
+                                if (cdDebug) Console.WriteLine("[CDROM] XA Filter: file || channel");
                                 return false;
                             }
 
-                            if (cdDebug) 
-                                Console.WriteLine("[CDROM] XA ON: Realtime + Audio >> Skipping as no SPU");
-                            //buffer.AddSamples(sector.ToArray(), 0, sector.Count);
+                            if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio"); //todo flag to pass to SPU?
+                            //byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
+                            //buffer.AddSamples(decodedXaAdpcm, 0, decodedXaAdpcm.Length);
                             //if (waveout.PlaybackState != PlaybackState.Playing) {
-                            //    waveout.Init(XaAdpcm.Decode(buffer));
+                            //    waveout.Init(buffer);
                             //    waveout.Play();
                             //}
 
                             return false;
                         }
                     }
-                    // }
 
+                    //If we arived here sector is supposed to be delivered to CPU so slice out sync and header based on flag
+                    if (!isSectorSizeRAW) {
+                        rawSector = rawSector.AsSpan().Slice(24, 0x800).ToArray();
+                    } else {
+                        rawSector = rawSector.AsSpan().Slice(12).ToArray();
+                    }
 
-                    cdBuffer = new Queue<byte>(sector);
+                    cdBuffer = new Queue<byte>(rawSector);
 
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
