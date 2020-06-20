@@ -98,10 +98,10 @@ namespace ProjectPSX.Devices {
 
         private CD cd;
 
-        public CDROM() {
+        public CDROM(string diskFilename) {
             //buffer.DiscardOnBufferOverflow = true;
             //buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 150);
-            cd = new CD();
+            cd = new CD(diskFilename);
         }
 
         bool edgeTrigger;

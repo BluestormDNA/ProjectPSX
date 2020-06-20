@@ -20,7 +20,7 @@ namespace ProjectPSX.Devices {
         private static readonly int[] resolutions = { 256, 320, 512, 640, 368 };//gpustat res index
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
-        private Window window;
+        private IHostWindow window;
         // private DirectBitmap VRAM = new DirectBitmap();
         private Display VRAM = new Display(1024, 512);
 
@@ -28,7 +28,7 @@ namespace ProjectPSX.Devices {
 
         public bool debug;
 
-        public void setWindow(Window window) {
+        public void setWindow(IHostWindow window) {
             this.window = window;
             GP1_ResetGPU();
         }
@@ -176,7 +176,7 @@ namespace ProjectPSX.Devices {
                         isOddLine = !isOddLine;
                     }
 
-                    window.update(VRAM.Bits);
+                    window.Update(VRAM.Bits);
                     return true;
                 }
             }
@@ -1152,21 +1152,21 @@ namespace ProjectPSX.Devices {
             displayY1 = (ushort)(value & 0x3FF);
             displayY2 = (ushort)((value >> 10) & 0x3FF);
 
-            window.setVerticalRange(displayY1, displayY2);
+            window.SetVerticalRange(displayY1, displayY2);
         }
 
         private void GP1_DisplayHorizontalRange(uint value) {
             displayX1 = (ushort)(value & 0xFFF);
             displayX2 = (ushort)((value >> 12) & 0xFFF);
 
-            window.setHorizontalRange(displayX1, displayX2);
+            window.SetHorizontalRange(displayX1, displayX2);
         }
 
         private void GP1_DisplayVRAMStart(uint value) {
             displayVRAMXStart = (ushort)(value & 0x3FE);
             displayVRAMYStart = (ushort)((value >> 10) & 0x1FE);
 
-            window.setVRAMStart(displayVRAMXStart, displayVRAMYStart);
+            window.SetVRAMStart(displayVRAMXStart, displayVRAMYStart);
         }
 
         private void GP1_DMADirection(uint value) {
@@ -1190,7 +1190,7 @@ namespace ProjectPSX.Devices {
             int horizontalRes = resolutions[horizontalResolution2 << 2 | horizontalResolution1];
             int verticalRes = isVerticalResolution480 ? 480 : 240;
 
-            window.setDisplayMode(horizontalRes, verticalRes, is24BitDepth);
+            window.SetDisplayMode(horizontalRes, verticalRes, is24BitDepth);
         }
 
         private void GP1_ResetGPU() {
