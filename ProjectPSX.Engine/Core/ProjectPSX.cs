@@ -7,7 +7,7 @@ using ProjectPSX.Devices;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
-    class ProjectPSX {
+    public class ProjectPSX {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
         const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
@@ -71,11 +71,11 @@ namespace ProjectPSX {
             }
         }
 
-        internal void JoyPadUp(GamepadInputsEnum button) {
+        public void JoyPadUp(GamepadInputsEnum button) {
             controller.handleJoyPadUp(button);
         }
 
-        internal void JoyPadDown(GamepadInputsEnum button) {
+        public void JoyPadDown(GamepadInputsEnum button) {
             controller.handleJoyPadDown(button);
         }
 

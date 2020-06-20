@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ProjectPSX.Util;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -22,7 +23,7 @@ namespace ProjectPSX.Devices {
 
         private IHostWindow window;
         // private DirectBitmap VRAM = new DirectBitmap();
-        private Display VRAM = new Display(1024, 512);
+        private GPUDisplay VRAM = new GPUDisplay(1024, 512);
 
         private delegate void Command();
 
