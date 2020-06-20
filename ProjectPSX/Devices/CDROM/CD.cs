@@ -7,11 +7,8 @@ namespace ProjectPSX.Devices.CdRom {
     internal class CD {
 
         private const int BytesPerSectorRaw = 2352;
-        private const int BytesPerSectorData = 2048;
-        private const int BytesPerSubChannelHeader = 24;
 
         private byte[] rawSectorBuffer = new byte[BytesPerSectorRaw];
-        private byte[] dataSectorBuffer = new byte[BytesPerSectorData + BytesPerSubChannelHeader];
 
         public List<Track> tracks;
 
@@ -20,17 +17,16 @@ namespace ProjectPSX.Devices.CdRom {
 
             if (ext == ".bin") {
                 tracks = TrackBuilder.fromBin(diskFilename);
-            }
-            else if (ext == ".cue") {
+            } else if (ext == ".cue") {
                 tracks = TrackBuilder.fromCue(diskFilename);
             }
 
-            for(int i = 0; i < tracks.Count; i++) {
+            for (int i = 0; i < tracks.Count; i++) {
                 Console.WriteLine($"Track {i} size: {tracks[i].size} lbaStart: {tracks[i].lbaStart} lbaEnd: {tracks[i].lbaEnd}");
             }
         }
 
-        public byte[] Read(bool isSectorSizeRaw, int loc) {
+        public byte[] Read(int loc) {
 
             Track currentTrack = getTrackFromLoc(loc);
 
@@ -42,18 +38,12 @@ namespace ProjectPSX.Devices.CdRom {
 
             using FileStream stream = new FileStream(currentTrack.file, FileMode.Open, FileAccess.Read);
             stream.Seek(position * BytesPerSectorRaw, SeekOrigin.Begin);
-            if (isSectorSizeRaw) {
-                stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
-                return rawSectorBuffer;
-            } else {
-                stream.Read(dataSectorBuffer, 0, dataSectorBuffer.Length);
-                return dataSectorBuffer;
-            }
-
+            stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
+            return rawSectorBuffer;
         }
 
         private Track getTrackFromLoc(int loc) {
-            foreach(Track track in tracks) {
+            foreach (Track track in tracks) {
                 //Console.WriteLine(loc + " " + track.file + track.lbaEnd);
                 if (track.lbaEnd > loc) return track;
             }
