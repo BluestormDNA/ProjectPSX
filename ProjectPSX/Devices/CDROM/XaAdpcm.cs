@@ -65,8 +65,6 @@ namespace ProjectPSX.Devices.CdRom {
             bool is18900hz = ((codingInfo >> 2) & 0x1) == 0x1;
             bool is8BitPerSample = ((codingInfo >> 4) & 0x1) == 0x1;
 
-            if (is18900hz) Console.ReadLine();
-
             //Console.WriteLine($"decoding XAPCDM {xaadpcm.Length} is18900: {is18900hz} is8Bit: {is8BitPerSample} isStereo: {isStereo}");
 
             int position = BytesPerHeader; //Skip sync, header and subheader
@@ -74,29 +72,11 @@ namespace ProjectPSX.Devices.CdRom {
                 for (int blk = 0; blk < 4; blk++) {
 
                     if (isStereo) {
-                        //Console.WriteLine("isStereo");
                         l.AddRange(decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL));
                         r.AddRange(decodeNibbles(xaadpcm, position, blk, 1, ref oldR, ref olderR));
                     } else {
-                        List<short> m0 = decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL);
-                        List<short> m1 = decodeNibbles(xaadpcm, position, blk, 1, ref oldL, ref olderL);
-
-                        List<short> resampledM0 = resampleTo44100Hz(m0, is18900hz, 0);
-                        List<short> resampledM1 = resampleTo44100Hz(m1, is18900hz, 1);
-
-                        for (int sample = 0; sample < resampledM0.Count; sample++) {
-                            decoded.Add((byte)resampledM0[sample]);
-                            decoded.Add((byte)(resampledM0[sample] >> 8));
-                            decoded.Add((byte)resampledM0[sample]);
-                            decoded.Add((byte)(resampledM0[sample] >> 8));
-                        }
-
-                        for (int sample = 0; sample < resampledM1.Count; sample++) {
-                            decoded.Add((byte)resampledM1[sample]);
-                            decoded.Add((byte)(resampledM1[sample] >> 8));
-                            decoded.Add((byte)resampledM1[sample]);
-                            decoded.Add((byte)(resampledM1[sample] >> 8));
-                        }
+                        l.AddRange(decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL));
+                        l.AddRange(decodeNibbles(xaadpcm, position, blk, 1, ref oldL, ref olderL));
                     }
                     //Console.WriteLine("nextblock " + blk);
                 }
@@ -104,21 +84,28 @@ namespace ProjectPSX.Devices.CdRom {
                 position += 128;
             }
 
-            //Console.WriteLine(position + " " + xaadpcm.Length);
+            if (isStereo) {
+                List<short> resampledL = resampleTo44100Hz(l, is18900hz, 0);
+                List<short> resampledR = resampleTo44100Hz(r, is18900hz, 1);
+                //Console.WriteLine("Sizes" + resampledL.Count + " " + resampledR.Count);
 
-            //Console.WriteLine("Sizes" + l.Count + " " + r.Count);
-            List<short> resampledL = resampleTo44100Hz(l, is18900hz, 0);
-            List<short> resampledR = resampleTo44100Hz(r, is18900hz, 1);
-            //Console.WriteLine("Sizes" + resampledL.Count + " " + resampledR.Count);
+                for (int sample = 0; sample < resampledL.Count; sample++) {
+                    decoded.Add((byte)resampledL[sample]);
+                    decoded.Add((byte)(resampledL[sample] >> 8));
+                    decoded.Add((byte)resampledR[sample]);
+                    decoded.Add((byte)(resampledR[sample] >> 8));
+                }
+            } else {
+                List<short> resampledMono = resampleTo44100Hz(l, is18900hz, 0);
 
-            for (int sample = 0; sample < resampledL.Count; sample++) {
-                decoded.Add((byte)resampledL[sample]);
-                decoded.Add((byte)(resampledL[sample] >> 8));
-                decoded.Add((byte)resampledR[sample]);
-                decoded.Add((byte)(resampledR[sample] >> 8));
+                for (int sample = 0; sample < resampledMono.Count; sample++) {
+                    //duplicating because out output expects 44100 Stereo
+                    decoded.Add((byte)resampledMono[sample]);
+                    decoded.Add((byte)(resampledMono[sample] >> 8));
+                    decoded.Add((byte)resampledMono[sample]);
+                    decoded.Add((byte)(resampledMono[sample] >> 8));
+                }
             }
-
-            //Console.WriteLine("decoded " + decoded.Count);
 
             return decoded.ToArray();
         }
@@ -126,31 +113,29 @@ namespace ProjectPSX.Devices.CdRom {
         private static List<short> resampleTo44100Hz(List<short> samples, bool is18900hz, int channel) {
             List<short> resamples = new List<short>();
 
+            //todo handle 18900hz
+
             for (int i = 0; i < samples.Count; i++) {
                 resampleRingBuffer[channel][resamplePointer++ & 0x1F] = samples[i];
 
                 sixStep--;
                 if (sixStep == 0) {
                     sixStep = 6;
-                    //Console.WriteLine("dentro sixStep pre");
                     for (int table = 0; table < 7; table++) {
                         resamples.Add(zigZagInterpolate(resamplePointer, table, channel));
                     }
-                    //Console.WriteLine("dentro sixStep post");
                 }
             }
-            //Console.WriteLine("fin resample");
+
             return resamples;
         }
 
         private static short zigZagInterpolate(int resamplePointer, int table, int channel) {
             int sum = 0;
             for (int i = 0; i < 29; i++) {
-                //Console.WriteLine("dentro zigzag " + i);
                 sum += (resampleRingBuffer[channel][(resamplePointer - i) & 0x1F] * zigZagTable[table][i]) / 0x8000;
-                //Console.WriteLine("dentro zigzag post " + i);
             }
-            //Console.WriteLine("en sum " + sum);
+
             return (short)Math.Clamp(sum, -0x8000, 0x7FFF);
         }
 
