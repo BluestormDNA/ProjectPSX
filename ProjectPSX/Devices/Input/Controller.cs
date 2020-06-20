@@ -2,7 +2,7 @@
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
-    public abstract class Controller {//todo revamp all this but needs a study on how to handle the form events
+    public abstract class Controller {
         protected IHostWindow window;
 
         protected Queue<byte> transferDataFifo = new Queue<byte>();

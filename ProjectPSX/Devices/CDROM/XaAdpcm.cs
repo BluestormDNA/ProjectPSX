@@ -104,7 +104,7 @@ namespace ProjectPSX.Devices.CdRom {
                 position += 128;
             }
 
-            Console.WriteLine(position + " " + xaadpcm.Length);
+            //Console.WriteLine(position + " " + xaadpcm.Length);
 
             //Console.WriteLine("Sizes" + l.Count + " " + r.Count);
             List<short> resampledL = resampleTo44100Hz(l, is18900hz, 0);

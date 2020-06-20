@@ -231,7 +231,7 @@ namespace ProjectPSX.Devices {
             isDataInRequested = ((value >> 30) & 0x1) == 1; //todo enable dma
             isDataOutRequested = ((value >> 29) & 0x1) == 1;
 
-            Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
+            //Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
         }
 
         //int decodeTest = 0;
@@ -303,7 +303,7 @@ namespace ProjectPSX.Devices {
             status |= 1 << 18; // weird status return for 0x8004_0000;
             status |= currentBlock << 16;
             status |= (ushort)(remainingDataWords - 1);
-            Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
+            //Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
             //Console.ReadLine();
 
             isCommandBusy = false;

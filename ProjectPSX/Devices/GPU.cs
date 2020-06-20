@@ -10,7 +10,6 @@ namespace ProjectPSX.Devices {
 
         private uint command;
         private int commandSize;
-        //private Queue<uint> commandBuffer = new Queue<uint>(16);
         private uint[] commandBuffer = new uint[16];
         private uint[] emptyBuffer = new uint[16]; //fallback to rewrite
         private int pointer;
@@ -21,8 +20,8 @@ namespace ProjectPSX.Devices {
         private static readonly int[] dotClockDiv = { 10, 8, 5, 4, 7 };
 
         private IHostWindow window;
-        // private DirectBitmap VRAM = new DirectBitmap();
-        private Display VRAM = new Display(1024, 512);
+
+        private VRAM vram = new VRAM(1024, 512);
 
         private delegate void Command();
 
@@ -176,7 +175,7 @@ namespace ProjectPSX.Devices {
                         isOddLine = !isOddLine;
                     }
 
-                    window.Update(VRAM.Bits);
+                    window.Update(vram.Bits);
                     return true;
                 }
             }
@@ -279,8 +278,8 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private uint readFromVRAM() {
-            ushort pixel0 = VRAM.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
-            ushort pixel1 = VRAM.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
+            ushort pixel0 = vram.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
+            ushort pixel1 = vram.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
             if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
                 vram_coord.x -= vram_coord.w;
                 vram_coord.y++;
@@ -291,7 +290,7 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void drawVRAMPixel(ushort val) {
-            VRAM.SetPixel(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
+            vram.SetPixel(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
             if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
                 vram_coord.x -= vram_coord.w;
                 vram_coord.y++;
@@ -493,7 +492,7 @@ namespace ProjectPSX.Devices {
                     if (isTransparent) {
                         color = handleSemiTransp(x, y, color, transparency);
                     }
-                    VRAM.SetPixel(x, y, color);
+                    vram.SetPixel(x, y, color);
                 }
 
                 numerator += shortest;
@@ -686,7 +685,7 @@ namespace ProjectPSX.Devices {
                             color = handleSemiTransp(x, y, color, semiTransp);
                         }
 
-                        VRAM.SetPixel((x & 0x3FF), (y & 0x1FF), color);
+                        vram.SetPixel((x & 0x3FF), (y & 0x1FF), color);
                     }
                     // One step to the right
                     w0 += A12;
@@ -709,7 +708,7 @@ namespace ProjectPSX.Devices {
         }
 
         private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
-            color0.val = (uint)VRAM.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
+            color0.val = (uint)vram.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
             color1.val = (uint)color; //front
             switch (semiTranspMode) {
                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
@@ -770,7 +769,7 @@ namespace ProjectPSX.Devices {
 
            for (int yPos = y; yPos < h + y; yPos++) {
                for (int xPos = x; xPos < w + x; xPos++) {
-                   VRAM.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
+                   vram.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
                }
            }
         }
@@ -893,7 +892,7 @@ namespace ProjectPSX.Devices {
                         color = handleSemiTransp(x, y, color, semiTransp);
                     }
 
-                    VRAM.SetPixel(x, y, color);
+                    vram.SetPixel(x, y, color);
                 }
 
             }
@@ -956,8 +955,8 @@ namespace ProjectPSX.Devices {
 
             for (int yPos = 0; yPos < h; yPos++) {
                 for (int xPos = 0; xPos < w; xPos++) {
-                    int color = VRAM.GetPixelRGB888((sx + xPos) & 0x3FF, (sy + yPos) & 0x1FF);
-                    VRAM.SetPixel((dx + xPos) & 0x3FF, (dy + yPos) & 0x1FF, color);
+                    int color = vram.GetPixelRGB888((sx + xPos) & 0x3FF, (sy + yPos) & 0x1FF);
+                    vram.SetPixel((dx + xPos) & 0x3FF, (dy + yPos) & 0x1FF, color);
                 }
             }
         }
@@ -1008,21 +1007,21 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = VRAM.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
+            ushort index = vram.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 3) * 4) & 0xF;
-            return VRAM.GetPixelRGB888(clut.x + p, clut.y);
+            return vram.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get8bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = VRAM.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
+            ushort index = vram.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 1) * 8) & 0xFF;
-            return VRAM.GetPixelRGB888(clut.x + p, clut.y);
+            return vram.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get16bppTexel(int x, int y, Point2D textureBase) {
-            return VRAM.GetPixelRGB888(x + textureBase.x, y + textureBase.y);
+            return vram.GetPixelRGB888(x + textureBase.x, y + textureBase.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

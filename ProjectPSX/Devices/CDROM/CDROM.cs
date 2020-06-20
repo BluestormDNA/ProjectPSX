@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-//using NAudio.Wave;
 using ProjectPSX.Devices.CdRom;
 
 namespace ProjectPSX.Devices {
-    //TODO This is class is pretty much broken and the culprit ofc that many games dosnt work.
+    //TODO This is class is pretty much broken and the culprit ofc that many games doesn't work.
     //Need to rework timmings. An edge trigger should be implemented for interrupts
     public class CDROM {
 
@@ -55,10 +54,6 @@ namespace ProjectPSX.Devices {
 
         private bool cdDebug = false;
 
-        //private WaveOut waveout = new WaveOut();
-        //private BufferedWaveProvider buffer = new BufferedWaveProvider(new WaveFormat());
-
-
         private struct SectorHeader {
             public byte mm;
             public byte ss;
@@ -91,20 +86,21 @@ namespace ProjectPSX.Devices {
             Play,
             TOC
         }
-        Mode mode = Mode.Idle;
+        private Mode mode = Mode.Idle;
 
         private int counter;
         private Queue<byte> interruptQueue = new Queue<byte>();
 
         private CD cd;
+        private IHostWindow window;
 
-        public CDROM(string diskFilename) {
-            //buffer.DiscardOnBufferOverflow = true;
-            //buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 150);
+        public CDROM(IHostWindow window, string diskFilename) {
+            this.window = window;
             cd = new CD(diskFilename);
         }
 
-        bool edgeTrigger;
+        private bool edgeTrigger;
+
         public bool tick(int cycles) {
             counter += cycles;
 
@@ -159,14 +155,8 @@ namespace ProjectPSX.Devices {
                     //}
 
                     if (mode == Mode.Play) {
-                        //buffer.AddSamples(rawSector, 0, rawSector.Count);
-
-                        //if (waveout.PlaybackState != PlaybackState.Playing) {
-                        //    waveout.Init(buffer);
-                        //    waveout.Play();
-                        //}
-
-                        //return false; //CDDA isn't delvered to CPU and doesn't raise interrupt
+                        window.Play(rawSector);
+                        return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
                     }
 
                     //first 12 are the sync header
@@ -199,12 +189,9 @@ namespace ProjectPSX.Devices {
                             }
 
                             if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio"); //todo flag to pass to SPU?
-                            //byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
-                            //buffer.AddSamples(decodedXaAdpcm, 0, decodedXaAdpcm.Length);
-                            //if (waveout.PlaybackState != PlaybackState.Playing) {
-                            //    waveout.Init(buffer);
-                            //    waveout.Play();
-                            //}
+
+                            byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
+                            window.Play(decodedXaAdpcm);
 
                             return false;
                         }

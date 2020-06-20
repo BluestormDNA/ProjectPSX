@@ -7,7 +7,7 @@ using ProjectPSX.Devices;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
-    class ProjectPSX {
+    public class ProjectPSX {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
         const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
@@ -25,7 +25,7 @@ namespace ProjectPSX {
             this.window = window;
 
             controller = new DigitalController();
-            cdrom = new CDROM(diskFilename);
+            cdrom = new CDROM(window, diskFilename);
             bus = new BUS(controller, cdrom);
             cpu = new CPU(bus);
 
@@ -71,16 +71,16 @@ namespace ProjectPSX {
             }
         }
 
-        internal void JoyPadUp(GamepadInputsEnum button) {
+        public void JoyPadUp(GamepadInputsEnum button) {
             controller.handleJoyPadUp(button);
         }
 
-        internal void JoyPadDown(GamepadInputsEnum button) {
+        public void JoyPadDown(GamepadInputsEnum button) {
             controller.handleJoyPadDown(button);
         }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
-            window.SetWindowText("ProjectPSX | Cpu Speed " + (int)(((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK)) * SYNC_CYCLES) + "%" + " | Fps " + window.GetFPS());
+            window.SetWindowText($"ProjectPSX | Cpu Speed {(int)((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK) * SYNC_CYCLES)}% | Fps {window.GetFPS()}");
             counter = 0;
         }
 
