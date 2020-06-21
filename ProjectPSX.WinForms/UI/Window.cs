@@ -56,7 +56,7 @@ namespace ProjectPSX {
             string diskFilename = GetDiskFilename();
             psx = new ProjectPSX(this, diskFilename);
             psx.POWER_ON();
-
+            psx.RunUncapped();
 
             this.getScreen().MouseDoubleClick += new MouseEventHandler(toggleDebug);
 

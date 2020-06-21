@@ -45,16 +45,31 @@ namespace ProjectPSX {
         }
 
         public void POWER_ON() {
+            var timer = new System.Timers.Timer(1000);
+            timer.Elapsed += OnTimedEvent;
+            timer.Enabled = true;
+        }
+
+        public void RunUncapped() {
             Task t = Task.Factory.StartNew(EXECUTE, TaskCreationOptions.LongRunning);
+        }
+
+        public void RunFrame() {
+            //33868800 / 60 = 564480 / 300 (Sync * underclock) = 1882~
+            for(int i = 0; i < 1882; i++) {
+                for (int j = 0; j < SYNC_CYCLES; j++) {
+                    cpu.Run();
+                    //cpu.handleInterrupts();
+                    counter++;
+                }
+                bus.tick(SYNC_CYCLES * MIPS_UNDERCLOCK);
+                cpu.handleInterrupts();
+            }
         }
 
         private void EXECUTE() {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
             Thread.CurrentThread.Priority = ThreadPriority.Highest;
-
-            var timer = new System.Timers.Timer(1000);
-            timer.Elapsed += OnTimedEvent;
-            timer.Enabled = true;
 
             try {
                 while (true) {
