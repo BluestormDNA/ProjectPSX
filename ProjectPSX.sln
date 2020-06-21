@@ -10,6 +10,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProjectPSX.WinForms", "Proj
 		{6351ED6D-2403-43EE-8DD8-EB7E796B41EB} = {6351ED6D-2403-43EE-8DD8-EB7E796B41EB}
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectPSX.OpenTK", "ProjectPSX.OpenTK\ProjectPSX.OpenTK.csproj", "{8206B712-6B1E-4DEE-8156-5757EDBD3315}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6351ED6D-2403-43EE-8DD8-EB7E796B41EB} = {6351ED6D-2403-43EE-8DD8-EB7E796B41EB}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,6 +49,18 @@ Global
 		{826358E3-4610-4688-96DD-86963BE51A58}.Release|x64.Build.0 = Release|Any CPU
 		{826358E3-4610-4688-96DD-86963BE51A58}.Release|x86.ActiveCfg = Release|Any CPU
 		{826358E3-4610-4688-96DD-86963BE51A58}.Release|x86.Build.0 = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|x64.Build.0 = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Debug|x86.Build.0 = Debug|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|x64.ActiveCfg = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|x64.Build.0 = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|x86.ActiveCfg = Release|Any CPU
+		{8206B712-6B1E-4DEE-8156-5757EDBD3315}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
