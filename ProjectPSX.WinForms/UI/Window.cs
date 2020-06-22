@@ -126,14 +126,14 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Update(int[] vramBits) {
+        public void Render(int[] vram) {
 
             if (isVramViewer) {
-                Buffer.BlockCopy(vramBits, 0, display.Bits, 0, 0x200000);
+                Buffer.BlockCopy(vram, 0, display.Bits, 0, 0x200000);
             } else if (is24BitDepth) {
-                blit24bpp(vramBits);
+                blit24bpp(vram);
             } else {
-                blit16bpp(vramBits);
+                blit16bpp(vram);
             }
 
             fps++;
@@ -211,7 +211,7 @@ namespace ProjectPSX {
             return screen;
         }
 
-        public int GetFPS() {
+        public int GetVPS() {
             int currentFps = fps;
             fps = 0;
             return currentFps;

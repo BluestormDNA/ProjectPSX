@@ -175,7 +175,7 @@ namespace ProjectPSX.Devices {
                         isOddLine = !isOddLine;
                     }
 
-                    window.Update(vram.Bits);
+                    window.Render(vram.Bits);
                     return true;
                 }
             }

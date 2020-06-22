@@ -13,6 +13,7 @@ namespace ProjectPSX.OpenTK {
         private int[] displayBuffer;
         private Dictionary<Key, GamepadInputsEnum> _gamepadKeyMap;
         private AudioPlayer audioPlayer = new AudioPlayer();
+        private int vSyncCounter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings) : base(gameWindowSettings, nativeWindowSettings) {
             psx = new ProjectPSX(this, @"C:\Users\Wapens\source\repos\ProjectPSX\ProjectPSX\bin\r4.bin");
@@ -101,12 +102,15 @@ namespace ProjectPSX.OpenTK {
             return null;
         }
 
-        public void Update(int[] bits) {
-            displayBuffer = bits;
+        public void Render(int[] vram) {
+            vSyncCounter++;
+            displayBuffer = vram;
         }
 
-        public int GetFPS() {
-            return (int)RenderFrequency;
+        public int GetVPS() {
+            int fps = vSyncCounter;
+            vSyncCounter = 0;
+            return fps;
         }
 
         public void SetWindowText(string newText) {

@@ -95,7 +95,7 @@ namespace ProjectPSX {
         }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
-            window.SetWindowText($"ProjectPSX | Cpu Speed {(int)((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK) * SYNC_CYCLES)}% | Fps {window.GetFPS()}");
+            window.SetWindowText($"ProjectPSX | Cpu Speed {(int)((float)counter / (PSX_MHZ / MIPS_UNDERCLOCK) * SYNC_CYCLES)}% | Vps {window.GetVPS()}");
             counter = 0;
         }
 
