@@ -6,9 +6,9 @@ namespace ProjectPSX.Devices {
         private TIMER[] timer = new TIMER[3];
 
         public TIMERS() {
-            timer[0] = new TIMER();
-            timer[1] = new TIMER();
-            timer[2] = new TIMER();
+            timer[0] = new TIMER(0);
+            timer[1] = new TIMER(1);
+            timer[2] = new TIMER(2);
         }
 
         public void write(Width w, uint addr, uint value) {
@@ -34,7 +34,6 @@ namespace ProjectPSX.Devices {
 
         public class TIMER {
             private int timerNumber;
-            private static int timerCounter;
 
             private uint counterValue;
             private uint counterTargetValue;
@@ -61,8 +60,8 @@ namespace ProjectPSX.Devices {
             private bool irq;
             private bool alreadFiredIrq;
 
-            public TIMER() {
-                this.timerNumber = timerCounter++;
+            public TIMER(int timerNumber) {
+                this.timerNumber = timerNumber;
             }
 
             public void write(Width w, uint addr, uint value) {
