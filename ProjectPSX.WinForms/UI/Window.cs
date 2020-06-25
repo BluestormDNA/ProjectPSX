@@ -7,9 +7,17 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using NAudio.Wave;
+using System.Timers;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Threading;
 
 namespace ProjectPSX {
     public class Window : Form, IHostWindow {
+
+        const int PSX_MHZ = 33868800;
+        const int SYNC_CYCLES = 100;
+        const int MIPS_UNDERCLOCK = 2;
 
         private Size vramSize = new Size(1024, 512);
         private Size _640x480 = new Size(640, 480);
@@ -35,6 +43,8 @@ namespace ProjectPSX {
         private int displayY1;
         private int displayY2;
 
+        private long cpuCyclesCounter;
+
         Dictionary<Keys, GamepadInputsEnum> _gamepadKeyMap;
 
         private WaveOut waveout = new WaveOut();
@@ -50,15 +60,9 @@ namespace ProjectPSX {
             screen.BackgroundImage = display.Bitmap;// TESTING
             screen.Size = _640x480;
             screen.Margin = new Padding(0);
+            screen.MouseDoubleClick += new MouseEventHandler(toggleDebug);
 
             Controls.Add(screen);
-
-            string diskFilename = GetDiskFilename();
-            psx = new ProjectPSX(this, diskFilename);
-            psx.POWER_ON();
-            psx.RunUncapped();
-
-            this.getScreen().MouseDoubleClick += new MouseEventHandler(toggleDebug);
 
             KeyDown += new KeyEventHandler(handleJoyPadDown);
             KeyUp += new KeyEventHandler(handleJoyPadUp);
@@ -84,6 +88,15 @@ namespace ProjectPSX {
 
             buffer.DiscardOnBufferOverflow = true;
             buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
+
+            string diskFilename = GetDiskFilename();
+            psx = new ProjectPSX(this, diskFilename);
+
+            var timer = new System.Timers.Timer(1000);
+            timer.Elapsed += OnTimedEvent;
+            timer.Enabled = true;
+
+            RunUncapped();
         }
 
         private string GetDiskFilename() {
@@ -207,10 +220,6 @@ namespace ProjectPSX {
             return (ushort)(m << 15 | b << 10 | g << 5 | r);
         }
 
-        public DoubleBufferedPanel getScreen() {
-            return screen;
-        }
-
         public int GetVPS() {
             int currentFps = fps;
             fps = 0;
@@ -275,16 +284,6 @@ namespace ProjectPSX {
             }
         }
 
-        public void SetWindowText(string newText) {
-            if (InvokeRequired) {
-                SafeCallDelegate d = new SafeCallDelegate(SetWindowText);                
-                    Invoke(d, new object[] { newText });                
-            }
-            else {
-                Text = newText;
-            }
-        }
-
         public void Play(byte[] samples) {
             buffer.AddSamples(samples, 0, samples.Length);
 
@@ -294,8 +293,30 @@ namespace ProjectPSX {
             }
         }
 
-        // Thread safe write Window Text
-        private delegate void SafeCallDelegate(string text);
-        
+        private void OnTimedEvent(object sender, ElapsedEventArgs e) {
+            Text = $"ProjectPSX | Cpu Speed {(int)((float)cpuCyclesCounter / (PSX_MHZ / MIPS_UNDERCLOCK) * SYNC_CYCLES)}% | Vps {GetVPS()}";
+            cpuCyclesCounter = 0;
+        }
+
+        public void RunUncapped() {
+            Task t = Task.Factory.StartNew(EXECUTE, TaskCreationOptions.LongRunning);
+        }
+
+        private void EXECUTE() {
+            Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+            Thread.CurrentThread.Priority = ThreadPriority.Highest;
+
+            try {
+                while (true) {
+                    psx.RunFrame();
+                    int cyclesPerFrame = PSX_MHZ / 60;
+                    int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
+                    int cycles = syncLoops * SYNC_CYCLES;
+                    cpuCyclesCounter += cycles;
+                }
+            } catch (Exception e) {
+                Console.WriteLine(e.ToString());
+            }
+        }
     }
 }
