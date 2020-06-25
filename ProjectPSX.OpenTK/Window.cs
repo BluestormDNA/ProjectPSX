@@ -9,15 +9,18 @@ using System;
 namespace ProjectPSX.OpenTK {
     public class Window : GameWindow, IHostWindow {
 
+        const int PSX_MHZ = 33868800;
+        const int SYNC_CYCLES = 100;
+        const int MIPS_UNDERCLOCK = 2;
+
         private ProjectPSX psx;
         private int[] displayBuffer;
         private Dictionary<Key, GamepadInputsEnum> _gamepadKeyMap;
         private AudioPlayer audioPlayer = new AudioPlayer();
         private int vSyncCounter;
+        private int cpuCyclesCounter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings) : base(gameWindowSettings, nativeWindowSettings) {
-            psx = new ProjectPSX(this, @"C:\Users\Wapens\source\repos\ProjectPSX\ProjectPSX\bin\r4.bin");
-            psx.POWER_ON();
 
             _gamepadKeyMap = new Dictionary<Key, GamepadInputsEnum>() {
                 { Key.Space, GamepadInputsEnum.Space},
@@ -37,6 +40,16 @@ namespace ProjectPSX.OpenTK {
                 { Key.S , GamepadInputsEnum.S },
                 { Key.A , GamepadInputsEnum.A },
             };
+
+            FileDrop += Window_FileDrop;
+        }
+
+        private void Window_FileDrop(FileDropEventArgs fileDrop) {
+            string[] files = fileDrop.FileNames;
+            string file = files[0];
+            if(file.EndsWith(".bin") || file.EndsWith(".cue")) {
+                psx = new ProjectPSX(this, file);
+            }
         }
 
         protected override void OnLoad() {
@@ -81,7 +94,7 @@ namespace ProjectPSX.OpenTK {
 
         protected override void OnUpdateFrame(FrameEventArgs args) {
             base.OnUpdateFrame(args);
-            psx.RunFrame();
+            psx?.RunFrame();
         }
 
         protected override void OnKeyDown(KeyboardKeyEventArgs e) {
@@ -111,10 +124,6 @@ namespace ProjectPSX.OpenTK {
             int fps = vSyncCounter;
             vSyncCounter = 0;
             return fps;
-        }
-
-        public void SetWindowText(string newText) {
-            this.Title = newText;
         }
 
         public void SetDisplayMode(int horizontalRes, int verticalRes, bool is24BitDepth) {
