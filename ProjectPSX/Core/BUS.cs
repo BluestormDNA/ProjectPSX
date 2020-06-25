@@ -41,10 +41,10 @@ namespace ProjectPSX {
         private static string nocashBios = "./nocashBios.ROM";
         private static string ex1 = "./caetlaEXP.BIN";
 
-        public BUS(Controller controller, CDROM cdrom) {
+        public BUS(IHostWindow window, Controller controller, CDROM cdrom) {
             interruptController = new InterruptController(); //refactor this to interface and callbacks
             dma = new DMA(this);
-            gpu = new GPU();
+            gpu = new GPU(window);
             this.cdrom = cdrom;
             timers = new TIMERS();
             joypad = new JOYPAD(controller);
@@ -60,10 +60,6 @@ namespace ProjectPSX {
             registersPtr = (byte*)REGISTERS;
             biosPtr = (byte*)BIOS;
             ioPtr = (byte*)IO;
-        }
-
-        internal void setWindow(IHostWindow window) {
-            gpu.setWindow(window);
         }
 
         internal unsafe uint load32(uint address) {

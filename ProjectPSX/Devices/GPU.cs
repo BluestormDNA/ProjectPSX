@@ -27,10 +27,6 @@ namespace ProjectPSX.Devices {
 
         public bool debug;
 
-        public void setWindow(IHostWindow window) {
-            this.window = window;
-            GP1_ResetGPU();
-        }
         private enum Mode {
             COMMAND,
             VRAM
@@ -151,8 +147,10 @@ namespace ProjectPSX.Devices {
         private int horizontalTiming = 3413;
         private int verticalTiming = 263;
 
-        public GPU() {
+        public GPU(IHostWindow window) {
+            this.window = window;
             mode = Mode.COMMAND;
+            GP1_ResetGPU();
         }
 
         public bool tick(int cycles) {
