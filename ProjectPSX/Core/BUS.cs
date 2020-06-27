@@ -13,19 +13,12 @@ namespace ProjectPSX {
     public class BUS {
 
         //Memory
-        IntPtr RAM = Marshal.AllocHGlobal(2048 * 1024);
-        IntPtr EX1 = Marshal.AllocHGlobal(512 * 1024);
-        IntPtr SCRATHPAD = Marshal.AllocHGlobal(1024);
-        IntPtr REGISTERS = Marshal.AllocHGlobal(4 * 1024);
-        IntPtr BIOS = Marshal.AllocHGlobal(512 * 1024);
-        IntPtr IO = Marshal.AllocHGlobal(512);
-
-        private unsafe byte* ramPtr;
-        private unsafe byte* ex1Ptr;
-        private unsafe byte* scrathpadPtr;
-        private unsafe byte* registersPtr;
-        private unsafe byte* biosPtr;
-        private unsafe byte* ioPtr;
+        private unsafe byte* ramPtr = (byte*)Marshal.AllocHGlobal(2048 * 1024);
+        private unsafe byte* ex1Ptr = (byte*)Marshal.AllocHGlobal(512 * 1024);
+        private unsafe byte* scrathpadPtr = (byte*)Marshal.AllocHGlobal(1024);
+        private unsafe byte* registersPtr = (byte*)Marshal.AllocHGlobal(4 * 1024);
+        private unsafe byte* biosPtr = (byte*)Marshal.AllocHGlobal(512 * 1024);
+        private unsafe byte* ioPtr = (byte*)Marshal.AllocHGlobal(512);
 
         //Other Subsystems
         public InterruptController interruptController;
@@ -35,6 +28,7 @@ namespace ProjectPSX {
         private TIMERS timers;
         private JOYPAD joypad;
         private MDEC mdec;
+        private SPU spu;
 
         //temporary hardcoded bios/ex1
         private static string bios = "./SCPH1001.BIN";
@@ -49,17 +43,7 @@ namespace ProjectPSX {
             timers = new TIMERS();
             joypad = new JOYPAD(controller);
             mdec = new MDEC();
-
-            initMem();
-        }
-
-        private unsafe void initMem() {
-            ramPtr = (byte*)RAM;
-            ex1Ptr = (byte*)EX1;
-            scrathpadPtr = (byte*)SCRATHPAD;
-            registersPtr = (byte*)REGISTERS;
-            biosPtr = (byte*)BIOS;
-            ioPtr = (byte*)IO;
+            spu = new SPU();
         }
 
         internal unsafe uint load32(uint address) {
@@ -94,13 +78,15 @@ namespace ProjectPSX {
                     return mdec.readMDEC0_Data();
                 } else if (addr == 0x1F80_1824) {
                     return mdec.readMDEC1_Status();
+                } else if (addr >= 0x1F801C00 && addr <= 0x1F801FFF) {
+                    return spu.load(Width.WORD, addr);
                 } else {
                     return load<uint>(addr & 0xFFF, registersPtr);
                 }
             } else if (addr >= 0x1FC0_0000 && addr < 0x1FC8_0000) {
                 return load<uint>(addr & 0x7_FFFF, biosPtr);
             } else if (addr >= 0xFFFE_0000 && addr < 0xFFFE_0200) {
-                return load<uint>(addr & 0x1FF, ioPtr);
+               return load<uint>(addr & 0x1FF, ioPtr);
             } else {
                 Console.WriteLine("[BUS] Load32 Unsupported: " + addr.ToString("x8"));
                 return 0xFFFF_FFFF;
@@ -141,6 +127,8 @@ namespace ProjectPSX {
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
+                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
+                            return spu.load(Width.HALF, addr);
                         default:
                             return load<ushort>(addr & 0xFFF, registersPtr);
                     }
@@ -194,6 +182,8 @@ namespace ProjectPSX {
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
+                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
+                            return spu.load(Width.BYTE, addr);
                         default:
                             return load<byte>(addr & 0xFFF, registersPtr);
                     }
@@ -262,6 +252,9 @@ namespace ProjectPSX {
                         case 0x1F801824:
                             mdec.writeMDEC1_Control(value);
                             break;
+                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
+                            spu.write(addr, (ushort)value);
+                            break;
 
                         default:
                             addr &= 0xFFF;
@@ -273,11 +266,11 @@ namespace ProjectPSX {
                 case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                     Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
                     break;
-
+                
                 case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
                     write(addr & 0x1FF, value, ioPtr);
                     break;
-
+                
                 default:
                     Console.WriteLine("[BUS] Write32 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
                     break;
@@ -329,6 +322,9 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             gpu.writeGP1(value);
                             break;
+                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
+                            spu.write(addr, value);
+                            break;
 
                         default:
                             addr &= 0xFFF;
@@ -340,7 +336,7 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                     Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
                     break;
-
+                
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
                     write(addr & 0x1FF, value, ioPtr);
                     break;
@@ -396,6 +392,9 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             gpu.writeGP1(value);
                             break;
+                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
+                            spu.write(addr, value);
+                            break;
 
                         default:
                             addr &= 0xFFF;
@@ -407,7 +406,7 @@ namespace ProjectPSX {
                 case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                     Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
                     break;
-
+                
                 case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
                     write(addr & 0x1FF, value, ioPtr);
                     break;
@@ -423,9 +422,10 @@ namespace ProjectPSX {
             return addr & RegionMask[i];
         }
 
-        internal void loadBios() {
+        internal unsafe void loadBios() {
             byte[] rom = File.ReadAllBytes(bios);
-            Marshal.Copy(rom, 0, BIOS, rom.Length);
+            Marshal.Copy(rom, 0, (IntPtr)biosPtr, rom.Length);
+
         }
 
         //PSX executables are having an 800h-byte header, followed by the code/data.
@@ -467,9 +467,9 @@ namespace ProjectPSX {
             return (PC, R28, R29, R30);
         }
 
-        internal void loadEXP() {
+        internal unsafe void loadEXP() {
             byte[] exe = File.ReadAllBytes(ex1);
-            Marshal.Copy(exe, 0, EX1, exe.Length);
+            Marshal.Copy(exe, 0, (IntPtr)ex1Ptr, exe.Length);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -478,12 +478,13 @@ namespace ProjectPSX {
             if (cdrom.tick(cycles)) interruptController.set(Interrupt.CDROM);
             if (dma.tick()) interruptController.set(Interrupt.DMA);
 
-            timers.syncGPU(gpu.getBlanksAndDot()); //test
+            timers.syncGPU(gpu.getBlanksAndDot());
 
             if (timers.tick(0, cycles)) interruptController.set(Interrupt.TIMER0);
             if (timers.tick(1, cycles)) interruptController.set(Interrupt.TIMER1);
             if (timers.tick(2, cycles)) interruptController.set(Interrupt.TIMER2);
             if (joypad.tick()) interruptController.set(Interrupt.CONTR);
+            if (spu.tick(cycles)) interruptController.set(Interrupt.SPU);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -548,6 +549,14 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public uint DmaFromMdecOut() {
             return mdec.readMDEC0_Data();
+        }
+
+        public void DmaToSpu(uint[] load) {
+            spu.processDma(load);
+        }
+
+        public uint DmaFromSpu() {
+            return 0xFFFFFFFF;
         }
 
         private static uint[] RegionMask = {
