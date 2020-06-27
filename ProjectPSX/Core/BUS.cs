@@ -18,7 +18,7 @@ namespace ProjectPSX {
         private unsafe byte* scrathpadPtr = (byte*)Marshal.AllocHGlobal(1024);
         private unsafe byte* registersPtr = (byte*)Marshal.AllocHGlobal(4 * 1024);
         private unsafe byte* biosPtr = (byte*)Marshal.AllocHGlobal(512 * 1024);
-        private unsafe byte* ioPtr = (byte*)Marshal.AllocHGlobal(512);
+        private uint memoryCache;
 
         //Other Subsystems
         public InterruptController interruptController;
@@ -32,11 +32,10 @@ namespace ProjectPSX {
 
         //temporary hardcoded bios/ex1
         private static string bios = "./SCPH1001.BIN";
-        private static string nocashBios = "./nocashBios.ROM";
         private static string ex1 = "./caetlaEXP.BIN";
 
         public BUS(IHostWindow window, Controller controller, CDROM cdrom) {
-            interruptController = new InterruptController(); //refactor this to interface and callbacks
+            interruptController = new InterruptController();
             dma = new DMA(this);
             gpu = new GPU(window);
             this.cdrom = cdrom;
@@ -47,7 +46,6 @@ namespace ProjectPSX {
         }
 
         internal unsafe uint load32(uint address) {
-            //addr &= RegionMask[addr >> 29]; 
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             if (addr < 0x1F00_0000) {
@@ -66,7 +64,6 @@ namespace ProjectPSX {
                 } else if (addr >= 0x1F80_1080 && addr <= 0x1F80_10FF) {
                     return dma.load(addr);
                 } else if (addr >= 0x1F80_1100 && addr <= 0x1F80_112B) {
-                    //Console.WriteLine("[TIMERS] Load32 " + addr.ToString("x8"));
                     return timers.load(Width.WORD, addr);
                 } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
                     return cdrom.load(Width.WORD, addr);
@@ -85,8 +82,8 @@ namespace ProjectPSX {
                 }
             } else if (addr >= 0x1FC0_0000 && addr < 0x1FC8_0000) {
                 return load<uint>(addr & 0x7_FFFF, biosPtr);
-            } else if (addr >= 0xFFFE_0000 && addr < 0xFFFE_0200) {
-               return load<uint>(addr & 0x1FF, ioPtr);
+            } else if (addr == 0xFFFE0130) {
+                return memoryCache;
             } else {
                 Console.WriteLine("[BUS] Load32 Unsupported: " + addr.ToString("x8"));
                 return 0xFFFF_FFFF;
@@ -94,7 +91,6 @@ namespace ProjectPSX {
         }
 
         internal unsafe uint load16(uint address) {
-            //uint addr = address & RegionMask[address >> 29];
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             switch (addr) {
@@ -118,8 +114,6 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Load16 " + addr.ToString("x8"));
-                            //Console.ReadLine();
                             return timers.load(Width.HALF, addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(Width.HALF, addr);
@@ -133,14 +127,11 @@ namespace ProjectPSX {
                             return load<ushort>(addr & 0xFFF, registersPtr);
                     }
 
-                case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
-                    return 0; //nocash bios tests
-
                 case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                     return load<ushort>(addr & 0x7_FFFF, biosPtr);
 
-                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    return load<ushort>(addr & 0x1FF, ioPtr);
+                case 0xFFFE0130:
+                    return memoryCache;
 
                 default:
                     Console.WriteLine("[BUS] Load16 Unsupported: " + addr.ToString("x8"));
@@ -149,7 +140,6 @@ namespace ProjectPSX {
         }
 
         internal unsafe uint load8(uint address) {
-            //addr &= RegionMask[addr >> 29];
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             switch (addr) {
@@ -173,8 +163,6 @@ namespace ProjectPSX {
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            Console.WriteLine("[TIMERS] Load8 " + addr.ToString("x8"));
-                            Console.ReadLine();
                             return timers.load(Width.BYTE, addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             return cdrom.load(Width.BYTE, addr);
@@ -184,18 +172,15 @@ namespace ProjectPSX {
                             return gpu.loadGPUSTAT();
                         case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
                             return spu.load(Width.BYTE, addr);
-                        default:
+                        default: //to remove this fallback and nesting as all registers should be handled avobe
                             return load<byte>(addr & 0xFFF, registersPtr);
                     }
-
-                case uint _ when addr >= 0x1F80_2000 && addr < 0x1F80_2100:
-                    return 0; //nocash bios tests
 
                 case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
                     return load<byte>(addr & 0x7_FFFF, biosPtr);
 
-                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    return load<byte>(addr & 0x1FF, ioPtr);
+                case 0xFFFE0130:
+                    return memoryCache;
 
                 default:
                     Console.WriteLine("[BUS] Load8 Unsupported: " + addr.ToString("x8"));
@@ -234,7 +219,6 @@ namespace ProjectPSX {
                             dma.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Write32 " +addr.ToString("x8") + value.ToString("x8"));
                             timers.write(Width.WORD, addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
@@ -263,14 +247,10 @@ namespace ProjectPSX {
                     }
                     break;
 
-                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
+                case 0xFFFE0130:
+                    memoryCache = value;
                     break;
-                
-                case uint _ when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write(addr & 0x1FF, value, ioPtr);
-                    break;
-                
+
                 default:
                     Console.WriteLine("[BUS] Write32 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
                     break;
@@ -278,23 +258,22 @@ namespace ProjectPSX {
         }
 
         internal unsafe void write16(uint address, ushort value) {
-            //addr &= RegionMask[addr >> 29];
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             switch (addr) {
-                case uint KUSEG when addr < 0x1F00_0000:
+                case uint _ when addr < 0x1F00_0000:
                     write(addr & 0x1F_FFFF, value, ramPtr);
                     break;
 
-                case uint KUSEG when addr < 0x1F08_0000:
+                case uint _ when addr < 0x1F08_0000:
                     write(addr & 0x7_FFFF, value, ex1Ptr);
                     break;
 
-                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
                     write(addr & 0xFFF, value, scrathpadPtr);
                     break;
 
-                case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                     switch (addr) {
                         case 0x1F801070:
                             interruptController.writeISTAT(value);
@@ -302,18 +281,16 @@ namespace ProjectPSX {
                         case 0x1F801074:
                             interruptController.writeIMASK(value);
                             break;
-                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
                             joypad.write(Width.HALF, addr, value);
                             break;
-                        case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(addr, value);
                             break;
-                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            //Console.WriteLine("[TIMERS] Write 16 " +addr.ToString("x8") + value.ToString("x8"));
-                            //Console.ReadLine();
+                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             timers.write(Width.HALF, addr, value);
                             break;
-                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             cdrom.write(Width.HALF, addr, value);
                             break;
                         case 0x1F801810:
@@ -333,12 +310,8 @@ namespace ProjectPSX {
                     }
                     break;
 
-                case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
-                    break;
-                
-                case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write(addr & 0x1FF, value, ioPtr);
+                case 0xFFFE0130:
+                    memoryCache = value;
                     break;
 
                 default:
@@ -348,23 +321,22 @@ namespace ProjectPSX {
         }
 
         internal unsafe void write8(uint address, byte value) {
-            //addr &= RegionMask[addr >> 29];
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             switch (addr) {
-                case uint KUSEG when addr < 0x1F00_0000:
+                case uint _ when addr < 0x1F00_0000:
                     write(addr & 0x1F_FFFF, value, ramPtr);
                     break;
 
-                case uint KUSEG when addr < 0x1F08_0000:
+                case uint _ when addr < 0x1F08_0000:
                     write(addr & 0x7_FFFF, value, ex1Ptr);
                     break;
 
-                case uint KUSEG when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
+                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
                     write(addr & 0xFFF, value, scrathpadPtr);
                     break;
 
-                case uint KUSEG when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
+                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
                     switch (addr) {
                         case 0x1F801070:
                             interruptController.writeISTAT(value);
@@ -372,18 +344,16 @@ namespace ProjectPSX {
                         case 0x1F801074:
                             interruptController.writeIMASK(value);
                             break;
-                        case uint JOYPAD when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
+                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
                             joypad.write(Width.BYTE, addr, value);
                             break;
-                        case uint DMA when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
+                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(addr, value);
                             break;
-                        case uint TIMERS when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            Console.WriteLine("[TIMERS] Write 8 " + addr.ToString("x8") + value.ToString("x8"));
-                            Console.ReadLine();
+                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
                             timers.write(Width.BYTE, addr, value);
                             break;
-                        case uint CDROM when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
+                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
                             cdrom.write(Width.BYTE, addr, value);
                             break;
                         case 0x1F801810:
@@ -403,12 +373,8 @@ namespace ProjectPSX {
                     }
                     break;
 
-                case uint KUSEG when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    Console.WriteLine("[BUS] [WARNING] Write on BIOS range" + addr.ToString("x8"));
-                    break;
-                
-                case uint KSEG2 when addr >= 0xFFFE_0000 && addr < 0xFFFE_0200:
-                    write(addr & 0x1FF, value, ioPtr);
+                case 0xFFFE0130:
+                    memoryCache = value;
                     break;
 
                 default:
@@ -425,7 +391,6 @@ namespace ProjectPSX {
         internal unsafe void loadBios() {
             byte[] rom = File.ReadAllBytes(bios);
             Marshal.Copy(rom, 0, (IntPtr)biosPtr, rom.Length);
-
         }
 
         //PSX executables are having an 800h-byte header, followed by the code/data.
@@ -551,10 +516,12 @@ namespace ProjectPSX {
             return mdec.readMDEC0_Data();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DmaToSpu(uint[] load) {
             spu.processDma(load);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public uint DmaFromSpu() {
             return 0xFFFFFFFF;
         }
