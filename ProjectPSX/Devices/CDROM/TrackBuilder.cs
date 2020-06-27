@@ -11,13 +11,15 @@ namespace ProjectPSX.Devices.CdRom {
 
             public String file { get; private set; }
             public long size { get; private set; }
+            public int number { get; private set; }
             public int lba { get; private set; }
             public int lbaStart { get; private set; }
             public int lbaEnd { get; private set; }
 
-            public Track(String file, long size, int lba, int lbaStart, int lbaEnd) {
+            public Track(String file, long size, int number, int lba, int lbaStart, int lbaEnd) {
                 this.file = file;
                 this.size = size;
+                this.number = number;
                 this.lba = lba;
                 this.lbaStart = lbaStart;
                 this.lbaEnd = lbaEnd;
@@ -30,6 +32,7 @@ namespace ProjectPSX.Devices.CdRom {
             String dir = Path.GetDirectoryName(cue);
             String line;
             int lbaCounter = 0;
+            int number = 0;
             using StreamReader cueFile = new StreamReader(cue);
             while ((line = cueFile.ReadLine()) != null) {
                 if (line.StartsWith("FILE")) {
@@ -39,6 +42,7 @@ namespace ProjectPSX.Devices.CdRom {
                     long size = new FileInfo(file).Length;
                     int lba = (int)(size / BytesPerSectorRaw);
                     int lbaStart = lbaCounter + 150;
+                    number++;
                     //hardcoding :P
                     if (tracks.Count > 0) {
                         lbaStart += 150;
@@ -48,9 +52,9 @@ namespace ProjectPSX.Devices.CdRom {
 
                     lbaCounter += lba;
 
-                    tracks.Add(new Track(file, size, lba, lbaStart, lbaEnd));
+                    tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));  ;
 
-                    Console.WriteLine($"File: {file} Size: {size} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
+                    Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
                 }
             }
 
@@ -66,10 +70,11 @@ namespace ProjectPSX.Devices.CdRom {
             int lba = (int)(size / BytesPerSectorRaw);
             int lbaStart = 150; // 150 frames (2 seconds) offset from track 1
             int lbaEnd = lba;
+            int number = 1;
 
-            tracks.Add(new Track(file, size, lba, lbaStart, lbaEnd));
+            tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));
 
-            Console.WriteLine($"File: {file} Size: {size} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
+            Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
 
             return tracks;
         }

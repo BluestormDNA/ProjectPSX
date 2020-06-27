@@ -42,7 +42,7 @@ namespace ProjectPSX.Devices.CdRom {
             return rawSectorBuffer;
         }
 
-        private Track getTrackFromLoc(int loc) {
+        public Track getTrackFromLoc(int loc) {
             foreach (Track track in tracks) {
                 //Console.WriteLine(loc + " " + track.file + track.lbaEnd);
                 if (track.lbaEnd > loc) return track;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using ProjectPSX.Devices.CdRom;
+using static ProjectPSX.Devices.CdRom.TrackBuilder;
 
 namespace ProjectPSX.Devices {
     //TODO This is class is pretty much broken and the culprit ofc that many games doesn't work.
@@ -52,7 +53,7 @@ namespace ProjectPSX.Devices {
         private byte filterFile;
         private byte filterChannel;
 
-        private bool cdDebug = false;
+        private bool cdDebug = true;
 
         private struct SectorHeader {
             public byte mm;
@@ -148,11 +149,11 @@ namespace ProjectPSX.Devices {
 
                     byte[] rawSector = cd.Read(readLoc++);
 
-                    //if (cdDebug) {
-                    //Console.ForegroundColor = ConsoleColor.DarkGreen;
-                    //Console.WriteLine($"Reading readLoc: {readLoc - 1} seekLoc: {seekLoc} size: {sector.Count}");
-                    //Console.ResetColor();
-                    //}
+                    if (cdDebug) {
+                        Console.ForegroundColor = ConsoleColor.DarkGreen;
+                        Console.WriteLine($"Reading readLoc: {readLoc - 1} seekLoc: {seekLoc} size: {rawSector.Length}");
+                        Console.ResetColor();
+                    }
 
                     if (mode == Mode.Play) {
                         window.Play(rawSector);
@@ -419,17 +420,23 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x3);
         }
 
-        private void getLocP() { //This is probably wrong so make sure its visible...
-            //if (cdDebug) {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[CDROM] getLocP WARNING BROKEN COMMAND");
-            Console.ResetColor();
-            //}
+        private void getLocP() { //SubQ missing...
 
-            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc);
-            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(cd.getLBA() - readLoc);
+            Track track = cd.getTrackFromLoc(readLoc);
+            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.lbaStart);
+            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(readLoc);
 
-            responseBuffer.EnqueueRange<uint>(1, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff));
+            if (cdDebug) {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"track: {track.number} index: {1} mm: {mm} ss: {ss}" +
+                    $" ff: {ff} amm: {amm} ass: {ass} aff: {aff}");
+                Console.WriteLine($"track: {track.number} index: {1} mm: {DecToBcd(mm)} ss: {DecToBcd(ss)}" +
+                    $" ff: {DecToBcd(ff)} amm: {DecToBcd(amm)} ass: {DecToBcd(ass)} aff: {DecToBcd(aff)}");
+                Console.ResetColor();
+            }
+
+            responseBuffer.EnqueueRange<uint>((uint)track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff));
+
             interruptQueue.Enqueue(0x3);
         }
 
@@ -560,12 +567,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void pause() {
-            //todo actual pause transfers
-            STAT = 0x2;
-            mode = Mode.Idle;
-
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
+
+            STAT = 0x2;
+            mode = Mode.Idle;
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x2);
@@ -644,10 +650,6 @@ namespace ProjectPSX.Devices {
             //There are 75 sectors on a second
             seekLoc = sector + (second * 75) + (minute * 60 * 75);
 
-            //temporal bin hack to bypass cue parse - 2 secs
-            //WARNING this can wreck some games that setLoc to s0 or s1
-            //seekLoc -= 150; // -2 seconds
-
             if (seekLoc < 0) {
                 Console.WriteLine($"[CDROM] WARNING NEGATIVE setLOC {seekLoc:x8}");
                 seekLoc = 0;
@@ -655,7 +657,7 @@ namespace ProjectPSX.Devices {
 
             if (cdDebug) {
                 Console.ForegroundColor = ConsoleColor.DarkGreen;
-                Console.WriteLine($"[CDROM] setLoc {minute:x2}:{second:x2}:{sector:x2} Loc: {seekLoc:x8}");
+                Console.WriteLine($"[CDROM] setLoc {mm:x2}:{ss:x2}:{ff:x2} Loc: {seekLoc:x8}");
                 Console.ResetColor();
             }
 
