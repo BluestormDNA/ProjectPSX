@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using ProjectPSX.Devices.CdRom;
 using static ProjectPSX.Devices.CdRom.TrackBuilder;
 
@@ -53,7 +54,20 @@ namespace ProjectPSX.Devices {
         private byte filterFile;
         private byte filterChannel;
 
-        private bool cdDebug = true;
+        private bool mutedAudio;
+        private bool mutedXAADPCM;
+
+        private byte pendingVolumeLtoL = 0xFF;
+        private byte pendingVolumeLtoR = 0;
+        private byte pendingVolumeRtoL = 0;
+        private byte pendingVolumeRtoR = 0xFF;
+
+        private byte volumeLtoL = 0xFF;
+        private byte volumeLtoR = 0;
+        private byte volumeRtoL = 0;
+        private byte volumeRtoR = 0xFF;
+
+        private bool cdDebug = false;
 
         private struct SectorHeader {
             public byte mm;
@@ -120,19 +134,14 @@ namespace ProjectPSX.Devices {
 
             switch (mode) {
                 case Mode.Idle:
-                    if (interruptQueue.Count != 0) { //Await some cycles so interrupts are not triggered instant
+                        counter = 0;
                         return false;
-                    }
-                    counter = 0;
-                    //Console.WriteLine("[CDROM] MODE IDLE");
-                    break;
 
                 case Mode.Seek: //Hardcoded seek time...
-                    if (counter < 100000 || interruptQueue.Count != 0) {
+                    if (counter < 33868800 / 3 || interruptQueue.Count != 0) {
                         return false;
                     }
                     counter = 0;
-                    //Console.WriteLine("[CDROM] MODE SEEK");
                     mode = Mode.Idle;
                     STAT = (byte)(STAT & (~0x40));
 
@@ -155,7 +164,8 @@ namespace ProjectPSX.Devices {
                         Console.ResetColor();
                     }
 
-                    if (mode == Mode.Play) {
+                    if (mode == Mode.Play && !mutedAudio) {
+                        applyVolume(rawSector);
                         window.Play(rawSector);
                         return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
                     }
@@ -191,8 +201,11 @@ namespace ProjectPSX.Devices {
 
                             if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio"); //todo flag to pass to SPU?
 
-                            byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
-                            window.Play(decodedXaAdpcm);
+                            if(!mutedAudio && !mutedXAADPCM) {
+                                byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
+                                applyVolume(decodedXaAdpcm);
+                                window.Play(decodedXaAdpcm);
+                            }
 
                             return false;
                         }
@@ -287,6 +300,8 @@ namespace ProjectPSX.Devices {
                             Console.ResetColor();
                         }
                         ExecuteCommand(value);
+                    } else if (INDEX == 3) {
+                        pendingVolumeRtoR = (byte)value;
                     } else {
                         if (cdDebug) Console.WriteLine($"[CDROM] [Unhandled Write] Index: {INDEX:x8} Access: {addr:x8} Value: {value:x8}");
                     }
@@ -301,6 +316,17 @@ namespace ProjectPSX.Devices {
                             if (cdDebug) Console.WriteLine($"[CDROM] [W02.1] Set IE: {value:x8}");
                             IE = (byte)(value & 0x1F);
                             break;
+
+                        case 2:
+                            if (cdDebug) Console.WriteLine($"[CDROM] [W02.2] pendingVolumeLtoL: {value:x8}");
+                            pendingVolumeLtoL = (byte)value;
+                            break;
+
+                        case 3:
+                            if (cdDebug) Console.WriteLine($"[CDROM] [W02.3] pendingVolumeRtoL: {value:x8}");
+                            pendingVolumeRtoL = (byte)value;
+                            break;
+
                         default:
                             if (cdDebug) Console.WriteLine($"[CDROM] [Unhandled Write] Access: {addr:x8} Value: {value:x8}");
                             break;
@@ -337,6 +363,23 @@ namespace ProjectPSX.Devices {
                             if ((value & 0x40) == 0x40) {
                                 if (cdDebug) Console.WriteLine($"[CDROM] [W03.1 Parameter Buffer Clear] value {value:x8}");
                                 parameterBuffer.Clear();
+                            }
+                            break;
+
+                        case 2:
+                            if (cdDebug) Console.WriteLine($"[CDROM] [W03.2] pendingVolumeLtoR: {value:x8}");
+                            pendingVolumeLtoR = (byte)value;
+                            break;
+
+                        case 3:
+                            if (cdDebug) Console.WriteLine($"[CDROM] [W03.3] ApplyVolumes: {value:x8}");
+                            mutedXAADPCM = (value & 0x1) != 0;
+                            bool applyVolume = (value & 0x20) != 0;
+                            if (applyVolume) {
+                                volumeLtoL = pendingVolumeLtoL;
+                                volumeLtoR =  pendingVolumeLtoR;
+                                volumeRtoL =  pendingVolumeRtoL;
+                                volumeRtoR = pendingVolumeRtoR;
                             }
                             break;
 
@@ -387,6 +430,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void mute() {
+            mutedAudio = true;
+
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
@@ -521,6 +566,8 @@ namespace ProjectPSX.Devices {
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x2);
+
+            mode = Mode.Idle;
         }
 
         private void getTD() {
@@ -551,7 +598,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void demute() {
-            //this demutes the spu but we dont have one...
+            mutedAudio = false;
+
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
@@ -789,6 +837,22 @@ namespace ProjectPSX.Devices {
             return ((byte)mm, (byte)ss, (byte)ff);
         }
 
+        private void applyVolume(byte[] rawSector) {
+            if (mutedAudio) return;
+
+            var samples = MemoryMarshal.Cast<byte, short>(rawSector);
+
+            for(int i = 0; i < samples.Length; i+=2) {
+                short l = samples[i];
+                short r = samples[i + 1];
+
+                int volumeL = ((l * volumeLtoL) >> 7) + ((r * volumeRtoL) >> 7);
+                int volumeR = ((l * volumeLtoR) >> 7) + ((r * volumeRtoR) >> 7);
+
+                samples[i] =     (short)Math.Clamp(volumeL, -0x8000, 0x7FFF);
+                samples[i + 1] = (short)Math.Clamp(volumeR, -0x8000, 0x7FFF);
+            }
+
+        }
     }
 }
-
