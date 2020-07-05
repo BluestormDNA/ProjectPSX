@@ -1,11 +1,19 @@
-﻿
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using ProjectPSX.Devices.Spu;
 
 namespace ProjectPSX.Devices {
     public class SPU {
 
-        private byte[] RAM = new byte[512 * 1024];
+        List<byte> samples = new List<byte>();
+        List<short> output = new List<short>();
+        Queue<byte> cdbuffer = new Queue<byte>();
+
+        private static int[] positiveXaAdpcmTable = new int[] { 0, 60, 115, 98, 122 };
+        private static int[] negativeXaAdpcmTable = new int[] { 0, 0, -52, -55, -60 };
+
+        private byte[] ram = new byte[512 * 1024];
         private Voice[] voices = new Voice[24];
 
         private ushort mainVolumeLeft;
@@ -18,13 +26,14 @@ namespace ProjectPSX.Devices {
         private uint channelFMPitchMode;
         private uint channelNoiseMode;
         private uint channelReverbMode;
-        private uint channelEnabled;
+        private uint endx;
 
         private ushort unknownA0;
 
         private ushort ramReverbStartAddress;
         private ushort ramIrqAddress;
         private ushort ramDataTransferAddress;
+        private uint ramDataTransferAddressInternal;
         private ushort ramDataTransferFifo;
 
         private ushort controlRegister; //SPUCNT
@@ -40,7 +49,10 @@ namespace ProjectPSX.Devices {
 
         private uint unknownBC;
 
-        public SPU() {
+        private IHostWindow window;
+
+        public SPU(IHostWindow window) {
+            this.window = window;
             for (int i = 0; i < voices.Length; i++) {
                 voices[i] = new Voice();
             }
@@ -121,11 +133,11 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case 0x1F801D9C:
-                    channelEnabled = (channelEnabled & 0xFFFF0000) | value;
+                    endx = (endx & 0xFFFF0000) | value;
                     break;
 
                 case 0x1F801D9E:
-                    channelEnabled = (channelEnabled & 0xFFFF) | (uint)(value << 16);
+                    endx = (endx & 0xFFFF) | (uint)(value << 16);
                     break;
 
                 case 0x1F801DA0:
@@ -142,10 +154,14 @@ namespace ProjectPSX.Devices {
 
                 case 0x1F801DA6:
                     ramDataTransferAddress = value;
+                    ramDataTransferAddressInternal = (uint)(value * 8);
                     break;
 
                 case 0x1F801DA8:
+                    //Console.WriteLine($"[SPU] Manual DMA Write {ramDataTransferAddressInternal:x8} {value:x4}");
                     ramDataTransferFifo = value;
+                    ram[ramDataTransferAddressInternal++] = (byte)value;
+                    ram[ramDataTransferAddressInternal++] = (byte)(value >> 8);
                     break;
 
                 case 0x1F801DAA:
@@ -185,17 +201,17 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case 0x1F801DBC:
-                    unknownBC = (channelEnabled & 0xFFFF0000) | value;
+                    unknownBC = (unknownBC & 0xFFFF0000) | value;
                     break;
 
                 case 0x1F801DBE:
-                    unknownBC = (channelEnabled & 0xFFFF) | (uint)(value << 16);
+                    unknownBC = (unknownBC & 0xFFFF) | (uint)(value << 16);
                     break;
             }
 
         }
 
-        internal ushort load(Width width, uint addr) {
+        internal ushort load(uint addr) {
             switch (addr) {
                 case uint _ when (addr >= 0x1F801C00 && addr <= 0x1F801D7F):
 
@@ -256,10 +272,10 @@ namespace ProjectPSX.Devices {
                     return (ushort)(channelReverbMode >> 16);
 
                 case 0x1F801D9C:
-                    return (ushort)channelEnabled;
+                    return (ushort)endx;
 
                 case 0x1F801D9E:
-                    return (ushort)(channelEnabled >> 16);
+                    return (ushort)(endx >> 16);
 
                 case 0x1F801DA0:
                     return unknownA0;
@@ -314,13 +330,138 @@ namespace ProjectPSX.Devices {
             }
         }
 
+        internal void pushCdBufferSamples(byte[] decodedXaAdpcm) {
+            //Console.WriteLine("cdBuffer was " + cdbuffer.Count + "new data is " + decodedXaAdpcm.Length);
+            cdbuffer = new Queue<byte>(decodedXaAdpcm);
+        }
+
+        private int counter = 0;
+        private int CYCLES_PER_SAMPLE = 0x300; //33868800 / 44100hz
         public bool tick(int cycles) {
+            counter += cycles;
+
+            if (counter < CYCLES_PER_SAMPLE) {
+                return false;
+            }
+            counter -= CYCLES_PER_SAMPLE;
+
+            if(cdbuffer.Count > 2) {
+                byte cdLLo = cdbuffer.Dequeue();
+                byte cdLHi = cdbuffer.Dequeue();
+                byte cdRLo = cdbuffer.Dequeue();
+                byte cdRHi = cdbuffer.Dequeue();
+
+                samples.Add(cdLLo);
+                samples.Add(cdLHi);
+                samples.Add(cdRLo);
+                samples.Add(cdRHi);
+            }
+            
+            if(samples.Count > 2048) {
+                //Console.WriteLine("spu play!");
+                window.Play(samples.ToArray());
+                samples.Clear();
+            }
 
             return false;
         }
 
-        public void processDma(uint[] load) {
-            //Console.WriteLine($"[SPU] DMA Unprocessed length: {load.Length}");
+        private void decodeSamples() {
+            short sampleLeft = 0;
+            short sampleRight = 0;
+
+            short sumLeft = 0;
+            short sumRight = 0;
+
+            short[] decoded = new short[28];
+
+            for (int i = 0; i < voices.Length; i++) {
+                //todo not process disabled voices
+                Voice v = voices[i];
+
+                if ((keyOn & (0x1 << i)) != 0) {
+                    endx &= ~(uint)(0x1 << i);
+                    v.keyOn();
+                }
+
+                if ((keyOff & (0x1 << i)) != 0) {
+                    v.keyOff();
+                }
+
+                if (v.adsrPhase == Voice.Phase.Off) {
+                    return;
+                }
+
+                byte[] spuAdpcm = new byte[16];
+                Array.Copy(ram, v.currentAddress * 8, spuAdpcm, 0, 16);
+
+                byte flags = spuAdpcm[1];
+                bool loopEnd = (flags & 0x1) != 0;
+                bool loopRepeat = (flags & 0x2) != 0;
+                bool loopStart = (flags & 0x4) != 0;
+
+                if (loopEnd) endx |= (uint)(0x1 << i);
+                if (loopEnd && loopRepeat) v.currentAddress = v.adpcmRepeatAddress;
+                if (loopStart) v.adpcmRepeatAddress = v.currentAddress;
+
+                v.currentAddress += 2;
+
+                List<short> samples = decodeSpuNibbles(spuAdpcm, ref v.old, ref v.older, ref v.oldest);
+
+                int pointer = 0;
+                for (int j = 0; j < samples.Count; j++) {
+                    decoded[pointer++] += samples[j];
+                }
+
+            }
+
+            for(int k = 0; k < decoded.Length; k++) {
+                samples.Add((byte)decoded[k]);
+                samples.Add((byte)(decoded[k] >> 8));
+            }
+
+        }
+
+        public unsafe void processDma(uint[] load) {
+            //Console.WriteLine($"[SPU] Process DMA Length: {load.Length} Address: {ramDataTransferAddressInternal:x8}");
+            byte[] dma = Unsafe.As<byte[]>(load);
+            foreach (byte b in dma) {
+                ram[ramDataTransferAddressInternal++] = b;
+                //Console.WriteLine("dma byte " + b);
+            }
+        }
+
+        public static List<short> decodeSpuNibbles(byte[] xaapdcm, ref short old, ref short older, ref short oldest) {
+            List<short> list = new List<short>();
+
+            int shift = 12 - (xaapdcm[0] & 0x0F);
+            int filter = (xaapdcm[0] & 0x30) >> 4;
+
+            int f0 = positiveXaAdpcmTable[filter];
+            int f1 = negativeXaAdpcmTable[filter];
+
+            for (int i = 2; i < 16; i++) {
+                int lo = signed4bit((byte)((xaapdcm[i] >> 0) & 0x0F));
+                int hi = signed4bit((byte)((xaapdcm[i] >> 4) & 0x0F));
+
+                int slo = (lo << shift) + ((old * f0 + older * f1 + 32) / 64);
+                int shi = (hi << shift) + ((old * f0 + older * f1 + 32) / 64);
+
+                short sampleLo = (short)Math.Clamp(slo, -0x8000, 0x7FFF);
+                short sampleHi = (short)Math.Clamp(shi, -0x8000, 0x7FFF);
+
+                list.Add(sampleLo);
+                list.Add(sampleHi);
+                oldest = older;
+                older = old;
+                old = sampleLo;
+            }
+
+            return list;
+        }
+
+        public static int signed4bit(byte value) {
+            return (value << 28) >> 28;
         }
     }
 }

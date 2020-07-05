@@ -107,11 +107,11 @@ namespace ProjectPSX.Devices {
         private Queue<byte> interruptQueue = new Queue<byte>();
 
         private CD cd;
-        private IHostWindow window;
+        private SPU spu;
 
-        public CDROM(IHostWindow window, string diskFilename) {
-            this.window = window;
-            cd = new CD(diskFilename);
+        public CDROM(CD cd, SPU spu) {
+            this.cd = cd;
+            this.spu = spu;
         }
 
         private bool edgeTrigger;
@@ -166,7 +166,7 @@ namespace ProjectPSX.Devices {
 
                     if (mode == Mode.Play && !mutedAudio) {
                         applyVolume(rawSector);
-                        window.Play(rawSector);
+                        spu.pushCdBufferSamples(rawSector);
                         return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
                     }
 
@@ -204,7 +204,7 @@ namespace ProjectPSX.Devices {
                             if(!mutedAudio && !mutedXAADPCM) {
                                 byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
                                 applyVolume(decodedXaAdpcm);
-                                window.Play(decodedXaAdpcm);
+                                spu.pushCdBufferSamples(decodedXaAdpcm);
                             }
 
                             return false;
@@ -301,6 +301,7 @@ namespace ProjectPSX.Devices {
                         }
                         ExecuteCommand(value);
                     } else if (INDEX == 3) {
+                        if (cdDebug) Console.WriteLine($"[CDROM] [W01.3] pendingVolumeRtoR: {value:x8}");
                         pendingVolumeRtoR = (byte)value;
                     } else {
                         if (cdDebug) Console.WriteLine($"[CDROM] [Unhandled Write] Index: {INDEX:x8} Access: {addr:x8} Value: {value:x8}");
