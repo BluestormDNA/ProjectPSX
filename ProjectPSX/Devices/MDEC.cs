@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 
 namespace ProjectPSX.Devices {
-    class MDEC {
+    public class MDEC {
 
         //Status Register
         //private bool isDataOutFifoEmpty;

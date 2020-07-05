@@ -4,11 +4,11 @@ using System.Collections.Generic;
 using static ProjectPSX.Devices.CdRom.TrackBuilder;
 
 namespace ProjectPSX.Devices.CdRom {
-    internal class CD {
+    public class CD {
 
-        private const int BytesPerSectorRaw = 2352;
+        private const int BYTES_PER_SECTOR_RAW = 2352;
 
-        private byte[] rawSectorBuffer = new byte[BytesPerSectorRaw];
+        private byte[] rawSectorBuffer = new byte[BYTES_PER_SECTOR_RAW];
 
         public List<Track> tracks;
 
@@ -37,7 +37,7 @@ namespace ProjectPSX.Devices.CdRom {
             if (position < 0) position = 0;
 
             using FileStream stream = new FileStream(currentTrack.file, FileMode.Open, FileAccess.Read);
-            stream.Seek(position * BytesPerSectorRaw, SeekOrigin.Begin);
+            stream.Seek(position * BYTES_PER_SECTOR_RAW, SeekOrigin.Begin);
             stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
             return rawSectorBuffer;
         }

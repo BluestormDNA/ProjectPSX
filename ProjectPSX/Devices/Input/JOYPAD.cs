@@ -1,7 +1,7 @@
 ﻿using System;
 
 namespace ProjectPSX {
-    internal class JOYPAD {
+    public class JOYPAD {
 
         private byte JOY_TX_DATA; //1F801040h JOY_TX_DATA(W)
         private byte JOY_RX_DATA; //1F801040h JOY_RX_DATA(R) FIFO
@@ -48,9 +48,9 @@ namespace ProjectPSX {
         Controller controller;
         MemoryCard memoryCard;
 
-        public JOYPAD(Controller controller) {
+        public JOYPAD(Controller controller, MemoryCard memoryCard) {
             this.controller = controller;
-            memoryCard = new MemoryCard();
+            this.memoryCard = memoryCard;
         }
 
         int counter;

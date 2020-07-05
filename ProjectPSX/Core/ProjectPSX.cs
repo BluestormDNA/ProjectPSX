@@ -1,4 +1,5 @@
 ﻿using ProjectPSX.Devices;
+using ProjectPSX.Devices.CdRom;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
@@ -10,12 +11,26 @@ namespace ProjectPSX {
         private CPU cpu;
         private BUS bus;
         private CDROM cdrom;
+        private GPU gpu;
+        private SPU spu;
+        private JOYPAD joypad;
+        private TIMERS timers;
+        private MDEC mdec;
         private Controller controller;
+        private MemoryCard memoryCard;
+        private CD cd;
 
         public ProjectPSX(IHostWindow window, string diskFilename) {
             controller = new DigitalController();
-            cdrom = new CDROM(window, diskFilename);
-            bus = new BUS(window, controller, cdrom);
+            memoryCard = new MemoryCard();
+            cd = new CD(diskFilename);
+            spu = new SPU(window);
+            gpu = new GPU(window);
+            cdrom = new CDROM(cd, spu);
+            joypad = new JOYPAD(controller, memoryCard);
+            timers = new TIMERS();
+            mdec = new MDEC();
+            bus = new BUS(gpu, cdrom, spu, joypad, timers, mdec);
             cpu = new CPU(bus);
 
             bus.loadBios();
@@ -26,7 +41,7 @@ namespace ProjectPSX {
             int cyclesPerFrame = PSX_MHZ / 60;
             int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
 
-            for(int i = 0; i < syncLoops; i++) {
+            for (int i = 0; i < syncLoops; i++) {
                 for (int j = 0; j < SYNC_CYCLES; j++) {
                     cpu.Run();
                     //cpu.handleInterrupts();
@@ -47,10 +62,10 @@ namespace ProjectPSX {
         public void toggleDebug() {
             if (!cpu.debug) {
                 cpu.debug = true;
-                bus.gpu.debug = true;
+                gpu.debug = true;
             } else {
                 cpu.debug = false;
-                bus.gpu.debug = false;
+                gpu.debug = false;
             }
         }
 

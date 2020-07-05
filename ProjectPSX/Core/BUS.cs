@@ -23,7 +23,7 @@ namespace ProjectPSX {
         //Other Subsystems
         public InterruptController interruptController;
         private DMA dma;
-        public GPU gpu;
+        private GPU gpu;
         private CDROM cdrom;
         private TIMERS timers;
         private JOYPAD joypad;
@@ -34,15 +34,15 @@ namespace ProjectPSX {
         private static string bios = "./SCPH1001.BIN";
         private static string ex1 = "./caetlaEXP.BIN";
 
-        public BUS(IHostWindow window, Controller controller, CDROM cdrom) {
+        public BUS(GPU gpu, CDROM cdrom, SPU spu, JOYPAD joypad, TIMERS timers, MDEC mdec) {
             interruptController = new InterruptController();
             dma = new DMA(this);
-            gpu = new GPU(window);
+            this.gpu = gpu;
             this.cdrom = cdrom;
-            timers = new TIMERS();
-            joypad = new JOYPAD(controller);
-            mdec = new MDEC();
-            spu = new SPU();
+            this.timers = timers;
+            this.mdec = mdec;
+            this.spu = spu;
+            this.joypad = joypad;
         }
 
         internal unsafe uint load32(uint address) {
@@ -76,7 +76,7 @@ namespace ProjectPSX {
                 } else if (addr == 0x1F80_1824) {
                     return mdec.readMDEC1_Status();
                 } else if (addr >= 0x1F801C00 && addr <= 0x1F801FFF) {
-                    return spu.load(Width.WORD, addr);
+                    return spu.load(addr);
                 } else {
                     return load<uint>(addr & 0xFFF, registersPtr);
                 }
@@ -122,7 +122,7 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
                         case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            return spu.load(Width.HALF, addr);
+                            return spu.load(addr);
                         default:
                             return load<ushort>(addr & 0xFFF, registersPtr);
                     }
@@ -171,7 +171,7 @@ namespace ProjectPSX {
                         case 0x1F801814:
                             return gpu.loadGPUSTAT();
                         case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            return spu.load(Width.BYTE, addr);
+                            return spu.load(addr);
                         default: //to remove this fallback and nesting as all registers should be handled avobe
                             return load<byte>(addr & 0xFFF, registersPtr);
                     }

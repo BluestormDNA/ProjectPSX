@@ -5,7 +5,7 @@ using System.Text;
 namespace ProjectPSX.Devices.CdRom {
     public class XaAdpcm {
 
-        private const int BytesPerHeader = 24;
+        private const int BYTES_PER_HEADER = 24;
 
         private static short oldL;
         private static short olderL;
@@ -67,7 +67,7 @@ namespace ProjectPSX.Devices.CdRom {
 
             //Console.WriteLine($"decoding XAPCDM {xaadpcm.Length} is18900: {is18900hz} is8Bit: {is8BitPerSample} isStereo: {isStereo}");
 
-            int position = BytesPerHeader; //Skip sync, header and subheader
+            int position = BYTES_PER_HEADER; //Skip sync, header and subheader
             for (int i = 0; i < 18; i++) { //Each sector consists of 12h 128-byte portions (=900h bytes) (the remaining 14h bytes of the sectors 914h-byte data region are 00h filled).
                 for (int blk = 0; blk < 4; blk++) {
 

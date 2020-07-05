@@ -2,7 +2,7 @@
 using System.IO;
 
 namespace ProjectPSX {
-    internal class MemoryCard {
+    public class MemoryCard {
         //emulating a 3rd party one as it seems easier to and 0x3FF bad address than to handle the
         //original memcard badAddress 0xFFFF error and the IdCommand
         byte MEMORY_CARD_ID_1 = 0x5A;
