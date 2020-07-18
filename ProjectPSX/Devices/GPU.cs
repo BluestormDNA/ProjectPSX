@@ -43,6 +43,7 @@ namespace ProjectPSX.Devices {
         private struct VRAM_Coord {
             public int x, y;
             public int origin_x;
+            public int origin_y;
             public ushort w, h;
             public int size;
         }
@@ -262,13 +263,21 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteToVRAM(uint value) { //todo rewrite this mess
+            vram_coord.size--;
+
             ushort pixel1 = (ushort)(value >> 16);
             ushort pixel0 = (ushort)(value & 0xFFFF);
 
             drawVRAMPixel(pixel0);
+
+            //Force exit if we arrived to the end pixel (fixes weird artifacts on textures on Metal Gear Solid)
+            if(vram_coord.size == 0 && vram_coord.x == vram_coord.origin_x && vram_coord.y == vram_coord.origin_y + vram_coord.h) {
+                mode = Mode.COMMAND;
+                return;
+            }
+
             drawVRAMPixel(pixel1);
 
-            vram_coord.size--;
             if (vram_coord.size == 0) {
                 mode = Mode.COMMAND;
             }
@@ -637,13 +646,13 @@ namespace ProjectPSX.Devices {
             //TESTING END
 
             // Rasterize
-            for (int y = min.y; y <= max.y; y++) {
+            for (int y = min.y; y < max.y; y++) {
                 // Barycentric coordinates at start of row
                 int w0 = w0_row;
                 int w1 = w1_row;
                 int w2 = w2_row;
 
-                for (int x = min.x; x <= max.x; x++) {
+                for (int x = min.x; x < max.x; x++) {
                     // If p is on or inside all edges, render pixel.
                     if ((w0 + bias0 | w1 + bias1 | w2 + bias2) >= 0) {
                         //Adjustements per triangle instead of per pixel can be done at area level
@@ -910,6 +919,7 @@ namespace ProjectPSX.Devices {
             vram_coord.x = x;
             vram_coord.origin_x = x;
             vram_coord.y = y;
+            vram_coord.origin_y = y;
             vram_coord.w = w;
             vram_coord.h = h;
             vram_coord.size = h * w;
@@ -929,6 +939,7 @@ namespace ProjectPSX.Devices {
             vram_coord.x = x;
             vram_coord.origin_x = x;
             vram_coord.y = y;
+            vram_coord.origin_y = y;
             vram_coord.w = w;
             vram_coord.h = h;
             vram_coord.size = ((h * w) + 1) >> 1;
