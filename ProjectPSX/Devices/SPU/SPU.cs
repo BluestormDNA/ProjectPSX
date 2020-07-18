@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using ProjectPSX.Devices.Spu;
 
 namespace ProjectPSX.Devices {
@@ -139,13 +137,13 @@ namespace ProjectPSX.Devices {
         private struct Status {
             public ushort register;
             public bool isSecondHalfCaptureBuffer => ((register >> 11) & 0x1) != 0;
-            public bool dataTransferBusyFlag => ((register >> 11) & 0x1) != 0;
-            public bool dataTransferDmaReadRequest => ((register >> 11) & 0x1) != 0;
-            public bool dataTransferDmaWriteRequest => ((register >> 11) & 0x1) != 0;
+            public bool dataTransferBusyFlag => ((register >> 10) & 0x1) != 0;
+            public bool dataTransferDmaReadRequest => ((register >> 9) & 0x1) != 0;
+            public bool dataTransferDmaWriteRequest => ((register >> 8) & 0x1) != 0;
             //  7     Data Transfer DMA Read/Write Request ;seems to be same as SPUCNT.Bit5 todo
             public bool irq9Flag {
-                get { return ((register >> 11) & 0x1) != 0; }
-                set { register = (ushort)(register & ~(1 << 11)); }
+                get { return ((register >> 6) & 0x1) != 0; }
+                set { register = value ? (ushort)(register | (1 << 6)) : (ushort)(register & ~(1 << 6)); }
             }
         }
         Status status;
@@ -268,8 +266,12 @@ namespace ProjectPSX.Devices {
 
                 case 0x1F801DAA:
                     control.register = value;
-                    if (control.irq9Enabled)
+
+                    //Irq Flag is reseted on ack
+                    if (!control.irq9Enabled)
                         status.irq9Flag = false;
+
+                    //Status lower 5 bits are the same as control
                     status.register &= 0xFFE0;
                     status.register |= (ushort)(value & 0x1F);
                     break;
@@ -485,6 +487,9 @@ namespace ProjectPSX.Devices {
                     sample = (short)noiseLevel;
                 } else {
                     sample = sampleVoice(i);
+                    //Read irqAddress Irq
+                    status.irq9Flag |= control.irq9Enabled && v.readRamIrq;
+                    v.readRamIrq = false;
                 }
 
                 //todo adsr
@@ -524,7 +529,7 @@ namespace ProjectPSX.Devices {
                 spuOutput.Clear();
             }
 
-            return false;
+            return control.spuEnabled && control.irq9Enabled && status.irq9Flag; //todo move spuEnabled outside
         }
 
         //Wait(1 cycle); at 44.1kHz clock
@@ -551,7 +556,7 @@ namespace ProjectPSX.Devices {
 
             //Decode samples if its empty / next block
             if (!voice.hasSamples) {
-                voice.decodeSamples(ram);
+                voice.decodeSamples(ram, ramIrqAddress);
                 voice.hasSamples = true;
 
                 byte flags = voices[v].spuAdpcm[1];

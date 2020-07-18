@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.Loader;
 
 namespace ProjectPSX.Devices.Spu {
     public class Voice {
@@ -72,6 +71,8 @@ namespace ProjectPSX.Devices.Spu {
 
         public bool hasSamples;
 
+        public bool readRamIrq;
+
         public Voice() {
             adsrPhase = Phase.Off;
         }
@@ -96,7 +97,7 @@ namespace ProjectPSX.Devices.Spu {
 
         public byte[] spuAdpcm = new byte[16];
         public short[] decodedSamples = new short[28];
-        internal void decodeSamples(byte[] ram) {
+        internal void decodeSamples(byte[] ram, ushort ramIrqAddress) {
             //save the last 3 samples from the last decoded block
             //this are needed for interpolation in case the index is 0 1 or 2
             lastBlockSample28 = decodedSamples[decodedSamples.Length - 1];
@@ -104,6 +105,9 @@ namespace ProjectPSX.Devices.Spu {
             lastBlockSample26 = decodedSamples[decodedSamples.Length - 3];
 
             Array.Copy(ram, currentAddress * 8, spuAdpcm, 0, 16);
+
+            //ramIrqAddress is >> 8 so we only need to check for currentAddress and + 1
+            readRamIrq |= currentAddress == ramIrqAddress || currentAddress + 1 == ramIrqAddress;           
 
             int shift = 12 - (spuAdpcm[0] & 0x0F);
             int filter = (spuAdpcm[0] & 0x70) >> 4; //filter on SPU adpcm is 0-4 vs XA wich is 0-3
