@@ -121,7 +121,7 @@ namespace ProjectPSX.Devices {
         private struct Control {
             public ushort register;
             public bool spuEnabled => ((register >> 15) & 0x1) != 0;
-            public bool spuMuted => ((register >> 14) & 0x1) != 0;
+            public bool spuUnmuted => ((register >> 14) & 0x1) != 0;
             public int noiseFrequencyShift => (register >> 10) & 0xF;
             public int noiseFrequencyStep => (register >> 8) & 0x3;
             public bool reverbMasterEnabled => ((register >> 7) & 0x1) != 0;
@@ -504,9 +504,15 @@ namespace ProjectPSX.Devices {
                 sumRight += (sample * v.processVolume(v.volumeRight)) >> 15;
             }
 
-            //Clamp sum
-            sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
-            sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
+            if (control.spuUnmuted) {
+                //Clamp sum
+                sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
+                sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
+            } else {
+                //On mute the spu still ticks but output is 0 for voices (not for cdInput)
+                sumLeft = 0;
+                sumRight = 0;
+            }
 
             spuOutput.Add((byte)sumLeft);
             spuOutput.Add((byte)(sumLeft >> 8));
