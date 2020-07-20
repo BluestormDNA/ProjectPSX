@@ -8,7 +8,7 @@ namespace ProjectPSX.Devices {
 
         // todo
         // mute/enabled status
-        // adsr, and lr sweep envelope
+        // lr sweep envelope
         // interrupts
         // merge in cdda and xa from cd buffer
         // reverb
@@ -170,7 +170,7 @@ namespace ProjectPSX.Devices {
                         case 0x6: voices[index].startAddress = value; break;
                         case 0x8: voices[index].adsr.lo = value; break;
                         case 0xA: voices[index].adsr.hi = value; break;
-                        case 0xC: voices[index].adsrVolume = (short)value; break;
+                        case 0xC: voices[index].adsrVolume = value; break;
                         case 0xE: voices[index].adpcmRepeatAddress = value; break;
                     }
                     break;
@@ -332,7 +332,7 @@ namespace ProjectPSX.Devices {
                         case 0x6: return voices[index].startAddress;
                         case 0x8: return voices[index].adsr.lo;
                         case 0xA: return voices[index].adsr.hi;
-                        case 0xC: return (ushort)voices[index].adsrVolume;
+                        case 0xC: return voices[index].adsrVolume;
                         case 0xE: return voices[index].adpcmRepeatAddress;
                     }
                     return 0xFFFF;
@@ -492,11 +492,12 @@ namespace ProjectPSX.Devices {
                     v.readRamIrq = false;
                 }
 
-                //todo adsr
-                //sample = (short)((sample * v.adsrVolume) >> 15);
+                //Handle ADSR Envelope
+                sample = (short)((sample * v.adsrVolume) >> 15);
+                v.tickAdsr(i);
+
                 //Save sample for possible pitch modulation
                 v.latest = sample;
-                //v.tickAdsr(i);
 
                 //Sum each voice sample
                 sumLeft += (sample * v.processVolume(v.volumeLeft)) >> 15;

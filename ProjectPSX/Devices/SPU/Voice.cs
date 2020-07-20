@@ -37,11 +37,11 @@ namespace ProjectPSX.Devices.Spu {
             public int sustainShift => (hi >> 8) & 0x1F;
             public int sustainStep => (hi >> 6) & 0x3;
             public bool isReleaseModeExponential => ((hi >> 5) & 0x1) != 0;
-            public int releaseShift => (hi) & 0x1F;
+            public int releaseShift => hi & 0x1F;
         }
         public ADSR adsr;
 
-        public short adsrVolume;            //C
+        public ushort adsrVolume;           //C
         public ushort adpcmRepeatAddress;   //E
 
         public struct Counter {            //internal
@@ -78,21 +78,26 @@ namespace ProjectPSX.Devices.Spu {
         }
 
         public void keyOn() {
+            hasSamples = false;
+            old = 0;
+            older = 0;
             currentAddress = startAddress;
+            adsrCounter = 0;
             adsrVolume = 0;
             adsrPhase = Phase.Attack;
         }
 
         public void keyOff() {
-            adsrPhase = Phase.Off; //Todo this should be release but as no ADSR yet the voices never end
+            adsrCounter = 0;
+            adsrPhase = Phase.Release;
         }
 
         public enum Phase {
-            Off,
             Attack,
             Decay,
             Sustain,
-            Release
+            Release,
+            Off,
         }
 
         public byte[] spuAdpcm = new byte[16];
@@ -161,7 +166,10 @@ namespace ProjectPSX.Devices.Spu {
 
         int adsrCounter;
         internal void tickAdsr(int v) {
-            if (adsrPhase == Phase.Off) return;
+            if (adsrPhase == Phase.Off) {
+                adsrVolume = 0;
+                return;
+            }
 
             int adsrTarget;
             int adsrShift;
@@ -186,7 +194,7 @@ namespace ProjectPSX.Devices.Spu {
                     isExponential = true; // Allways exponential
                     break;
                 case Phase.Sustain:
-                    adsrTarget = adsr.isSustainDirectionDecrease ? 0 : 0x7FFFF;
+                    adsrTarget = 0;
                     adsrShift = adsr.sustainShift;
                     adsrStep = adsr.isSustainDirectionDecrease? -8 + adsr.sustainStep: 7 - adsr.sustainStep;
                     isDecreasing = adsr.isSustainDirectionDecrease; //till keyoff
@@ -215,17 +223,22 @@ namespace ProjectPSX.Devices.Spu {
             //IF exponential AND decrease THEN AdsrStep = AdsrStep * AdsrLevel / 8000h
             //Wait(AdsrCycles); cycles counted at 44.1kHz clock
             //AdsrLevel=AdsrLevel+AdsrStep  ;saturated to 0..+7FFFh
+
             if (adsrCounter > 0) { adsrCounter--; return; }
 
             int envelopeCycles = 1 << Math.Max(0, adsrShift - 11);
             int envelopeStep = adsrStep << Math.Max(0, 11 - adsrShift);
             if(isExponential && !isDecreasing && adsrVolume > 0x6000) { envelopeCycles *= 4; }
             if(isExponential && isDecreasing) { envelopeStep = envelopeStep * adsrVolume / 0x8000; }
-            adsrVolume = (short)Math.Clamp(adsrVolume + envelopeStep, 0, 0x7FFF);
+
+            adsrVolume = (ushort)Math.Clamp(adsrVolume + envelopeStep, 0, 0x7FFF);
             adsrCounter = envelopeCycles;
 
             bool nextPhase = isDecreasing ? (adsrVolume <= adsrTarget) : (adsrVolume >= adsrTarget);
-            if (nextPhase && adsrPhase != Phase.Sustain) adsrPhase++;
+            if (nextPhase && adsrPhase != Phase.Sustain) {
+                adsrPhase++;
+                adsrCounter = 0;
+            };
         }
     }
 }
