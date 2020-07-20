@@ -542,7 +542,7 @@ namespace ProjectPSX.Devices {
         int noiseTimer;
         int noiseLevel;
         private void tickNoiseGenerator() {
-            int noiseStep = control.noiseFrequencyStep;
+            int noiseStep = control.noiseFrequencyStep + 4;
             int noiseShift = control.noiseFrequencyShift;
 
             noiseTimer -= noiseStep;
