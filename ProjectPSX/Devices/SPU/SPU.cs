@@ -6,12 +6,12 @@ using ProjectPSX.Devices.Spu;
 namespace ProjectPSX.Devices {
     public class SPU {
 
-        // todo
-        // mute/enabled status
+        // Todo:
+        // Spu Enable/Disable (koff voices? Ints?)
         // lr sweep envelope
-        // interrupts
-        // merge in cdda and xa from cd buffer
+        // Capture buffer
         // reverb
+        // clean up queue/list dequeues enqueues and casts
         // ...
 
         private static short[] gaussTable = new short[] {
@@ -439,7 +439,6 @@ namespace ProjectPSX.Devices {
         }
 
         internal void pushCdBufferSamples(byte[] decodedXaAdpcm) {
-            //Console.WriteLine("cdBuffer was " + cdbuffer.Count + "new data is " + decodedXaAdpcm.Length);
             cdbuffer = new Queue<byte>(decodedXaAdpcm);
         }
 
@@ -504,32 +503,40 @@ namespace ProjectPSX.Devices {
                 sumRight += (sample * v.processVolume(v.volumeRight)) >> 15;
             }
 
-            if (control.spuUnmuted) {
-                //Clamp sum
-                sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
-                sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
-            } else {
+            if (!control.spuUnmuted) { //todo merge this on the for voice loop
                 //On mute the spu still ticks but output is 0 for voices (not for cdInput)
                 sumLeft = 0;
                 sumRight = 0;
             }
 
+            //Merge in CD audio (CDDA or XA)
+            if(control.cdAudioEnabled && cdbuffer.Count > 3) { //Be sure theres something on the queue...
+                //todo refactor the byte/short queues and casts
+                byte cdLLo = cdbuffer.Dequeue();
+                byte cdLHi = cdbuffer.Dequeue();
+                byte cdRLo = cdbuffer.Dequeue();
+                byte cdRHi = cdbuffer.Dequeue();
+
+                short cdL = (short)(cdLHi << 8 | cdLLo);
+                short cdR = (short)(cdRHi << 8 | cdRLo);
+
+                //Apply Spu Cd In (CDDA/XA) Volume
+                cdL = (short)((cdL * cdVolumeLeft) >> 15);
+                cdR = (short)((cdR * cdVolumeRight) >> 15);
+
+                sumLeft += cdL;
+                sumRight += cdR;
+            }
+
+            //Clamp sum
+            sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
+            sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
+
+            //Add to samples bytes to output list //Todo check if is possible to cast directly with Unsafe or memmarshal
             spuOutput.Add((byte)sumLeft);
             spuOutput.Add((byte)(sumLeft >> 8));
             spuOutput.Add((byte)sumRight);
             spuOutput.Add((byte)(sumRight >> 8));
-
-            //if(cdbuffer.Count > 3) { //todo merge in CD audio
-            //    byte cdLLo = cdbuffer.Dequeue();
-            //    byte cdLHi = cdbuffer.Dequeue();
-            //    byte cdRLo = cdbuffer.Dequeue();
-            //    byte cdRHi = cdbuffer.Dequeue();
-            //
-            //    spuOutput.Add(cdLLo);
-            //    spuOutput.Add(cdLHi);
-            //    spuOutput.Add(cdRLo);
-            //    spuOutput.Add(cdRHi);
-            //}            
 
             if (spuOutput.Count > 2048) {
                 window.Play(spuOutput.ToArray());
@@ -589,9 +596,7 @@ namespace ProjectPSX.Devices {
             //Todo adsr
             //interpolated = (interpolated * voice.adsrVolume) >> 15;
 
-            //Pitch modulation
-            //What's up with RidgeRacer voices being so pitch high?
-            //Picth modulation starts at voice 1 as it needs the last voice
+            //Pitch modulation: Starts at voice 1 as it needs the last voice
             int step = voice.pitch;
             if (((pitchModulationEnableFlags & (0x1 << v)) != 0) && v > 0) {
                 int factor = voices[v - 1].latest + 0x8000; //From previous voice
