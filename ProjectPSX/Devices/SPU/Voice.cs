@@ -229,7 +229,7 @@ namespace ProjectPSX.Devices.Spu {
             int envelopeCycles = 1 << Math.Max(0, adsrShift - 11);
             int envelopeStep = adsrStep << Math.Max(0, 11 - adsrShift);
             if(isExponential && !isDecreasing && adsrVolume > 0x6000) { envelopeCycles *= 4; }
-            if(isExponential && isDecreasing) { envelopeStep = envelopeStep * adsrVolume / 0x8000; }
+            if(isExponential && isDecreasing) { envelopeStep = (envelopeStep * adsrVolume) >> 15; }
 
             adsrVolume = (ushort)Math.Clamp(adsrVolume + envelopeStep, 0, 0x7FFF);
             adsrCounter = envelopeCycles;
