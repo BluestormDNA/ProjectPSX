@@ -9,7 +9,6 @@ namespace ProjectPSX.Devices {
         // Todo:
         // Spu Enable/Disable (koff voices? Ints?)
         // lr sweep envelope
-        // Capture buffer
         // reverb
         // clean up queue/list dequeues enqueues and casts
         // ...
@@ -117,6 +116,8 @@ namespace ProjectPSX.Devices {
         private ushort currentVolumeRight;
 
         private uint unknownBC;
+
+        private int captureBufferPos;
 
         private struct Control {
             public ushort register;
@@ -510,6 +511,8 @@ namespace ProjectPSX.Devices {
             }
 
             //Merge in CD audio (CDDA or XA)
+            short cdL = 0;
+            short cdR = 0;
             if(control.cdAudioEnabled && cdbuffer.Count > 3) { //Be sure theres something on the queue...
                 //todo refactor the byte/short queues and casts
                 byte cdLLo = cdbuffer.Dequeue();
@@ -517,8 +520,8 @@ namespace ProjectPSX.Devices {
                 byte cdRLo = cdbuffer.Dequeue();
                 byte cdRHi = cdbuffer.Dequeue();
 
-                short cdL = (short)(cdLHi << 8 | cdLLo);
-                short cdR = (short)(cdRHi << 8 | cdRLo);
+                cdL = (short)(cdLHi << 8 | cdLLo);
+                cdR = (short)(cdRHi << 8 | cdRLo);
 
                 //Apply Spu Cd In (CDDA/XA) Volume
                 cdL = (short)((cdL * cdVolumeLeft) >> 15);
@@ -527,6 +530,13 @@ namespace ProjectPSX.Devices {
                 sumLeft += cdL;
                 sumRight += cdR;
             }
+
+            //Write to capture buffers and check ram irq
+            status.irq9Flag |= handleCaptureBuffer(0 * 1024 + captureBufferPos, cdL);
+            status.irq9Flag |= handleCaptureBuffer(1 * 1024 + captureBufferPos, cdR);
+            status.irq9Flag |= handleCaptureBuffer(2 * 1024 + captureBufferPos, voices[1].latest);
+            status.irq9Flag |= handleCaptureBuffer(3 * 1024 + captureBufferPos, voices[3].latest);
+            captureBufferPos = (captureBufferPos + 2) & 0x3FF;
 
             //Clamp sum
             sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
@@ -544,6 +554,13 @@ namespace ProjectPSX.Devices {
             }
 
             return control.spuEnabled && control.irq9Enabled && status.irq9Flag; //todo move spuEnabled outside
+        }
+
+        private bool handleCaptureBuffer(int address, short sample) {
+            ram[address] = (byte)(sample & 0xFF);
+            ram[address + 1] = (byte)((sample >> 8) & 0xFF);
+
+            return address >> 3 == ramIrqAddress;
         }
 
         //Wait(1 cycle); at 44.1kHz clock
@@ -650,7 +667,6 @@ namespace ProjectPSX.Devices {
             }
         
             ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + length);
-        
         }
 
     }
