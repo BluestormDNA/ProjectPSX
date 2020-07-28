@@ -271,7 +271,7 @@ namespace ProjectPSX.Devices {
                     //Irq Flag is reseted on ack
                     if (!control.irq9Enabled)
                         status.irq9Flag = false;
-
+                    
                     //Status lower 5 bits are the same as control
                     status.register &= 0xFFE0;
                     status.register |= (ushort)(value & 0x1F);
@@ -446,6 +446,7 @@ namespace ProjectPSX.Devices {
         private int counter = 0;
         private int CYCLES_PER_SAMPLE = 0x300; //33868800 / 44100hz
         public bool tick(int cycles) {
+            bool edgeTrigger = false;
             counter += cycles;
 
             if (counter < CYCLES_PER_SAMPLE) {
@@ -488,7 +489,7 @@ namespace ProjectPSX.Devices {
                 } else {
                     sample = sampleVoice(i);
                     //Read irqAddress Irq
-                    status.irq9Flag |= control.irq9Enabled && v.readRamIrq;
+                    edgeTrigger |= control.irq9Enabled && v.readRamIrq;
                     v.readRamIrq = false;
                 }
 
@@ -532,10 +533,10 @@ namespace ProjectPSX.Devices {
             }
 
             //Write to capture buffers and check ram irq
-            status.irq9Flag |= handleCaptureBuffer(0 * 1024 + captureBufferPos, cdL);
-            status.irq9Flag |= handleCaptureBuffer(1 * 1024 + captureBufferPos, cdR);
-            status.irq9Flag |= handleCaptureBuffer(2 * 1024 + captureBufferPos, voices[1].latest);
-            status.irq9Flag |= handleCaptureBuffer(3 * 1024 + captureBufferPos, voices[3].latest);
+            edgeTrigger |= handleCaptureBuffer(0 * 1024 + captureBufferPos, cdL);
+            edgeTrigger |= handleCaptureBuffer(1 * 1024 + captureBufferPos, cdR);
+            edgeTrigger |= handleCaptureBuffer(2 * 1024 + captureBufferPos, voices[1].latest);
+            edgeTrigger |= handleCaptureBuffer(3 * 1024 + captureBufferPos, voices[3].latest);
             captureBufferPos = (captureBufferPos + 2) & 0x3FF;
 
             //Clamp sum
@@ -553,7 +554,10 @@ namespace ProjectPSX.Devices {
                 spuOutput.Clear();
             }
 
-            return control.spuEnabled && control.irq9Enabled && status.irq9Flag; //todo move spuEnabled outside
+            if (control.spuEnabled && control.irq9Enabled && edgeTrigger) {
+                status.irq9Flag = true;
+            }
+            return control.spuEnabled && control.irq9Enabled && edgeTrigger; //todo move spuEnabled outside
         }
 
         private bool handleCaptureBuffer(int address, short sample) {
