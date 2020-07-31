@@ -116,6 +116,8 @@ namespace ProjectPSX.Devices {
             private InterruptChannel interrupt;
             private int channelNumber;
 
+            private uint pendingBlocks;
+
             public Channel(int channelNumber, InterruptChannel interrupt, BUS bus) {
                 this.channelNumber = channelNumber;
                 this.interrupt = interrupt;
@@ -170,96 +172,106 @@ namespace ProjectPSX.Devices {
 
             private void handleDMA() {
                 if (!isActive()) return;
+
+                //Console.WriteLine("[DMA] SyncMode " + syncMode + " channelNumber " + channelNumber);
+
                 if (syncMode == 0) {
-                    if (blockSize == 0) {
-                        Console.WriteLine($"[DMA] [Channel {channelNumber}] WARNING UNHANDLED BLOCKSIZE 0 = 0xFFFF");
-                        Console.ReadLine();
-                    }
-                    blockCopy(blockSize);
+                    blockCopy(blockSize == 0 ? 0x10000 : blockSize);
+
+                    //disable channel
+                    enable = false;
+                    trigger = false;
+
+                    interrupt.handleInterrupt(channelNumber);
                 } else if (syncMode == 1) {
-                    if (blockSize == 0) {
-                        Console.WriteLine($"[DMA] [Channel {channelNumber}] WARNING UNHANDLED BLOCKSIZE 0 = 0xFFFF");
-                        Console.ReadLine();
-                    }
-                    blockCopy(blockSize * blockCount);
+                    //if(channelNumber == 1)
+                    //Console.WriteLine("DMA Write BlockCount " + blockCount);
+                    //Console.ReadLine();
+                    pendingBlocks = blockCount;
+                    //blockCopy(blockSize);
+
                 } else if (syncMode == 2) {
                     linkedList();
+
+                    //disable channel
+                    enable = false;
+                    trigger = false;
+
+                    interrupt.handleInterrupt(channelNumber);
                 }
 
-                //disable channel
-                enable = false;
-                trigger = false;
-
-                interrupt.handleInterrupt(channelNumber);
             }
 
 
             private void blockCopy(uint size) {
+                if (transferDirection == 0) { //toRam
+                    blockCopyToRam(size);
+                } else { //toDevice
+                    blockCopyToDevice(size);
+                }
+            }
+
+            private void blockCopyToDevice(uint size) {
+                uint[] load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
+                baseAddress += memoryStep * size;
+
+                if (channelNumber == 0) { //MDECin
+                                          // Console.WriteLine("[DMA] MDEC IN blockCopy " + size);
+                    bus.DmaToMdecIn(load);
+                } else if (channelNumber == 2) {//GPU
+                    //Console.WriteLine("[DMA] GPU IN blockCopy " + size);
+                    bus.DmaToGpu(load);
+                } else {//SPU
+                    //Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channelNumber);
+                }
+            }
+
+
+            private void blockCopyToRam(uint size) {
+                if (channelNumber == 1) {
+                    //Console.WriteLine("[DMA] MdecOut to ram " + size);
+                }
+
                 while (size > 0) {
-                    switch (transferDirection) {
-                        case 0: //To Ram
-                            uint data;
-
-                            switch (channelNumber) {
-                                case 1: //MDECout
-                                    data = bus.DmaFromMdecOut();
-                                    break;
-                                case 2: //GPU
-                                    data = bus.DmaFromGpu();
-                                    break;
-                                case 3: //CD
-                                    data = bus.DmaFromCD();
-                                    break;
-                                case 4: //SPU
-                                    data = bus.DmaFromSpu();
-                                    break;
-                                case 6: //OTC
-                                    if (size == 1) {
-                                        data = 0xFF_FFFF;
-                                    } else {
-                                        data = (baseAddress - 4) & 0xFF_FFFF;
-                                    }
-                                    break;
-                                default:
-                                    data = 0;
-                                    Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channelNumber);
-                                    break;
-                            }
-
-                            //Console.WriteLine($"[DMA] [Channel {channelNumber}] ToRam Address: {(baseAddress & 0x1F_FFFC):x8} Data: {data:x8} Size {size}");
-
-                            bus.DmaToRam(baseAddress & 0x1F_FFFC, data);
+                    uint data;
+                    switch (channelNumber) {
+                        case 1: //MDECout
+                            //Console.WriteLine("[DMA] MdecOut to ram " + size);
+                            data = bus.DmaFromMdecOut();
                             break;
-
-                        case 1: //From Ram
-                           
-                            uint[] load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
-
-                            switch (channelNumber) {
-                                case 0: //MDECin
-                                    bus.DmaToMdecIn(load);
-                                    return;
-                                case 2: //GPU
-                                    bus.DmaToGpu(load);
-                                    return;
-                                case 4: //SPU
-                                    //Console.WriteLine($"[DMA] ToSpu blockCopy blockSize: {blockSize} blockCount: {blockCount} Size: {size}");
-                                    bus.DmaToSpu(load);
-                                    return;
-                                default:
-                                    Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channelNumber);
-                                    return;
+                        case 2: //GPU
+                            data = bus.DmaFromGpu();
+                            //Console.WriteLine("[DMA] [C2 GPU] Address: {0} Data: {1} Size {2}", (baseAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                            break;
+                        case 3: //CD
+                            data = bus.DmaFromCD();
+                            //Console.WriteLine("[DMA] [C3 CD] TORAM Address: {0} Data: {1} Size {2}", (baseAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"), size);
+                            break;
+                        case 4: //SPU
+                            data = 0xDEADBEEF;
+                            break;
+                        case 6: //OTC
+                            if (size == 1) {
+                                data = 0xFF_FFFF;
+                            } else {
+                                data = (baseAddress - 4) & 0xFF_FFFF;
                             }
+                            //Console.WriteLine("[DMA] [C6 OTC] Address: {0} Data: {1}", (baseAddress & 0x1F_FFFC).ToString("x8"), data.ToString("x8"));
+                            break;
+                        default:
+                            data = 0xDEADBEEF;
+                            Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channelNumber);
+                            break;
                     }
-
+                    bus.DmaToRam(baseAddress & 0x1F_FFFC, data);
+                    // Console.WriteLine(baseAddress);
                     baseAddress += memoryStep;
                     size--;
                 }
             }
 
-            private void linkedList() {
+            private void linkedList() { //WARNING QUEUE ARRAY TESTS !!!!
                 uint header = 0;
-                List<uint> list = new List<uint>(); //test
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
@@ -269,16 +281,16 @@ namespace ProjectPSX.Devices {
 
                     if (size > 0) {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
-                        uint[] load = bus.DmaFromRam(baseAddress, size);
+                        Span<uint> load = bus.DmaFromRam(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
-                        list.AddRange(load);
-                    }
 
-                    if (baseAddress == (header & 0x1ffffc)) break; //Tekken2 hangs here if not handling this posible forever loop
+                        for (int i = 0; i < load.Length; i++) {
+                            bus.DmaToGpu(load[i]);
+                        }
+                    }
                     baseAddress = header & 0x1ffffc;
                 }
 
-                bus.DmaToGpu(list.ToArray());
             }
 
             private bool isActive() {
@@ -286,6 +298,23 @@ namespace ProjectPSX.Devices {
                     return enable && trigger;
                 } else {
                     return enable;
+                }
+            }
+            internal void tick() {
+                bool triger = pendingBlocks == 1;
+                if (pendingBlocks > 0) {
+                    // Console.WriteLine("DMA tick trigger " + trigger + "channel " + channelNumber + " pendingBlocks " + pendingBlocks);
+                    pendingBlocks--;
+                    blockCopy(blockSize);
+                }
+
+                if (pendingBlocks == 0 & triger) {
+                    // Console.WriteLine("Triggering int >>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+                    //disable channel
+                    enable = false;
+                    trigger = false;
+
+                    interrupt.handleInterrupt(channelNumber);
                 }
             }
         }
@@ -319,7 +348,12 @@ namespace ProjectPSX.Devices {
             channels[channel].write(register, value);
         }
 
-        public bool tick() => ((InterruptChannel)channels[7]).tick();
+        public bool tick() {
+            for (int i = 0; i < 7; i++) {
+                ((Channel)channels[i]).tick();
+            }
+            return ((InterruptChannel)channels[7]).tick();
+        }
 
     }
 }
