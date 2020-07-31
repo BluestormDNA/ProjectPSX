@@ -23,8 +23,6 @@ namespace ProjectPSX.Devices {
 
         private VRAM vram = new VRAM(1024, 512);
 
-        private delegate void Command();
-
         public bool debug;
 
         private enum Mode {
@@ -300,18 +298,13 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void drawVRAMPixel(ushort val) {
-            //Console.WriteLine("draw - VRAM pixel " + val.ToString("x4"));
             if (checkMaskBeforeDraw) {
-                //Console.WriteLine("checkMaskBeforeDraw");
                 int bg = vram.GetPixelRGB888(vram_coord.x, vram_coord.y);
-                //Console.WriteLine("BG was pixel " + bg.ToString("x4"));
 
                 if (bg >> 24 == 0) {
-                    //Console.WriteLine("Escribiendo !!!");
                     vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
                 }
             } else {
-                //Console.WriteLine("NO checkMaskBeforeDraw");
                 vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
             }
 
@@ -1237,7 +1230,7 @@ namespace ProjectPSX.Devices {
             horizontalResolution2 = (byte)((value & 0x40) >> 6);
             isReverseFlag = (value & 0x80) != 0;
 
-            isInterlaceField = isVerticalInterlace ? true : false;
+            isInterlaceField = isVerticalInterlace;
 
             horizontalTiming = isPal ? 3406 : 3413;
             verticalTiming = isPal ? 314 : 263;
