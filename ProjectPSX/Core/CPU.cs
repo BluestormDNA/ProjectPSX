@@ -103,7 +103,7 @@ namespace ProjectPSX {
             //mips.disassemble(instr, PC_Now, PC_Predictor);
             //}
 
-            TTY();
+            //TTY();
             //bios.verbose(PC_Now, GPR);
         }
 
@@ -111,7 +111,7 @@ namespace ProjectPSX {
         string tcpx = "./psxtest_cpx.exe";
         string tgte = "./psxtest_gte.exe";
         string tgpu = "./psxtest_gpu.exe";
-        string demo = "./stereo.exe";
+        string demo = "./bench.exe";
         private void forceTest(string test) {
             if (PC == 0x8003_0000 && exe == true) {
                 (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
@@ -201,6 +201,7 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute() {
+            if (instr.value == 0) return; //early NOP return avoids the nested switchs
             switch (instr.opcode) {
                 case 0b00_0000: SPECIAL(); break;//R-Type opcodes
                 case 0b10_1011: SW(); break;

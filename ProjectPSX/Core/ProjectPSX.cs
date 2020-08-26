@@ -6,7 +6,7 @@ namespace ProjectPSX {
     public class ProjectPSX {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
-        const int MIPS_UNDERCLOCK = 2; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
+        const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
 
         private CPU cpu;
         private BUS bus;
