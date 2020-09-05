@@ -28,10 +28,8 @@ namespace ProjectPSX.Devices {
         private short[] Cbblk = new short[64];
         private short[][] Yblk = { new short[64], new short[64], new short[64], new short[64] };
 
-        private ushort[] src = new ushort[0xFFFF]; //TEST TODO: REVISIT THIS "it works"...
-        private uint[] inBuffer = new uint[0xFFFF]; //this is badly wrong. should be 0x20 and handle dmas
-        private Queue<uint> outBuffer = new Queue<uint>();
-        private int ptr;
+        private Queue<ushort> inBuffer = new Queue<ushort>(1024);
+        private Queue<uint> outBuffer = new Queue<uint>(768);
 
         private uint[] output = new uint[256];
 
@@ -39,20 +37,21 @@ namespace ProjectPSX.Devices {
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
             //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
             if (remainingDataWords == 0) {
-                //Console.WriteLine("decoding " + value.ToString("x8"));
+                //Console.WriteLine("remainingDataWas0 decoding: " + value.ToString("x8"));
                 decodeCommand(value);
-            } else {
-                inBuffer[ptr++] = value;
+            }
+            else {
+                inBuffer.Enqueue((ushort)value);
+                inBuffer.Enqueue((ushort)(value >> 16));
                 remainingDataWords--;
                 //Console.WriteLine("[MDEC] remaining " + remainingDataWords);
+                //tryToDecode();
             }
 
             if (remainingDataWords == 0) {
                 isCommandBusy = true;
                 outBuffer.Clear();
                 command();
-                ptr = 0;
-                srcPointer = 0;
             }
 
         }
@@ -74,19 +73,19 @@ namespace ProjectPSX.Devices {
         }
 
         private void decodeMacroBlocks() {
-            Buffer.BlockCopy(inBuffer, 0, src, 0, inBuffer.Length);
+            //Buffer.BlockCopy(inBuffer, 0, src, 0, inBuffer.Length);
 
-            while (srcPointer < ptr * 2) {
+            //while (srcPointer < ptr * 2) {
 
-                rl_decode_block(Crblk, src, colorQuantTable);
-                rl_decode_block(Cbblk, src, colorQuantTable);
+                rl_decode_block(Crblk, inBuffer, colorQuantTable);
+                rl_decode_block(Cbblk, inBuffer, colorQuantTable);
 
                 clearOutput();
 
-                rl_decode_block(Yblk[0], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[1], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[2], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[3], src, luminanceQuantTable); 
+                rl_decode_block(Yblk[0], inBuffer, luminanceQuantTable); 
+                rl_decode_block(Yblk[1], inBuffer, luminanceQuantTable); 
+                rl_decode_block(Yblk[2], inBuffer, luminanceQuantTable); 
+                rl_decode_block(Yblk[3], inBuffer, luminanceQuantTable); 
 
                 yuv_to_rgb(Yblk[0], 0, 0, output);
                 yuv_to_rgb(Yblk[2], 0, 8, output);
@@ -99,7 +98,7 @@ namespace ProjectPSX.Devices {
                 //    Console.WriteLine(i + " " + output[i].ToString("x8"));
                 //}
                 //Console.WriteLine("MacroBlock decoded " + ++block + " srcPointer " + srcPointer + " bufferPtr " + ptr);
-            }
+            //}
             //Console.WriteLine("Finalized decode" + srcPointer + " " + ptr);
         }
 
@@ -141,14 +140,13 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private int srcPointer;
-        public void rl_decode_block(short[] blk, ushort[] src, byte[] qt) {
+        public void rl_decode_block(short[] blk, Queue<ushort> src, byte[] qt) {
             for (int i = 0; i < blk.Length; i++) {
                 blk[i] = 0;
             }
 
-            ushort n = src[srcPointer++];
-            if (n == 0xFE00) n = src[srcPointer++];
+            ushort n = src.Dequeue();
+            if (n == 0xFE00) n = src.Dequeue();
 
             var q_scale = (n >> 10) & 0x3F;
             int val = signed10bit(n & 0x3FF) * qt[0];
@@ -165,7 +163,7 @@ namespace ProjectPSX.Devices {
                     blk[zagzig[i]] = (short)val;
                 }
 
-                n = src[srcPointer++];
+                n = src.Dequeue();
 
                 i = i + ((n >> 10) & 0x3F) + 1;
 
@@ -198,10 +196,13 @@ namespace ProjectPSX.Devices {
 
         private void setQuantTable() {//64 unsigned parameter bytes for the Luminance Quant Table (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes for the Color Quant Table (used for Cb and Cr).
             for (int i = 0; i < 16; i++) { //16 words for each table
-                luminanceQuantTable[i * 4] = (byte)(inBuffer[i] & 0xFF);
-                luminanceQuantTable[i * 4 + 1] = (byte)(inBuffer[i] >> 8 & 0xFF);
-                luminanceQuantTable[i * 4 + 2] = (byte)(inBuffer[i] >> 16 & 0xFF);
-                luminanceQuantTable[i * 4 + 3] = (byte)(inBuffer[i] >> 24 & 0xFF);
+                ushort lower16 = inBuffer.Dequeue();
+                ushort upper16 = inBuffer.Dequeue();
+
+                luminanceQuantTable[i * 4 + 0] = (byte)(lower16 >> 0);
+                luminanceQuantTable[i * 4 + 1] = (byte)(lower16 >> 8);
+                luminanceQuantTable[i * 4 + 2] = (byte)(upper16 >> 0);
+                luminanceQuantTable[i * 4 + 3] = (byte)(upper16 >> 8);
             }
 
             //Console.WriteLine("setQuantTable: Luminance");
@@ -209,10 +210,13 @@ namespace ProjectPSX.Devices {
             if (!isColored) return;
 
             for (int i = 0; i < 16; i++) { //16 words continuation from buffer
-                colorQuantTable[i * 4] = (byte)(inBuffer[i + 16] & 0xFF);
-                colorQuantTable[i * 4 + 1] = (byte)(inBuffer[i + 16] >> 8 & 0xFF);
-                colorQuantTable[i * 4 + 2] = (byte)(inBuffer[i + 16] >> 16 & 0xFF);
-                colorQuantTable[i * 4 + 3] = (byte)(inBuffer[i + 16] >> 24 & 0xFF);
+                ushort lower16 = inBuffer.Dequeue();
+                ushort upper16 = inBuffer.Dequeue();
+
+                colorQuantTable[i * 4 + 0] = (byte)(lower16 >> 0);
+                colorQuantTable[i * 4 + 1] = (byte)(lower16 >> 8);
+                colorQuantTable[i * 4 + 2] = (byte)(upper16 >> 0);
+                colorQuantTable[i * 4 + 3] = (byte)(upper16 >> 8);
             }
 
             //Console.WriteLine("setQuantTable: color");
@@ -220,8 +224,8 @@ namespace ProjectPSX.Devices {
 
         private void setScaleTable() {//64 signed halfwords with 14bit fractional part
             for (int i = 0; i < 32; i++) { //writed as 32 words on buffer
-                scaleTable[i * 2] = (short)(inBuffer[i] & 0xFFFF);
-                scaleTable[i * 2 + 1] = (short)(inBuffer[i] >> 16);
+                scaleTable[i * 2] = (short)inBuffer.Dequeue();
+                scaleTable[i * 2 + 1] = (short)inBuffer.Dequeue();
             }
         }
 

@@ -67,6 +67,10 @@ namespace ProjectPSX.Devices {
                 masterFlag = updateMasterFlag();
             }
 
+            public bool isDMAControlMasterEnabled(int channelNumber) {
+                return (((control >> 3) >> 4 * channelNumber) & 0x1) != 0;
+            }
+
             public void handleInterrupt(int channel) {
                 //IRQ flags in Bit(24 + n) are set upon DMAn completion - but caution - they are set ONLY if enabled in Bit(16 + n).
                 if ((irqEnable & (1 << channel)) != 0) {
@@ -112,6 +116,9 @@ namespace ProjectPSX.Devices {
             private bool enable;
             private bool trigger;
 
+            private uint unknow29; //b29 Unknown (R/W) Pause?  (0=No, 1=Pause?)     (For SyncMode=0 only?)
+            private uint unknow30; //b30      Unknown(R/W)
+
             private BUS bus;
             private InterruptChannel interrupt;
             private int channelNumber;
@@ -144,6 +151,8 @@ namespace ProjectPSX.Devices {
                 channelControl |= choppingCPUWindowSize << 20;
                 channelControl |= (enable ? 1u : 0) << 24;
                 channelControl |= (trigger ? 1u : 0) << 28;
+                channelControl |= unknow29 << 29;
+                channelControl |= unknow30 << 30;
 
                 return channelControl;
             }
@@ -158,6 +167,11 @@ namespace ProjectPSX.Devices {
             }
 
             private void writeChannelControl(uint value) {
+                if (channelNumber == 6) {
+                    value &= 0x5100_0000; //D6_CHCR has only three read/write-able bits: Bit24,28,30. All other bits are read-only
+                    value |= 0x2; //Bit1 is always 1 (step=backward), and the other bits are always 0.
+                }
+
                 transferDirection = value & 0x1;
                 memoryStep = (uint)(((value >> 1) & 0x1) == 0 ? 4 : -4);
                 choppingEnable = (value >> 8) & 0x1;
@@ -166,14 +180,16 @@ namespace ProjectPSX.Devices {
                 choppingCPUWindowSize = (value >> 20) & 0x7;
                 enable = ((value >> 24) & 0x1) != 0;
                 trigger = ((value >> 28) & 0x1) != 0;
+                unknow29 = (value >> 29) & 0x1;
+                unknow30 = (value >> 30) & 0x1;
 
                 handleDMA();
             }
 
             private void handleDMA() {
-                if (!isActive()) return;
+                if (!isActive() || !interrupt.isDMAControlMasterEnabled(channelNumber)) return;
 
-                //Console.WriteLine("[DMA] SyncMode " + syncMode + " channelNumber " + channelNumber);
+                Console.WriteLine("[DMA] SyncMode " + syncMode + " channelNumber " + channelNumber);
 
                 if (syncMode == 0) {
                     blockCopy(blockSize == 0 ? 0x10000 : blockSize);
@@ -185,9 +201,10 @@ namespace ProjectPSX.Devices {
                     interrupt.handleInterrupt(channelNumber);
                 } else if (syncMode == 1) {
                     //if(channelNumber == 1)
-                    //Console.WriteLine("DMA Write BlockCount " + blockCount);
+                    Console.WriteLine("DMA Write BlockCount " + blockCount);
                     //Console.ReadLine();
                     pendingBlocks = blockCount;
+                    tick();
                     //blockCopy(blockSize);
 
                 } else if (syncMode == 2) {
@@ -303,13 +320,13 @@ namespace ProjectPSX.Devices {
             internal void tick() {
                 bool triger = pendingBlocks == 1;
                 if (pendingBlocks > 0) {
-                    // Console.WriteLine("DMA tick trigger " + trigger + "channel " + channelNumber + " pendingBlocks " + pendingBlocks);
+                    Console.WriteLine("DMA tick trigger " + trigger + "channel " + channelNumber + " pendingBlocks " + pendingBlocks);
                     pendingBlocks--;
                     blockCopy(blockSize);
                 }
 
                 if (pendingBlocks == 0 & triger) {
-                    // Console.WriteLine("Triggering int >>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+                    Console.WriteLine("Triggering int >>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
                     //disable channel
                     enable = false;
                     trigger = false;
