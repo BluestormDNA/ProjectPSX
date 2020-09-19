@@ -75,16 +75,6 @@ namespace ProjectPSX.Devices {
             [FieldOffset(2)] public byte b;
             [FieldOffset(3)] public byte m;
         }
-
-        [StructLayout(LayoutKind.Explicit)]
-        private ref struct ColorRef {
-            [FieldOffset(0)] public uint val;
-            [FieldOffset(0)] public byte r;
-            [FieldOffset(1)] public byte g;
-            [FieldOffset(2)] public byte b;
-            [FieldOffset(3)] public byte m;
-        }
-
         private Color color0;
         private Color color1;
         private Color color2;
@@ -675,7 +665,7 @@ namespace ProjectPSX.Devices {
 
                         //Check background mask
                         if (checkMaskBeforeDraw) {
-                            color0.val = (uint)vram.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
+                            color0.val = (uint)vram.GetPixelRGB888(x, y); //back
                             if (color0.m != 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -719,7 +709,7 @@ namespace ProjectPSX.Devices {
 
                         color |= maskWhileDrawing << 24;
 
-                        vram.SetPixel((x & 0x3FF), (y & 0x1FF), color);
+                        vram.SetPixel(x, y, color);
                     }
                     // One step to the right
                     w0 += A12;
@@ -739,7 +729,7 @@ namespace ProjectPSX.Devices {
         }
 
         private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
-            color0.val = (uint)vram.GetPixelRGB888(x & 0x3FF, y & 0x1FF); //back
+            color0.val = (uint)vram.GetPixelRGB888(x, y); //back
             color1.val = (uint)color; //front
             switch (semiTranspMode) {
                 case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
@@ -1015,12 +1005,9 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
-            ColorRef color0 = new ColorRef();
+        private int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
             color0.val = c0;
-            ColorRef color1 = new ColorRef();
             color1.val = c1;
-            ColorRef color2 = new ColorRef();
             color2.val = c2;
 
             int r = (color0.r * w0 + color1.r * w1 + color2.r * w2) / area;
@@ -1038,9 +1025,6 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
-            x &= 255;
-            y &= 255;
-
             // Texture masking: texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
             x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
