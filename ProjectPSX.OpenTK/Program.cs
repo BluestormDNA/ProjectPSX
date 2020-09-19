@@ -1,6 +1,6 @@
-using OpenToolkit.Graphics.OpenGL;
-using OpenToolkit.Mathematics;
-using OpenToolkit.Windowing.Desktop;
+using OpenTK.Mathematics;
+using OpenTK.Windowing.Desktop;
+using OpenTK.Windowing.Common;
 using System;
 
 namespace ProjectPSX.OpenTK {
@@ -14,14 +14,13 @@ namespace ProjectPSX.OpenTK {
             settings.RenderFrequency = 60;
             settings.UpdateFrequency = 60;
             NativeWindowSettings nativeWindow = new NativeWindowSettings();
-            nativeWindow.API = OpenToolkit.Windowing.Common.ContextAPI.OpenGL;
-            nativeWindow.APIVersion = new Version(3, 2);
+            nativeWindow.API = ContextAPI.OpenGL;
             nativeWindow.Size = new Vector2i(1024, 512);
             nativeWindow.Title = "ProjectPSX";
-            nativeWindow.Profile = OpenToolkit.Windowing.Common.ContextProfile.Compatability;
+            nativeWindow.Profile = ContextProfile.Compatability;
 
             Window window = new Window(settings, nativeWindow);
-            window.VSync = OpenToolkit.Windowing.Common.VSyncMode.On;
+            window.VSync = VSyncMode.On;
             window.Run();
         }
     }

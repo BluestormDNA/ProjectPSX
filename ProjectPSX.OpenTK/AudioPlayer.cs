@@ -1,6 +1,6 @@
 ﻿using System;
-using OpenToolkit.Audio.OpenAL;
-using OpenToolkit.Mathematics;
+using OpenTK.Audio.OpenAL;
+using OpenTK.Mathematics;
 
 namespace ProjectPSX.OpenTK {
 
@@ -35,23 +35,26 @@ namespace ProjectPSX.OpenTK {
 
             while (true) {
                 AL.GetSource(audioSource, ALGetSourcei.BuffersProcessed, out processed);
-
+            
                 while (processed-- > 0) {
                     AL.SourceUnqueueBuffers(audioSource, 1, ref alBuffer);
                     AL.DeleteBuffer(alBuffer);
                     queueLength--;
                 }
-
+            
                 if (queueLength < 5 || fastForward) break;
             }
-
+            
             if (queueLength < 5) {
                 alBuffer = AL.GenBuffer();
-                AL.BufferData(alBuffer, ALFormat.Stereo16, samples, samples.Length, 44100);
+                fixed (byte* s = samples) {
+                    IntPtr ptr = (IntPtr)s;
+                    AL.BufferData(alBuffer, ALFormat.Stereo16, s, samples.Length, 44100);
+                }
                 AL.SourceQueueBuffer(audioSource, alBuffer);
                 queueLength++;
             }
-
+            
             if (AL.GetSourceState(audioSource) != ALSourceState.Playing)
                 AL.SourcePlay(audioSource);
 

@@ -1,10 +1,9 @@
-﻿using OpenToolkit.Windowing.Common;
-using OpenToolkit.Windowing.Desktop;
-using OpenToolkit.Graphics.OpenGL;
+﻿using OpenTK.Windowing.Common;
+using OpenTK.Windowing.Desktop;
+using OpenTK.Graphics.OpenGL;
 using System.Collections.Generic;
-using OpenToolkit.Windowing.Common.Input;
+using OpenTK.Windowing.Common.Input;
 using ProjectPSX.Devices.Input;
-using System;
 
 namespace ProjectPSX.OpenTK {
     public class Window : GameWindow, IHostWindow {
@@ -21,7 +20,18 @@ namespace ProjectPSX.OpenTK {
         private int cpuCyclesCounter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings) : base(gameWindowSettings, nativeWindowSettings) {
+            MakeCurrent();
+        }
 
+        private void Window_FileDrop(FileDropEventArgs fileDrop) {
+            string[] files = fileDrop.FileNames;
+            string file = files[0];
+            if(file.EndsWith(".bin") || file.EndsWith(".cue")) {
+                psx = new ProjectPSX(this, file);
+            }
+        }
+
+        protected override void OnLoad() {
             _gamepadKeyMap = new Dictionary<Key, GamepadInputsEnum>() {
                 { Key.Space, GamepadInputsEnum.Space},
                 { Key.Z , GamepadInputsEnum.Z },
@@ -42,17 +52,7 @@ namespace ProjectPSX.OpenTK {
             };
 
             FileDrop += Window_FileDrop;
-        }
 
-        private void Window_FileDrop(FileDropEventArgs fileDrop) {
-            string[] files = fileDrop.FileNames;
-            string file = files[0];
-            if(file.EndsWith(".bin") || file.EndsWith(".cue")) {
-                psx = new ProjectPSX(this, file);
-            }
-        }
-
-        protected override void OnLoad() {
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             GL.Enable(EnableCap.DepthTest);
