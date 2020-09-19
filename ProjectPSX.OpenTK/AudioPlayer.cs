@@ -47,10 +47,7 @@ namespace ProjectPSX.OpenTK {
             
             if (queueLength < 5) {
                 alBuffer = AL.GenBuffer();
-                fixed (byte* s = samples) {
-                    IntPtr ptr = (IntPtr)s;
-                    AL.BufferData(alBuffer, ALFormat.Stereo16, s, samples.Length, 44100);
-                }
+                AL.BufferData(alBuffer, ALFormat.Stereo16, samples, 44100);
                 AL.SourceQueueBuffer(audioSource, alBuffer);
                 queueLength++;
             }
