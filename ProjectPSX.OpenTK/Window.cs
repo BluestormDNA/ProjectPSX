@@ -2,8 +2,8 @@
 using OpenTK.Windowing.Desktop;
 using OpenTK.Graphics.OpenGL;
 using System.Collections.Generic;
-using OpenTK.Windowing.Common.Input;
 using ProjectPSX.Devices.Input;
+using OpenTK.Windowing.GraphicsLibraryFramework;
 
 namespace ProjectPSX.OpenTK {
     public class Window : GameWindow, IHostWindow {
@@ -14,7 +14,7 @@ namespace ProjectPSX.OpenTK {
 
         private ProjectPSX psx;
         private int[] displayBuffer;
-        private Dictionary<Key, GamepadInputsEnum> _gamepadKeyMap;
+        private Dictionary<Keys, GamepadInputsEnum> _gamepadKeyMap;
         private AudioPlayer audioPlayer = new AudioPlayer();
         private int vSyncCounter;
         private int cpuCyclesCounter;
@@ -32,23 +32,23 @@ namespace ProjectPSX.OpenTK {
         }
 
         protected override void OnLoad() {
-            _gamepadKeyMap = new Dictionary<Key, GamepadInputsEnum>() {
-                { Key.Space, GamepadInputsEnum.Space},
-                { Key.Z , GamepadInputsEnum.Z },
-                { Key.C , GamepadInputsEnum.C },
-                { Key.Enter , GamepadInputsEnum.Enter },
-                { Key.Up , GamepadInputsEnum.Up },
-                { Key.Right , GamepadInputsEnum.Right },
-                { Key.Down , GamepadInputsEnum.Down },
-                { Key.Left , GamepadInputsEnum.Left },
-                { Key.F1 , GamepadInputsEnum.D1 },
-                { Key.F3 , GamepadInputsEnum.D3 },
-                { Key.Q , GamepadInputsEnum.Q },
-                { Key.E , GamepadInputsEnum.E },
-                { Key.W , GamepadInputsEnum.W },
-                { Key.D , GamepadInputsEnum.D },
-                { Key.S , GamepadInputsEnum.S },
-                { Key.A , GamepadInputsEnum.A },
+            _gamepadKeyMap = new Dictionary<Keys, GamepadInputsEnum>() {
+                { Keys.Space, GamepadInputsEnum.Space},
+                { Keys.Z , GamepadInputsEnum.Z },
+                { Keys.C , GamepadInputsEnum.C },
+                { Keys.Enter , GamepadInputsEnum.Enter },
+                { Keys.Up , GamepadInputsEnum.Up },
+                { Keys.Right , GamepadInputsEnum.Right },
+                { Keys.Down , GamepadInputsEnum.Down },
+                { Keys.Left , GamepadInputsEnum.Left },
+                { Keys.F1 , GamepadInputsEnum.D1 },
+                { Keys.F3 , GamepadInputsEnum.D3 },
+                { Keys.Q , GamepadInputsEnum.Q },
+                { Keys.E , GamepadInputsEnum.E },
+                { Keys.W , GamepadInputsEnum.W },
+                { Keys.D , GamepadInputsEnum.D },
+                { Keys.S , GamepadInputsEnum.S },
+                { Keys.A , GamepadInputsEnum.A },
             };
 
             FileDrop += Window_FileDrop;
@@ -109,7 +109,7 @@ namespace ProjectPSX.OpenTK {
                 psx.JoyPadUp(button.Value);
         }
 
-        private GamepadInputsEnum? GetGamepadButton(Key keyCode) {
+        private GamepadInputsEnum? GetGamepadButton(Keys keyCode) {
             if (_gamepadKeyMap.TryGetValue(keyCode, out GamepadInputsEnum gamepadButtonValue))
                 return gamepadButtonValue;
             return null;
