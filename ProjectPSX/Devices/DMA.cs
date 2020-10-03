@@ -183,6 +183,8 @@ namespace ProjectPSX.Devices {
                 unknow29 = (value >> 29) & 0x1;
                 unknow30 = (value >> 30) & 0x1;
 
+                if (!enable) pendingBlocks = 0;
+
                 handleDMA();
             }
 
