@@ -11,16 +11,16 @@ namespace ProjectPSX.Devices {
             timer[2] = new TIMER(2);
         }
 
-        public void write(Width w, uint addr, uint value) {
+        public void write(uint addr, uint value) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
-            timer[timerNumber].write(w, addr, value);
+            timer[timerNumber].write(addr, value);
             //Console.WriteLine("[TIMER] Write on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + value.ToString("x8"));
         }
 
-        public uint load(Width w, uint addr) {
+        public uint load(uint addr) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
             //Console.WriteLine("[TIMER] load on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + timer[timerNumber].load(w, addr).ToString("x4"));
-            return timer[timerNumber].load(w, addr);
+            return timer[timerNumber].load(addr);
         }
 
         public bool tick(int timerNumber, int cycles) {
@@ -64,7 +64,7 @@ namespace ProjectPSX.Devices {
                 this.timerNumber = timerNumber;
             }
 
-            public void write(Width w, uint addr, uint value) {
+            public void write(uint addr, uint value) {
                 switch (addr & 0xF) {
                     case 0x0: counterValue = (ushort)value; break;
                     case 0x4: setCounterMode(value); break;
@@ -73,7 +73,7 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            public uint load(Width w, uint addr) {
+            public uint load(uint addr) {
                 switch (addr & 0xF) {
                     case 0x0: return counterValue;
                     case 0x4: return getCounterMode();

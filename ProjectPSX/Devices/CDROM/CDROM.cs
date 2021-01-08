@@ -239,7 +239,7 @@ namespace ProjectPSX.Devices {
 
         }
 
-        public uint load(Width w, uint addr) {
+        public uint load(uint addr) {
             switch (addr) {
                 case 0x1F801800:
                     if (cdDebug) Console.WriteLine($"[CDROM] [L00] STATUS: {STATUS():x2}");
@@ -259,13 +259,7 @@ namespace ProjectPSX.Devices {
                     if (cdDebug) Console.WriteLine("[CDROM] [L02] DATA");
                     //Console.WriteLine(dataBuffer.Count);
                     //Console.ReadLine();
-                    if (w == Width.BYTE) {
-                        return dataBuffer.Dequeue();
-                    } else {
-                        byte b0 = dataBuffer.Dequeue();
-                        byte b1 = dataBuffer.Dequeue();
-                        return (uint)(b1 << 8 | b0);
-                    }
+                    return dataBuffer.Dequeue();
 
                 case 0x1F801803:
                     switch (INDEX) {
@@ -286,7 +280,7 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        public void write(Width w, uint addr, uint value) {
+        public void write(uint addr, uint value) {
             switch (addr) {
                 case 0x1F801800:
                     if (cdDebug) Console.WriteLine($"[CDROM] [W00] I: {value:x8}");

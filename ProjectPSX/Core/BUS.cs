@@ -60,13 +60,13 @@ namespace ProjectPSX {
                 } else if (addr == 0x1F80_1074) {
                     return interruptController.loadIMASK();
                 } else if (addr >= 0x1F80_1040 && addr <= 0x1F80_104F) {
-                    return joypad.load(Width.WORD, addr);
+                    return joypad.load(addr);
                 } else if (addr >= 0x1F80_1080 && addr <= 0x1F80_10FF) {
                     return dma.load(addr);
                 } else if (addr >= 0x1F80_1100 && addr <= 0x1F80_112B) {
-                    return timers.load(Width.WORD, addr);
+                    return timers.load(addr);
                 } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
-                    return cdrom.load(Width.WORD, addr);
+                    return cdrom.load(addr);
                 } else if (addr == 0x1F80_1810) {
                     return gpu.loadGPUREAD();
                 } else if (addr == 0x1F80_1814) {
@@ -110,13 +110,13 @@ namespace ProjectPSX {
                         case 0x1F801074:
                             return interruptController.loadIMASK();
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            return joypad.load(Width.HALF, addr);
+                            return joypad.load(addr);
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            return timers.load(Width.HALF, addr);
+                            return timers.load(addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            return cdrom.load(Width.HALF, addr);
+                            return cdrom.load(addr);
                         case 0x1F801810:
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
@@ -159,13 +159,13 @@ namespace ProjectPSX {
                         case 0x1F801074:
                             return interruptController.loadIMASK();
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            return joypad.load(Width.BYTE, addr);
+                            return joypad.load(addr);
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             return dma.load(addr);
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            return timers.load(Width.BYTE, addr);
+                            return timers.load(addr);
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            return cdrom.load(Width.BYTE, addr);
+                            return cdrom.load(addr);
                         case 0x1F801810:
                             return gpu.loadGPUREAD();
                         case 0x1F801814:
@@ -213,16 +213,16 @@ namespace ProjectPSX {
                             interruptController.writeIMASK(value);
                             break;
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(Width.WORD, addr, value);
+                            joypad.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(Width.WORD, addr, value);
+                            timers.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(Width.WORD, addr, value);
+                            cdrom.write(addr, value);
                             break;
                         case 0x1F801810:
                             gpu.writeGP0(value);
@@ -282,16 +282,16 @@ namespace ProjectPSX {
                             interruptController.writeIMASK(value);
                             break;
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(Width.HALF, addr, value);
+                            joypad.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(Width.HALF, addr, value);
+                            timers.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(Width.HALF, addr, value);
+                            cdrom.write(addr, value);
                             break;
                         case 0x1F801810:
                             gpu.writeGP0(value);
@@ -345,16 +345,16 @@ namespace ProjectPSX {
                             interruptController.writeIMASK(value);
                             break;
                         case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(Width.BYTE, addr, value);
+                            joypad.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
                             dma.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(Width.BYTE, addr, value);
+                            timers.write(addr, value);
                             break;
                         case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(Width.BYTE, addr, value);
+                            cdrom.write(addr, value);
                             break;
                         case 0x1F801810:
                             gpu.writeGP0(value);

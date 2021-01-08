@@ -75,7 +75,7 @@ namespace ProjectPSX {
             baudrateTimer = (int)(JOY_BAUD * baudrateReloadFactor) & ~0x1;
         }
 
-        public void write(Width w, uint addr, uint value) {
+        public void write(uint addr, uint value) {
             switch (addr & 0xFF) {
                 case 0x40:
                     //Console.WriteLine("[JOYPAD] TX DATA ENQUEUE " + value.ToString("x2"));
@@ -147,7 +147,7 @@ namespace ProjectPSX {
                     reloadTimer();
                     break;
                 default: 
-                    Console.WriteLine($"Unhandled JOYPAD Write {w} {addr:x8} {value:x8}");
+                    Console.WriteLine($"Unhandled JOYPAD Write {addr:x8} {value:x8}");
                     //Console.ReadLine();
                     break;
             }
@@ -209,7 +209,7 @@ namespace ProjectPSX {
             clkOutputPolarity = ((value >> 8) & 0x1) != 0;
         }
 
-        public uint load(Width w, uint addr) {
+        public uint load(uint addr) {
             switch (addr & 0xFF) {
                 case 0x40:
                     //Console.WriteLine($"[JOYPAD] GET RX DATA {JOY_RX_DATA:x2}");
