@@ -259,7 +259,6 @@ namespace ProjectPSX.Devices {
 
             private void linkedList() {
                 uint header = 0;
-                List<uint> list = new List<uint>(); //test
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
@@ -271,14 +270,13 @@ namespace ProjectPSX.Devices {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
                         uint[] load = bus.DmaFromRam(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
-                        list.AddRange(load);
+                        bus.DmaToGpu(load);
                     }
 
                     if (baseAddress == (header & 0x1ffffc)) break; //Tekken2 hangs here if not handling this posible forever loop
                     baseAddress = header & 0x1ffffc;
                 }
 
-                bus.DmaToGpu(list.ToArray());
             }
 
             private bool isActive() {
