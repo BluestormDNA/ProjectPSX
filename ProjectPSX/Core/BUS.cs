@@ -468,10 +468,8 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe uint[] DmaFromRam(uint addr, uint size) {
-            int[] buffer = new int[size];
-            Marshal.Copy((IntPtr)(ramPtr + (addr & 0x1F_FFFF)), buffer, 0, (int)size);
-            return Unsafe.As<int[], uint[]>(ref buffer);
+        public unsafe Span<uint> DmaFromRam(uint addr, uint size) {
+            return new Span<uint>(ramPtr + (addr & 0x1F_FFFF), (int)size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -491,13 +489,8 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToGpu(uint value) {
-            gpu.writeGP0(value);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToGpu(uint[] buffer) {
-            gpu.writeGP0(buffer);
+        public void DmaToGpu(Span<uint> buffer) {
+            gpu.processDma(buffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -506,7 +499,7 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToMdecIn(uint[] load) { //todo: actual process the whole array
+        public void DmaToMdecIn(Span<uint> load) { //todo: actual process the whole array
             foreach (uint word in load)
                 mdec.writeMDEC0_Command(word);
         }
@@ -517,7 +510,7 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToSpu(uint[] load) {
+        public void DmaToSpu(Span<uint> load) {
             spu.processDma(load);
         }
 

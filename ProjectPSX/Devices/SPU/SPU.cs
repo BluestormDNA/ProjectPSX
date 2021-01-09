@@ -648,20 +648,20 @@ namespace ProjectPSX.Devices {
             return (short)interpolated;
         }
 
-        public void processDma(uint[] load) {
+        public void processDma(Span<uint> load) {
             //Tekken 3 and FF8 overflows SPU Ram
             int length = load.Length * 4;
             int destAddress = (int)ramDataTransferAddressInternal + length - 1;
-            
+
+            Span<byte> dmaSpan = MemoryMarshal.Cast<uint, byte>(load);
+
+            Span<byte> ramStartSpan = ram.AsSpan();
+            Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
+
             if (destAddress <= 0x7FFFF) {
-                Buffer.BlockCopy(load, 0, ram, (int)ramDataTransferAddressInternal, length);
+                dmaSpan.CopyTo(ramDestSpan);
             } else {
                 int overflow = destAddress - 0x7FFFF;
-        
-                Span<byte> dmaSpan = MemoryMarshal.Cast<uint, byte>(load);
-        
-                Span<byte> ramStartSpan = ram.AsSpan();
-                Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
         
                 Span<byte> firstSlice = dmaSpan.Slice(0, dmaSpan.Length - overflow);
                 Span<byte> overflowSpan = dmaSpan.Slice(dmaSpan.Length - overflow);

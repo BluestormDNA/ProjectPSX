@@ -236,7 +236,7 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void writeGP0(uint[] buffer) {
+        internal void processDma(Span<uint> buffer) {
             //Console.WriteLine("buffer");
             //Console.WriteLine(mode);
             if (mode == Mode.COMMAND) {
@@ -331,60 +331,57 @@ namespace ProjectPSX.Devices {
             if (pointer == commandSize || commandSize == 16 && (value & 0xF000_F000) == 0x5000_5000) {
                 pointer = 0;
                 //Console.WriteLine("EXECUTING");
-                ExecuteGP0(command);
+                ExecuteGP0(command, commandBuffer.AsSpan());
                 pointer = 0;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DecodeGP0Command(uint[] buffer) {
-            commandBuffer = buffer;
-
+        private void DecodeGP0Command(Span<uint> buffer) {
             //Console.WriteLine(commandBuffer.Length);
 
             while (pointer < buffer.Length) {
                 if (mode == Mode.COMMAND) {
-                    command = commandBuffer[pointer] >> 24;
+                    command = buffer[pointer] >> 24;
                     //if (debug) Console.WriteLine("Buffer Executing " + command.ToString("x2") + " pointer " + pointer);
-                    ExecuteGP0(command);
+                    ExecuteGP0(command, buffer);
                 } else {
-                    WriteToVRAM(commandBuffer[pointer++]);
+                    WriteToVRAM(buffer[pointer++]);
                 }
             }
             pointer = 0;
 
-            commandBuffer = emptyBuffer;
             //Console.WriteLine("fin");
         }
 
 
-        private void ExecuteGP0(uint opcode) {
+        private void ExecuteGP0(uint opcode, Span<uint> buffer) {
             //Console.WriteLine("GP0 Command: " + opcode.ToString("x2"));
             switch (opcode) {
                 case 0x00: GP0_NOP(); break;
                 case 0x01: GP0_MemClearCache(); break;
-                case 0x02: GP0_FillRectVRAM(); break;
+                case 0x02: GP0_FillRectVRAM(buffer); break;
                 case 0x1F: GP0_InterruptRequest(); break;
 
-                case 0xE1: GP0_SetDrawMode(); break;
-                case 0xE2: GP0_SetTextureWindow(); break;
-                case 0xE3: GP0_SetDrawingAreaTopLeft(); break;
-                case 0xE4: GP0_SetDrawingAreaBottomRight(); break;
-                case 0xE5: GP0_SetDrawingOffset(); break;
-                case 0xE6: GP0_SetMaskBit(); break;
+                case 0xE1: GP0_SetDrawMode(buffer); break;
+                case 0xE2: GP0_SetTextureWindow(buffer); break;
+                case 0xE3: GP0_SetDrawingAreaTopLeft(buffer); break;
+                case 0xE4: GP0_SetDrawingAreaBottomRight(buffer); break;
+                case 0xE5: GP0_SetDrawingOffset(buffer); break;
+                case 0xE6: GP0_SetMaskBit(buffer); break;
 
                 case uint _ when opcode >= 0x20 && opcode <= 0x3F:
-                    GP0_RenderPolygon(); break;
+                    GP0_RenderPolygon(buffer); break;
                 case uint _ when opcode >= 0x40 && opcode <= 0x5F:
-                    GP0_RenderLine(); break;
+                    GP0_RenderLine(buffer); break;
                 case uint _ when opcode >= 0x60 && opcode <= 0x7F:
-                    GP0_RenderRectangle(); break;
+                    GP0_RenderRectangle(buffer); break;
                 case uint _ when opcode >= 0x80 && opcode <= 0x9F:
-                    GP0_MemCopyRectVRAMtoVRAM(); break;
+                    GP0_MemCopyRectVRAMtoVRAM(buffer); break;
                 case uint _ when opcode >= 0xA0 && opcode <= 0xBF:
-                    GP0_MemCopyRectCPUtoVRAM(); break;
+                    GP0_MemCopyRectCPUtoVRAM(buffer); break;
                 case uint _ when opcode >= 0xC0 && opcode <= 0xDF:
-                    GP0_MemCopyRectVRAMtoCPU(); break;
+                    GP0_MemCopyRectVRAMtoCPU(buffer); break;
                 case uint _ when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
                     GP0_NOP(); break;
 
@@ -399,10 +396,10 @@ namespace ProjectPSX.Devices {
 
         //int renderline;
         //int rasterizeline;
-        private void GP0_RenderLine() {
+        private void GP0_RenderLine(Span<uint> buffer) {
             //Console.WriteLine("size " + commandBuffer.Count);
             //int arguments = 0;
-            uint command = commandBuffer[pointer++];
+            uint command = buffer[pointer++];
             //arguments++;
 
             uint color1 = command & 0xFFFFFF;
@@ -414,30 +411,30 @@ namespace ProjectPSX.Devices {
 
             //if (isTextureMapped /*isRaw*/) return;
 
-            uint v1 = commandBuffer[pointer++];
+            uint v1 = buffer[pointer++];
             //arguments++;
 
             if (isShaded) {
-                color2 = commandBuffer[pointer++];
+                color2 = buffer[pointer++];
                 //arguments++;
             }
-            uint v2 = commandBuffer[pointer++];
+            uint v2 = buffer[pointer++];
             //arguments++;
 
             rasterizeLine(v1, v2, color1, color2, isTransparent);
 
             if (!isPoly) return;
             //renderline = 0;
-            while (/*arguments < 0xF &&*/ (commandBuffer[pointer] & 0xF000_F000) != 0x5000_5000) {
+            while (/*arguments < 0xF &&*/ (buffer[pointer] & 0xF000_F000) != 0x5000_5000) {
                 //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
                 //arguments++;
                 color1 = color2;
                 if (isShaded) {
-                    color2 = commandBuffer[pointer++];
+                    color2 = buffer[pointer++];
                     //arguments++;
                 }
                 v1 = v2;
-                v2 = commandBuffer[pointer++];
+                v2 = buffer[pointer++];
                 rasterizeLine(v1, v2, color1, color2, isTransparent);
                 //Console.WriteLine("RASTERIZE " + ++rasterizeline);
                 //window.update(VRAM.Bits);
@@ -533,8 +530,8 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void GP0_RenderPolygon() {
-            uint command = commandBuffer[pointer];
+        public void GP0_RenderPolygon(Span<uint> buffer) {
+            uint command = buffer[pointer];
             //Console.WriteLine(command.ToString("x8") +  " "  + commandBuffer.Length + " " + pointer);
 
             bool isQuad = (command & (1 << 27)) != 0;
@@ -557,7 +554,7 @@ namespace ProjectPSX.Devices {
             Span<uint> c = stackalloc uint[vertexN];
 
             if (!isShaded) {
-                uint color = commandBuffer[pointer++];
+                uint color = buffer[pointer++];
                 c[0] = color; //triangle 1 opaque color
                 c[1] = color; //triangle 2 opaque color
             }
@@ -566,14 +563,14 @@ namespace ProjectPSX.Devices {
             uint texpage = (uint)transparency << 5;
 
             for (int i = 0; i < vertexN; i++) {
-                if (isShaded) c[i] = commandBuffer[pointer++];
+                if (isShaded) c[i] = buffer[pointer++];
 
-                v[i].val = commandBuffer[pointer++];
+                v[i].val = buffer[pointer++];
                 v[i].x = (short)(signed11bit((uint)v[i].x) + drawingXOffset);
                 v[i].y = (short)(signed11bit((uint)v[i].y) + drawingYOffset);
 
                 if (isTextured) {
-                    uint textureData = commandBuffer[pointer++];
+                    uint textureData = buffer[pointer++];
                     t[i].val = (ushort)textureData;
                     if (i == 0) {
                         palette = textureData >> 16;
@@ -775,10 +772,10 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void GP0_FillRectVRAM() {
-            color0.val = commandBuffer[pointer++];
-            uint yx = commandBuffer[pointer++];
-            uint hw = commandBuffer[pointer++];
+        private void GP0_FillRectVRAM(Span<uint> buffer) {
+            color0.val = buffer[pointer++];
+            uint yx = buffer[pointer++];
+            uint hw = buffer[pointer++];
 
             ushort x = (ushort)(yx & 0x3F0);
             ushort y = (ushort)((yx >> 16) & 0x1FF);
@@ -795,12 +792,12 @@ namespace ProjectPSX.Devices {
            }
         }
 
-        private void GP0_RenderRectangle() {
+        private void GP0_RenderRectangle(Span<uint> buffer) {
             //1st Color+Command(CcBbGgRrh)
             //2nd Vertex(YyyyXxxxh)
             //3rd Texcoord+Palette(ClutYyXxh)(for 4bpp Textures Xxh must be even!) //Only textured
             //4rd (3rd non textured) Width + Height(YsizXsizh)(variable opcode only)(max 1023x511)
-            uint command = commandBuffer[pointer++];
+            uint command = buffer[pointer++];
             uint color = command & 0xFFFFFF;
             uint opcode = command >> 24;
 
@@ -813,7 +810,7 @@ namespace ProjectPSX.Devices {
             primitive.isSemiTransparent = isSemiTransparent;
             primitive.isRawTextured = isRawTextured;
 
-            uint vertex = commandBuffer[pointer++];
+            uint vertex = buffer[pointer++];
             short xo = signed11bit(vertex & 0xFFFF);
             short yo = signed11bit(vertex >> 16);
 
@@ -821,7 +818,7 @@ namespace ProjectPSX.Devices {
             byte textureX = 0;
             byte textureY = 0;
             if (isTextured) {
-                uint texture = commandBuffer[pointer++];
+                uint texture = buffer[pointer++];
                 palette = (ushort)((texture >> 16) & 0xFFFF);
                 textureX = (byte)(texture & 0xFF);
                 textureY = (byte)((texture >> 8) & 0xFF);
@@ -832,7 +829,7 @@ namespace ProjectPSX.Devices {
 
             switch ((opcode & 0x18) >> 3) {
                 case 0x0:
-                    uint hw = commandBuffer[pointer++];
+                    uint hw = buffer[pointer++];
                     width = (short)(hw & 0xFFFF);
                     heigth = (short)(hw >> 16);
                     break;
@@ -927,10 +924,10 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void GP0_MemCopyRectVRAMtoCPU() {
+        private void GP0_MemCopyRectVRAMtoCPU(Span<uint> buffer) {
             pointer++; //Command/Color parameter unused
-            uint yx = commandBuffer[pointer++];
-            uint wh = commandBuffer[pointer++];
+            uint yx = buffer[pointer++];
+            uint wh = buffer[pointer++];
 
             ushort x = (ushort)(yx & 0x3FF);
             ushort y = (ushort)((yx >> 16) & 0x1FF);
@@ -947,10 +944,10 @@ namespace ProjectPSX.Devices {
             vram_coord.size = h * w;
         }
 
-        private void GP0_MemCopyRectCPUtoVRAM() { //todo rewrite VRAM coord struct mess
+        private void GP0_MemCopyRectCPUtoVRAM(Span<uint> buffer) { //todo rewrite VRAM coord struct mess
             pointer++; //Command/Color parameter unused
-            uint yx = commandBuffer[pointer++];
-            uint wh = commandBuffer[pointer++];
+            uint yx = buffer[pointer++];
+            uint wh = buffer[pointer++];
 
             ushort x = (ushort)(yx & 0x3FF);
             ushort y = (ushort)((yx >> 16) & 0x1FF);
@@ -969,11 +966,11 @@ namespace ProjectPSX.Devices {
             mode = Mode.VRAM;
         }
 
-        private void GP0_MemCopyRectVRAMtoVRAM() {
+        private void GP0_MemCopyRectVRAMtoVRAM(Span<uint> buffer) {
             pointer++; //Command/Color parameter unused
-            uint sourceXY = commandBuffer[pointer++];
-            uint destinationXY = commandBuffer[pointer++];
-            uint wh = commandBuffer[pointer++];
+            uint sourceXY = buffer[pointer++];
+            uint destinationXY = buffer[pointer++];
+            uint wh = buffer[pointer++];
 
             ushort sx = (ushort)(sourceXY & 0x3FF);
             ushort sy = (ushort)((sourceXY >> 16) & 0x1FF);
@@ -1062,8 +1059,8 @@ namespace ProjectPSX.Devices {
             return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
         }
 
-        private void GP0_SetTextureWindow() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetTextureWindow(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             textureWindowMaskX = (byte)(val & 0x1F);
             textureWindowMaskY = (byte)((val >> 5) & 0x1F);
@@ -1071,15 +1068,15 @@ namespace ProjectPSX.Devices {
             textureWindowOffsetY = (byte)((val >> 15) & 0x1F);
         }
 
-        private void GP0_SetMaskBit() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetMaskBit(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             maskWhileDrawing = (int)(val & 0x1);
             checkMaskBeforeDraw = (val & 0x2) != 0;
         }
 
-        private void GP0_SetDrawingOffset() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetDrawingOffset(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             drawingXOffset = signed11bit(val & 0x7FF);
             drawingYOffset = signed11bit((val >> 11) & 0x7FF);
@@ -1099,8 +1096,8 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[GPU] [GP0] Force DrawMode ");
         }
 
-        private void GP0_SetDrawMode() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetDrawMode(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             textureXBase = (byte)(val & 0xF);
             textureYBase = (byte)((val >> 4) & 0x1);
@@ -1115,15 +1112,15 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[GPU] [GP0] DrawMode ");
         }
 
-        private void GP0_SetDrawingAreaTopLeft() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetDrawingAreaTopLeft(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             drawingAreaTop = (ushort)((val >> 10) & 0x1FF);
             drawingAreaLeft = (ushort)(val & 0x3FF);
         }
 
-        private void GP0_SetDrawingAreaBottomRight() {
-            uint val = commandBuffer[pointer++];
+        private void GP0_SetDrawingAreaBottomRight(Span<uint> buffer) {
+            uint val = buffer[pointer++];
 
             drawingAreaBottom = (ushort)((val >> 10) & 0x1FF);
             drawingAreaRight = (ushort)(val & 0x3FF);

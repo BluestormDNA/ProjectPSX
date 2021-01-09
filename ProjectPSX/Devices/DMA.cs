@@ -226,7 +226,7 @@ namespace ProjectPSX.Devices {
 
                 } else { //From Ram
 
-                    uint[] load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
+                    Span<uint> load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
 
                     switch(channelNumber) {
                         case 0: bus.DmaToMdecIn(load); break;
@@ -251,7 +251,7 @@ namespace ProjectPSX.Devices {
 
                     if (size > 0) {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
-                        uint[] load = bus.DmaFromRam(baseAddress, size);
+                        Span<uint> load = bus.DmaFromRam(baseAddress, size);
                         // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
                         bus.DmaToGpu(load);
                     }
