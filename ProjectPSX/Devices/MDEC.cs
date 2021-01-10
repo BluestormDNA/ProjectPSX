@@ -28,7 +28,7 @@ namespace ProjectPSX.Devices {
         private short[] Cbblk = new short[64];
         private short[][] Yblk = { new short[64], new short[64], new short[64], new short[64] };
 
-        short[] dst = new short[64];
+        private short[] dst = new short[64];
 
         private ushort[] src = new ushort[0xFFFF]; //TEST TODO: REVISIT THIS "it works"...
         private uint[] inBuffer = new uint[0xFFFF]; //this is badly wrong. should be 0x20 and handle dmas
@@ -150,7 +150,9 @@ namespace ProjectPSX.Devices {
             }
 
             ushort n = src[srcPointer++];
-            if (n == 0xFE00) n = src[srcPointer++];
+            while(n == 0xFE00) {
+                n = src[srcPointer++];
+            }
 
             var q_scale = (n >> 10) & 0x3F;
             int val = signed10bit(n & 0x3FF) * qt[0];
