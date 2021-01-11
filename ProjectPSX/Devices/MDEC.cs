@@ -4,6 +4,11 @@ using System.Collections.Generic;
 namespace ProjectPSX.Devices {
     public class MDEC {
 
+        private const int NUM_BLOCKS = 6;
+        //For some reason even tho it iterates all blocks it starts at 4
+        //going 4 (Cr), 5 (Cb), 0, 1, 2, 3 (Y) 
+        private const int INITIAL_BLOCK = 4;
+
         //Status Register
         //private bool isDataOutFifoEmpty;
         private bool isDataInFifoFull;
@@ -13,7 +18,7 @@ namespace ProjectPSX.Devices {
         private uint dataOutputDepth;
         private bool isSigned;
         private uint bit15;
-        private uint currentBlock;
+        private uint currentBlock = INITIAL_BLOCK;
         private uint remainingDataWords;
 
         private bool isColored;
@@ -24,9 +29,7 @@ namespace ProjectPSX.Devices {
 
         private Action command;
 
-        private short[] Crblk = new short[64];
-        private short[] Cbblk = new short[64];
-        private short[][] Yblk = { new short[64], new short[64], new short[64], new short[64] };
+        private short[][] block = { new short[64], new short[64], new short[64], new short[64], new short[64], new short[64] };
 
         private short[] dst = new short[64];
 
@@ -36,7 +39,6 @@ namespace ProjectPSX.Devices {
         private int ptr;
 
         private uint[] output = new uint[256];
-
 
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
             //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
@@ -80,20 +82,18 @@ namespace ProjectPSX.Devices {
 
             while (srcPointer < ptr * 2) {
 
-                rl_decode_block(Crblk, src, colorQuantTable);
-                rl_decode_block(Cbblk, src, colorQuantTable);
+                for(int i = 0; i < NUM_BLOCKS; i++){ //Try to decode a macro block (6 blocks)
+                    //But actually iterate from the current block
+                    byte[] qt = currentBlock >= 4 ? colorQuantTable : luminanceQuantTable;
+                    rl_decode_block(block[currentBlock], src, qt);
 
-                clearOutput();
+                    currentBlock = ++currentBlock % NUM_BLOCKS;
+                }
 
-                rl_decode_block(Yblk[0], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[1], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[2], src, luminanceQuantTable); 
-                rl_decode_block(Yblk[3], src, luminanceQuantTable); 
-
-                yuv_to_rgb(Yblk[0], 0, 0, output);
-                yuv_to_rgb(Yblk[2], 0, 8, output);
-                yuv_to_rgb(Yblk[1], 8, 0, output);
-                yuv_to_rgb(Yblk[3], 8, 8, output);
+                yuv_to_rgb(block[0], 0, 0, output);
+                yuv_to_rgb(block[1], 8, 0, output);
+                yuv_to_rgb(block[2], 0, 8, output);
+                yuv_to_rgb(block[3], 8, 8, output);
 
                 writeOutputToOutQueue();
 
@@ -111,17 +111,11 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void clearOutput() {
-            for (int i = 0; i < output.Length; i++) {
-                output[i] = 0;
-            }
-        }
-
         private void yuv_to_rgb(short[] Yblk, int xx, int yy, uint[] output) {
             for (int y = 0; y < 8; y++) {
                 for (int x = 0; x < 8; x++) {
-                    int R = Crblk[((x + xx) / 2) + ((y + yy) / 2) * 8];
-                    int B = Cbblk[((x + xx) / 2) + ((y + yy) / 2) * 8];
+                    int R = block[4][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CR Block
+                    int B = block[5][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CB Block
                     int G = (int)((-0.3437 * B) + (-0.7143 * R));
 
                     R = (int)(1.402 * R);
@@ -144,6 +138,7 @@ namespace ProjectPSX.Devices {
         }
 
         private int srcPointer;
+        private int blockPointer;
         public void rl_decode_block(short[] blk, ushort[] src, byte[] qt) {
             for (int i = 0; i < blk.Length; i++) {
                 blk[i] = 0;
@@ -157,23 +152,28 @@ namespace ProjectPSX.Devices {
             var q_scale = (n >> 10) & 0x3F;
             int val = signed10bit(n & 0x3FF) * qt[0];
 
-            for (int i = 0; i < blk.Length;/*i advanced based on in loop values*/) {
+            blockPointer = 0;
+
+            while(blockPointer < blk.Length) {
                 if (q_scale == 0) {
-                    val = (ushort)(signed10bit((ushort)(n & 0x3FF)) * 2);
-                    blk[i] = (short)val;
+                    val = signed10bit(n & 0x3FF) * 2;
                 }
 
-                val = (ushort)Math.Min(Math.Max((int)(short)val, -0x400), 0x3FF);
+                val = Math.Min(Math.Max(val, -0x400), 0x3FF);
 
                 if (q_scale > 0) {
-                    blk[zagzig[i]] = (short)val;
+                    blk[zagzig[blockPointer]] = (short)val;
+                }
+
+                if (q_scale == 0) {
+                    blk[blockPointer] = (short)val;
                 }
 
                 n = src[srcPointer++];
 
-                i = i + ((n >> 10) & 0x3F) + 1;
+                blockPointer += ((n >> 10) & 0x3F) + 1;
 
-                val = (signed10bit(n & 0x3FF) * qt[i & 0x3F] * q_scale + 4) / 8;
+                val = (signed10bit(n & 0x3FF) * qt[blockPointer & 0x3F] * q_scale + 4) / 8;
             }
             idct_core(blk);
         }
