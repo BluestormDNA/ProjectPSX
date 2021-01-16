@@ -1022,6 +1022,9 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
+            x &= 0xFF;
+            y &= 0xFF;
+
             // Texture masking: texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
             x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
             y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
