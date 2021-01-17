@@ -34,7 +34,7 @@ namespace ProjectPSX.Devices {
 
         private short[] dst = new short[64];
 
-        private Queue<ushort> inQueue = new Queue<ushort>(1024);
+        private Queue<ushort> inBuffer = new Queue<ushort>(1024);
         private Queue<uint> outBuffer = new Queue<uint>(768);
 
         private uint[] output = new uint[256];
@@ -45,8 +45,8 @@ namespace ProjectPSX.Devices {
                 //Console.WriteLine("decoding " + value.ToString("x8"));
                 decodeCommand(value);
             } else {
-                inQueue.Enqueue((ushort)value);
-                inQueue.Enqueue((ushort)(value >> 16));
+                inBuffer.Enqueue((ushort)value);
+                inBuffer.Enqueue((ushort)(value >> 16));
 
                 remainingDataWords--;
                 //Console.WriteLine("[MDEC] remaining " + remainingDataWords);
@@ -78,7 +78,7 @@ namespace ProjectPSX.Devices {
 
         private void decodeMacroBlocks() {
 
-            while (inQueue.Count != 0) {
+            while (inBuffer.Count != 0) {
 
                 for(int i = 0; i < NUM_BLOCKS; i++){ //Try to decode a macro block (6 blocks)
                     //But actually iterate from the current block
@@ -145,11 +145,11 @@ namespace ProjectPSX.Devices {
                     blk[i] = 0;
                 }
 
-                if (inQueue.Count == 0) return;
-                n = inQueue.Dequeue();
+                if (inBuffer.Count == 0) return;
+                n = inBuffer.Dequeue();
                 while (n == 0xFE00) {
-                    if (inQueue.Count == 0) return;
-                    n = inQueue.Dequeue();
+                    if (inBuffer.Count == 0) return;
+                    n = inBuffer.Dequeue();
                 }
 
                 q_scale = (n >> 10) & 0x3F;
@@ -174,8 +174,8 @@ namespace ProjectPSX.Devices {
                     blk[blockPointer] = (short)val;
                 }
 
-                if (inQueue.Count == 0) return;
-                n = inQueue.Dequeue();
+                if (inBuffer.Count == 0) return;
+                n = inBuffer.Dequeue();
 
                 blockPointer += ((n >> 10) & 0x3F) + 1;
 
@@ -199,13 +199,11 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int signed10bit(int n) {
-            return (n << 22) >> 22;
-        }
+        private int signed10bit(int n) => (n << 22) >> 22;
 
         private void setQuantTable() {//64 unsigned parameter bytes for the Luminance Quant Table (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes for the Color Quant Table (used for Cb and Cr).
             for (int i = 0; i < 32; i++) { //16 words for each table
-                ushort value = inQueue.Dequeue();
+                ushort value = inBuffer.Dequeue();
                 luminanceQuantTable[i * 2 + 0] = (byte)value;
                 luminanceQuantTable[i * 2 + 1] = (byte)(value >> 8);
             }
@@ -215,7 +213,7 @@ namespace ProjectPSX.Devices {
             if (!isColored) return;
 
             for (int i = 0; i < 32; i++) { //16 words continuation from buffer
-                ushort value = inQueue.Dequeue();
+                ushort value = inBuffer.Dequeue();
                 colorQuantTable[i * 2 + 0] = (byte)value;
                 colorQuantTable[i * 2 + 1] = (byte)(value >> 8);
             }
@@ -225,13 +223,19 @@ namespace ProjectPSX.Devices {
 
         private void setScaleTable() {//64 signed halfwords with 14bit fractional part
             for (int i = 0; i < 64; i++) { //writed as 32 words on buffer
-                scaleTable[i] = (short)inQueue.Dequeue();
+                scaleTable[i] = (short)inBuffer.Dequeue();
             }
         }
 
         public void writeMDEC1_Control(uint value) { //1F801824h - MDEC1 - MDEC Control/Reset Register (W)
-            bool isDataOutFifoEmpty = ((value >> 31) & 0x1) == 1; //todo actual abort commands and set status to 80040000h
-            if (isDataOutFifoEmpty) outBuffer.Clear();
+            bool abortCommand = ((value >> 31) & 0x1) == 1;
+            if (abortCommand) { //Set status to 80040000h
+                outBuffer.Clear();
+                currentBlock = 4;
+                remainingDataWords = 0;
+                command = null;
+            }
+
             isDataInRequested = ((value >> 30) & 0x1) == 1; //todo enable dma
             isDataOutRequested = ((value >> 29) & 0x1) == 1;
 
@@ -304,7 +308,6 @@ namespace ProjectPSX.Devices {
             status |= dataOutputDepth << 25;
             status |= (isSigned ? 1u : 0) << 24;
             status |= bit15 << 23;
-            status |= 1 << 18; // weird status return for 0x8004_0000;
             status |= currentBlock << 16;
             status |= (ushort)(remainingDataWords - 1);
             //Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
