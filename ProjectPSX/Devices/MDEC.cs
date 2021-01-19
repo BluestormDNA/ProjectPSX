@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace ProjectPSX.Devices {
     public class MDEC {
@@ -9,6 +11,7 @@ namespace ProjectPSX.Devices {
         //For some reason even tho it iterates all blocks it starts at 4
         //going 4 (Cr), 5 (Cb), 0, 1, 2, 3 (Y) 
         private const int INITIAL_BLOCK = 4;
+        private const int MACRO_BLOCK_DECODED_BYTES = 256 * 3;
 
         //Status Register
         //private bool isDataOutFifoEmpty;
@@ -35,9 +38,9 @@ namespace ProjectPSX.Devices {
         private short[] dst = new short[64];
 
         private Queue<ushort> inBuffer = new Queue<ushort>(1024);
-        private Queue<uint> outBuffer = new Queue<uint>(768);
 
-        private uint[] output = new uint[256];
+        private IMemoryOwner<byte> outBuffer = MemoryPool<byte>.Shared.Rent(0x30000); //wild guess while resumable dmas come...
+        private int outBufferPos = 0;
 
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
             //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
@@ -54,7 +57,8 @@ namespace ProjectPSX.Devices {
 
             if (remainingDataWords == 0) {
                 isCommandBusy = true;
-                outBuffer.Clear();
+                yuvToRgbBlockPos = 0;
+                outBufferPos = 0;
                 command();
             }
 
@@ -80,7 +84,7 @@ namespace ProjectPSX.Devices {
 
             while (inBuffer.Count != 0) {
 
-                for(int i = 0; i < NUM_BLOCKS; i++){ //Try to decode a macro block (6 blocks)
+                for (int i = 0; i < NUM_BLOCKS; i++) { //Try to decode a macro block (6 blocks)
                     //But actually iterate from the current block
                     byte[] qt = currentBlock >= 4 ? colorQuantTable : luminanceQuantTable;
                     //todo check if was success and idct and currentblock++ there so we can return here
@@ -92,12 +96,12 @@ namespace ProjectPSX.Devices {
                     currentBlock %= NUM_BLOCKS;
                 }
 
-                yuv_to_rgb(block[0], 0, 0, output);
-                yuv_to_rgb(block[1], 8, 0, output);
-                yuv_to_rgb(block[2], 0, 8, output);
-                yuv_to_rgb(block[3], 8, 8, output);
+                yuv_to_rgb(block[0], 0, 0);
+                yuv_to_rgb(block[1], 8, 0);
+                yuv_to_rgb(block[2], 0, 8);
+                yuv_to_rgb(block[3], 8, 8);
 
-                writeOutputToOutQueue();
+                yuvToRgbBlockPos += MACRO_BLOCK_DECODED_BYTES;
 
                 //for (int i = 0; i < output.Length; i++) {
                 //    Console.WriteLine(i + " " + output[i].ToString("x8"));
@@ -107,9 +111,8 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("Finalized decode" + srcPointer + " " + ptr);
         }
 
-        private void writeOutputToOutQueue() => outBuffer.EnqueueRange(output);
-
-        private void yuv_to_rgb(short[] Yblk, int xx, int yy, uint[] output) {
+        int yuvToRgbBlockPos = 0;
+        private void yuv_to_rgb(short[] Yblk, int xx, int yy) {
             for (int y = 0; y < 8; y++) {
                 for (int x = 0; x < 8; x++) {
                     int R = block[4][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CR Block
@@ -128,9 +131,10 @@ namespace ProjectPSX.Devices {
                     G ^= 0x80;
                     B ^= 0x80;
 
-                    uint val = (uint)((byte)B << 16 | (byte)G << 8 | (byte)R);
-
-                    output[(x + xx) + ((y + yy) * 16)] = val;
+                    int position = ((x + xx + ((y + yy) * 16)) * 3) + yuvToRgbBlockPos;
+                    Span<byte> rgb = stackalloc byte[3] { (byte)R, (byte)G, (byte)B };
+                    var dest = outBuffer.Memory.Span.Slice(position, 3);
+                    rgb.CopyTo(dest);
                 }
             }
         }
@@ -140,7 +144,7 @@ namespace ProjectPSX.Devices {
         private int val;
         private ushort n;
         public void rl_decode_block(short[] blk, byte[] qt) {
-            if(blockPointer >= 64) { //Start of new block
+            if (blockPointer >= 64) { //Start of new block
                 for (int i = 0; i < blk.Length; i++) {
                     blk[i] = 0;
                 }
@@ -159,7 +163,7 @@ namespace ProjectPSX.Devices {
             }
 
 
-            while(blockPointer < blk.Length) {
+            while (blockPointer < blk.Length) {
                 if (q_scale == 0) {
                     val = signed10bit(n & 0x3FF) * 2;
                 }
@@ -201,7 +205,7 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int signed10bit(int n) => (n << 22) >> 22;
 
-        private void setQuantTable() {//64 unsigned parameter bytes for the Luminance Quant Table (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes for the Color Quant Table (used for Cb and Cr).
+        private void setQuantTable() {//64 unsigned parameter bytes for the Luminance Quant Table (used for Y1..Y4)
             for (int i = 0; i < 32; i++) { //16 words for each table
                 ushort value = inBuffer.Dequeue();
                 luminanceQuantTable[i * 2 + 0] = (byte)value;
@@ -210,7 +214,7 @@ namespace ProjectPSX.Devices {
 
             //Console.WriteLine("setQuantTable: Luminance");
 
-            if (!isColored) return;
+            if (!isColored) return; //and if Command.Bit0 was set, by another 64 unsigned parameter bytes for the Color Quant Table(used for Cb and Cr).
 
             for (int i = 0; i < 32; i++) { //16 words continuation from buffer
                 ushort value = inBuffer.Dequeue();
@@ -230,7 +234,7 @@ namespace ProjectPSX.Devices {
         public void writeMDEC1_Control(uint value) { //1F801824h - MDEC1 - MDEC Control/Reset Register (W)
             bool abortCommand = ((value >> 31) & 0x1) == 1;
             if (abortCommand) { //Set status to 80040000h
-                outBuffer.Clear();
+                outBufferPos = 0;
                 currentBlock = 4;
                 remainingDataWords = 0;
                 command = null;
@@ -242,57 +246,61 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
         }
 
-        //int decodeTest = 0;
-        int bgrOrder;
-        uint bgrBuffer;
+
         public uint readMDEC0_Data() { //1F801820h.Read - MDEC Data/Response Register (R)
-            //return inBuffer[ptr++];
-            //Console.WriteLine(dataOutputDepth + " " + decodeTest++);
+            if (dataOutputDepth == 2) { //2 24b
+                var span = outBuffer.Memory.Span.Slice(outBufferPos++ * 4, 4);
 
-            if (dataOutputDepth == 2 && outBuffer.Count > 0) {
-                switch (bgrOrder) { // 24bpp data is compacted on the DMA word queue as: ...[(BGR)(B] [GR)(BG] [R)(BGR)] but the queue is uint as 0BGR
-                    case 0:
-                        uint _BGR = outBuffer.Dequeue() & 0x00FF_FFFF;
-                        bgrBuffer = outBuffer.Dequeue();
-                        uint R___ = (bgrBuffer & 0x0000_00FF) << 24;
+                return Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(span));
+            } else if (dataOutputDepth == 3) { //3 15b
+                var span = outBuffer.Memory.Span.Slice(outBufferPos++ * 6, 6);
 
-                        bgrOrder++;
+                ushort lo = (ushort)(bit15 << 15 | convert24to15bpp(span[0], span[1], span[2]));
+                ushort hi = (ushort)(bit15 << 15 | convert24to15bpp(span[3], span[4], span[5]));
 
-                        return R___ | _BGR;
-
-                    case 1:
-                        uint __BG = (bgrBuffer & 0x00FF_FF00) >> 8;
-                        bgrBuffer = outBuffer.Dequeue();
-                        uint GR__ = (bgrBuffer & 0x0000_FFFF) << 16;
-
-                        bgrOrder++;
-
-                        return GR__ | __BG;
-
-                    case 2:
-                        uint ___B = (bgrBuffer & 0x00FF_0000) >> 16;
-                        uint BGR_ = (outBuffer.Dequeue() & 0x00FF_FFFF) << 8;
-
-                        bgrOrder = 0;
-
-                        return BGR_ | ___B;
-                }
-
-            } else if (dataOutputDepth == 3 && outBuffer.Count > 0) { //3 15b, 2 24b the count is for testing
-                ushort u1 = (ushort)(bit15 << 15 | convert24to15bpp(outBuffer.Dequeue()));
-                ushort u2 = (ushort)(bit15 << 15 | convert24to15bpp(outBuffer.Dequeue()));
-                //Console.WriteLine("decodeTest? " + decodeTest++ + "Depth " + dataOutputDepth + " outBufferCount" + outBuffer.Count());
-                return (uint)(u2 << 16 | u1);
+                return (uint)(hi << 16 | lo);
+            } else {
+                return 0x00FF_00FF;
             }
 
-            return 0x00FF_00FF;
         }
 
-        public ushort convert24to15bpp(uint value) {
-            //byte m = (byte)(val >> 15);
-            byte r = (byte)((value & 0xFF) >> 3);
-            byte g = (byte)(((value >> 8) & 0xFF) >> 3);
-            byte b = (byte)(((value >> 16) & 0xFF) >> 3);
+        public Span<uint> processDmaLoad(int size) {
+            if (dataOutputDepth == 2) { //2 24b
+                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos++ * 4 * size, 4 * size); //4 = RGBR, GBRG, BRGB...
+
+                return MemoryMarshal.Cast<byte, uint>(byteSpan);
+            } else if (dataOutputDepth == 3) { //3 15b
+                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos++ * 6 * size, 6 * size); //6 = RGB * 2 => b15|b15
+
+                for (int b24 = 0, b15 = 0; b24 < byteSpan.Length; b24 += 3, b15 += 2) {
+                    var r = byteSpan[b24 + 0] >> 3;
+                    var g = byteSpan[b24 + 1] >> 3;
+                    var b = byteSpan[b24 + 2] >> 3;
+
+                    var rgb15 = (ushort)(b << 10 | g << 5 | r);
+                    var lo = (byte)rgb15;
+                    var hi = (byte)(rgb15 >> 8);
+
+                    byteSpan[b15 + 0] = lo;
+                    byteSpan[b15 + 1] = hi;
+                }
+
+                var dma = MemoryMarshal.Cast<byte, uint>(byteSpan.Slice(0, 4 * size));
+
+                return dma;
+            } else { //unsupported mode allocate and return garbage so can be seen
+                uint[] garbage = new uint[size];
+                var dma = new Span<uint>(garbage);
+                dma.Fill(0xFF00FF00);
+                return dma;
+            }
+        }
+
+        public ushort convert24to15bpp(byte sr, byte sg, byte sb) {
+            byte r = (byte)(sr >> 3);
+            byte g = (byte)(sg >> 3);
+            byte b = (byte)(sb >> 3);
 
             return (ushort)(b << 10 | g << 5 | r);
         }
@@ -318,7 +326,7 @@ namespace ProjectPSX.Devices {
             return status;
         }
 
-        private bool isDataOutFifoEmpty() => outBuffer.Count == 0;
+        private bool isDataOutFifoEmpty() => outBufferPos == 0; //Todo compare to inbufferpos when we handle full dma in
 
         private static ReadOnlySpan<byte> zagzig => new byte[] {
              0,  1,  8, 16,  9,  2,  3, 10,

@@ -200,11 +200,14 @@ namespace ProjectPSX.Devices {
                         uint data;
 
                         switch (channelNumber) { //todo remove the while and actually handle the whole dma from device to ram
-                            case 1: data = bus.DmaFromMdecOut(); break;
+                            case 1:
+                                bus.DmaFromMdecOut(baseAddress, (int)size);
+                                baseAddress += memoryStep * size;
+                                return;
                             case 2: data = bus.DmaFromGpu(); break;
                             case 3: data = bus.DmaFromCD(); break;
                             case 4: data = bus.DmaFromSpu(); break;
-                            case 6: //OTC
+                            case 6: //OTC //todo bus.DmaOTC();
                                 if (size == 1) {
                                     data = 0xFF_FFFF;
                                 } else {

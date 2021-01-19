@@ -505,8 +505,10 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public uint DmaFromMdecOut() {
-            return mdec.readMDEC0_Data();
+        public unsafe void DmaFromMdecOut(uint baseAddress, int size) {
+            var dma = mdec.processDmaLoad(size);
+            var dest = new Span<uint>(ramPtr + (baseAddress & 0x1F_FFFC), size);
+            dma.CopyTo(dest);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
