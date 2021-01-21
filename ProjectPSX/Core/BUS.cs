@@ -520,6 +520,28 @@ namespace ProjectPSX {
         public uint DmaFromSpu() {
             return 0xFFFFFFFF;
         }
+        public unsafe void DmaOTC(uint baseAddress, int size) {
+            //uint destAddress = (uint)(baseAddress - ((size - 1) * 4));
+            //
+            //Span<uint> dma = stackalloc uint[size];
+            //
+            //for (int i = dma.Length - 1; i > 0; i--) {
+            //baseAddress -= 4;
+            //dma[i] = baseAddress & 0xFF_FFFF;
+            //}
+            //
+            //dma[0] = 0xFF_FFFF;
+            //
+            //var dest = new Span<uint>(ramPtr + (destAddress & 0x1F_FFFC), size);
+            //dma.CopyTo(dest);
+
+            for(int i = 0; i < size - 1; i++) {
+                DmaToRam(baseAddress, baseAddress - 4);
+                baseAddress -= 4;
+            }
+            
+            DmaToRam(baseAddress, 0xFF_FFFF);
+        }
 
         private static uint[] RegionMask = {
         0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, // KUSEG: 2048MB

@@ -207,13 +207,10 @@ namespace ProjectPSX.Devices {
                             case 2: data = bus.DmaFromGpu(); break;
                             case 3: data = bus.DmaFromCD(); break;
                             case 4: data = bus.DmaFromSpu(); break;
-                            case 6: //OTC //todo bus.DmaOTC();
-                                if (size == 1) {
-                                    data = 0xFF_FFFF;
-                                } else {
-                                    data = (baseAddress - 4) & 0xFF_FFFF;
-                                }
-                                break;
+                            case 6: //OTC
+                                bus.DmaOTC(baseAddress, (int)size);
+                                baseAddress += memoryStep * size;
+                                return;
                             default:
                                 data = 0;
                                 Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channelNumber);
