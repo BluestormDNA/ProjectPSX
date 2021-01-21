@@ -484,8 +484,12 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public uint DmaFromGpu() {
-            return gpu.loadGPUREAD();
+        public void DmaFromGpu(uint address, int size) { //todo handle the whole array/span
+            for (int i = 0; i < size; i++) {
+                var word = gpu.loadGPUREAD();
+                DmaToRam(address, word);
+                address += 4;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -494,31 +498,37 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public uint DmaFromCD() {
-            return cdrom.getData();
+        public void DmaFromCD(uint address, int size) { //todo handle the whole array/span
+            for(int i = 0; i < size; i++) {
+                var word = cdrom.getData();
+                DmaToRam(address, word);
+                address += 4;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToMdecIn(Span<uint> load) { //todo: actual process the whole array
-            foreach (uint word in load)
+        public void DmaToMdecIn(Span<uint> dma) { //todo: actual process the whole array
+            foreach (uint word in dma)
                 mdec.writeMDEC0_Command(word);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void DmaFromMdecOut(uint baseAddress, int size) {
+        public unsafe void DmaFromMdecOut(uint address, int size) {
             var dma = mdec.processDmaLoad(size);
-            var dest = new Span<uint>(ramPtr + (baseAddress & 0x1F_FFFC), size);
+            var dest = new Span<uint>(ramPtr + (address & 0x1F_FFFC), size);
             dma.CopyTo(dest);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaToSpu(Span<uint> load) {
-            spu.processDma(load);
+        public void DmaToSpu(Span<uint> dma) {
+            spu.processDmaWrite(dma);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public uint DmaFromSpu() {
-            return 0xFFFFFFFF;
+        public unsafe void DmaFromSpu(uint address, int size) {
+            var dma = spu.processDmaLoad(size);
+            var dest = new Span<uint>(ramPtr + (address & 0x1F_FFFC), size);
+            dma.CopyTo(dest);
         }
         public unsafe void DmaOTC(uint baseAddress, int size) {
             //uint destAddress = (uint)(baseAddress - ((size - 1) * 4));

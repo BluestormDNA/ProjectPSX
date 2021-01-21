@@ -196,43 +196,27 @@ namespace ProjectPSX.Devices {
 
             private void blockCopy(uint size) {
                 if (transferDirection == 0) { //To Ram
-                    while (size > 0) {
-                        uint data;
 
-                        switch (channelNumber) { //todo remove the while and actually handle the whole dma from device to ram
-                            case 1:
-                                bus.DmaFromMdecOut(baseAddress, (int)size);
-                                baseAddress += memoryStep * size;
-                                return;
-                            case 2: data = bus.DmaFromGpu(); break;
-                            case 3: data = bus.DmaFromCD(); break;
-                            case 4: data = bus.DmaFromSpu(); break;
-                            case 6: //OTC
-                                bus.DmaOTC(baseAddress, (int)size);
-                                baseAddress += memoryStep * size;
-                                return;
-                            default:
-                                data = 0;
-                                Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (to Ram) " + channelNumber);
-                                break;
-                        }
-
-                        //Console.WriteLine($"[DMA] [Channel {channelNumber}] ToRam Address: {(baseAddress & 0x1F_FFFC):x8} Data: {data:x8} Size {size}");
-
-                        bus.DmaToRam(baseAddress & 0x1F_FFFC, data);
-                        baseAddress += memoryStep;
-                        size--;
+                    switch (channelNumber) {
+                        case 1: bus.DmaFromMdecOut(baseAddress, (int)size); break;
+                        case 2: bus.DmaFromGpu(baseAddress, (int)size); break;
+                        case 3: bus.DmaFromCD(baseAddress, (int)size); break;
+                        case 4: bus.DmaFromSpu(baseAddress, (int)size); break;
+                        case 6: bus.DmaOTC(baseAddress, (int)size); break;
+                        default: Console.WriteLine($"[DMA] [BLOCK COPY] Unsupported Channel (to Ram) {channelNumber}"); break;
                     }
+
+                    baseAddress += memoryStep * size;
 
                 } else { //From Ram
 
-                    Span<uint> load = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
+                    Span<uint> dma = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
 
                     switch(channelNumber) {
-                        case 0: bus.DmaToMdecIn(load); break;
-                        case 2: bus.DmaToGpu(load); break;
-                        case 4: bus.DmaToSpu(load); break;
-                        default: Console.WriteLine("[DMA] [BLOCK COPY] Unsupported Channel (from Ram) " + channelNumber); break;
+                        case 0: bus.DmaToMdecIn(dma); break;
+                        case 2: bus.DmaToGpu(dma); break;
+                        case 4: bus.DmaToSpu(dma); break;
+                        default: Console.WriteLine($"[DMA] [BLOCK COPY] Unsupported Channel (from Ram) {channelNumber}"); break;
                     }
 
                     baseAddress += memoryStep * size;

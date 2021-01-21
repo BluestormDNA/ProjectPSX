@@ -648,15 +648,36 @@ namespace ProjectPSX.Devices {
             return (short)interpolated;
         }
 
-        public void processDma(Span<uint> load) {
-            //Tekken 3 and FF8 overflows SPU Ram
-            int length = load.Length * 4;
-            int destAddress = (int)ramDataTransferAddressInternal + length - 1;
 
-            Span<byte> dmaSpan = MemoryMarshal.Cast<uint, byte>(load);
+        public Span<uint> processDmaLoad(int size) { //todo trigger interrupt
+            Span<byte> dma = ram.AsSpan().Slice((int)ramDataTransferAddressInternal, size);
+
+            //ramDataTransferAddressInternal and ramIrqAddress already are >> 3
+            //so check if it's in the size range and trigger int
+            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
+                //todo trigger irq...
+                Console.WriteLine("[SPU] Unhandled IRQ on DMA Load");
+            }
+
+            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size * 4);
+
+            return MemoryMarshal.Cast<byte, uint>(dma);
+        }
+
+        public void processDmaWrite(Span<uint> dma) { //todo trigger interrupt
+            //Tekken 3 and FF8 overflows SPU Ram
+            int size = dma.Length * 4;
+            int destAddress = (int)ramDataTransferAddressInternal + size - 1;
+
+            Span<byte> dmaSpan = MemoryMarshal.Cast<uint, byte>(dma);
 
             Span<byte> ramStartSpan = ram.AsSpan();
             Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
+
+            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
+                //todo trigger irq... also this would probably need to be handled on overflow too...
+                Console.WriteLine("[SPU] Unhandled IRQ on DMA Write");
+            }
 
             if (destAddress <= 0x7FFFF) {
                 dmaSpan.CopyTo(ramDestSpan);
@@ -670,7 +691,7 @@ namespace ProjectPSX.Devices {
                 overflowSpan.CopyTo(ramStartSpan);
             }
         
-            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + length);
+            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size);
         }
 
     }
