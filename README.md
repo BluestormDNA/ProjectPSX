@@ -20,27 +20,34 @@ At the moment the following is implemented:
 - MDEC for video decoding 16/24 bpp FMV.
 - Display Screen with 24 bpp support.
 - Memory Card support.
+- SPU (Reverb is not supported)
 
 What is not implemented (but should be...):
 - DMA resumable transfers
 - CDROM: Proper timmings.
-- SPU
 
 > **Note:**  A valid PlayStation Bios is needed to run the emulator. SCPH1001.BIN is the default bios on the development but some others like SCPH5501 or SCPH7001 have been reported to work.
 
 ## Compatibility
 
-The emulator is in early development and there are constant rewrites. Somehow and although with some limitations there are some games that already "work" like:
-Ridge Racer, Castlevania Symphony of the Night, Final Fantasy 7, Crash Bandicoot 1, 2 and 3, Spyro the dragon, Tekken 1, 2 and 3, Toshinden, Time Crisis, Tobal 1 and 2, Vagrant Story, Street Fighter Zero 3, Rockman/Megaman 8/X4, Parasite Eve...
-Some others like Final Fantasy IX, Gran Turismo boot but have random problems to be fixed.
+There's no compatibility list. Many games boot and go ingame althought some may have random problems.
+Some of the games I tested that woked were:
+Ridge Racer, Castlevania Symphony of the Night, Final Fantasy 7, Crash Bandicoot 1, 2 and 3, Spyro the dragon, Tekken 1, 2 and 3, Toshinden, Time Crisis, Tobal 1 and 2, Vagrant Story, Street Fighter Zero 3, Rockman/Megaman 8/X4, Parasite Eve, Metal Gear Solid, Crash Team Racing...
+Some others like Final Fantasy IX, Gran Turismo, Resident Evil 3 or Marvel vs Capcom boot but have random problems to be fixed.
 
 > **Note:**  Memory Card files are hardcoded to "memcard.mcr" on the root directory. If there's no one a new one will be generated on save.
 
 
 ## Using the emulator
 
+ProjectPSX core itself is a headless library with no dependencies. The solution comes with 2 additional projects ProjectPSX.Winforms and ProjectPSX.OpenTK. The Winforms project uses NAudio to output sound.
+
+When using the Winform project a file dialog will prompt on execution.
 Select a Bin file (use track1) or a Cue file to generate CD tracks to feed the CDROM.
-The bios and expansion files are hardcoded on the BUS class
+
+When using the OpenTK project just drag and drop a bin/cue file to the window.
+
+The bios and expansion files are hardcoded on the BUS class.
  
 Once power on, Input is mapped as:
 
@@ -78,7 +85,7 @@ It's the VRAM viewer. It includes all the textures, color lockup tables and disp
 
 - Why "insert game here" doesn't work?
 
-Probably due to not implemented hardware or incorrect implemented one, mainly cdrom timmings.
+Probably due to not implemented hardware or incorrect implemented one, mainly cdrom/dma/mdec timmings.
 
 - How can i get console TTY or BIOS output?
 
@@ -99,9 +106,7 @@ Also the people at the #playstation channel on the emudev discord at https://dis
 
 - What about WinForms?
 
-Winforms was the easiest way to have output for me as it was fast prototyped it somehow has lasted more than intended... but the idea is to let it go away in the future.
-I looked at alternatives but as I said im more focused at the moment on the core aspect and not much on the UI. The WinForms dependency is very thin and can be easily changed (at some point i used GDI and even SDL).
-Seems like .NET 5 will have a cross platform UI so maybe I will need to look onto that. Meanwhile I'm gonna create a branch with OpenToolkit and work on sound.
+Winforms was the easiest way to have output for me as it was fast prototyped. At the moment the UI is detached from the core so any windowing system can be added as long as the IHostWindow interface is implemented. There's also am OpenTK project on the solution that runs on Linux.
 
 - Tell me more about you!
 
