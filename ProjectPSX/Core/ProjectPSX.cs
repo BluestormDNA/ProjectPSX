@@ -7,6 +7,8 @@ namespace ProjectPSX {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
         const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
+        const int CYCLES_PER_FRAME = PSX_MHZ / 60;
+        const int SYNC_LOOPS = (CYCLES_PER_FRAME / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
 
         private CPU cpu;
         private BUS bus;
@@ -42,10 +44,7 @@ namespace ProjectPSX {
 
         public void RunFrame() {
             //A lame mainloop with a workaround to be able to underclock.
-            int cyclesPerFrame = PSX_MHZ / 60;
-            int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
-
-            for (int i = 0; i < syncLoops; i++) {
+            for (int i = 0; i < SYNC_LOOPS; i++) {
                 for (int j = 0; j < SYNC_CYCLES; j++) {
                     cpu.Run();
                     //cpu.handleInterrupts();
@@ -55,22 +54,13 @@ namespace ProjectPSX {
             }
         }
 
-        public void JoyPadUp(GamepadInputsEnum button) {
-            controller.handleJoyPadUp(button);
-        }
+        public void JoyPadUp(GamepadInputsEnum button) => controller.handleJoyPadUp(button);
 
-        public void JoyPadDown(GamepadInputsEnum button) {
-            controller.handleJoyPadDown(button);
-        }
+        public void JoyPadDown(GamepadInputsEnum button) => controller.handleJoyPadDown(button);
 
         public void toggleDebug() {
-            if (!cpu.debug) {
-                cpu.debug = true;
-                gpu.debug = true;
-            } else {
-                cpu.debug = false;
-                gpu.debug = false;
-            }
+            cpu.debug = !cpu.debug;
+            gpu.debug = !gpu.debug;
         }
 
     }
