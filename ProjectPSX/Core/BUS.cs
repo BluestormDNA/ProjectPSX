@@ -34,8 +34,7 @@ namespace ProjectPSX {
         private static string bios = "./SCPH1001.BIN";
         private static string ex1 = "./caetlaEXP.BIN";
 
-        public BUS(GPU gpu, CDROM cdrom, SPU spu, JOYPAD joypad, TIMERS timers, MDEC mdec) {
-            interruptController = new InterruptController();
+        public BUS(GPU gpu, CDROM cdrom, SPU spu, JOYPAD joypad, TIMERS timers, MDEC mdec, InterruptController interruptController) {
             dma = new DMA(this);
             this.gpu = gpu;
             this.cdrom = cdrom;
@@ -43,6 +42,7 @@ namespace ProjectPSX {
             this.mdec = mdec;
             this.spu = spu;
             this.joypad = joypad;
+            this.interruptController = interruptController;
         }
 
         internal unsafe uint load32(uint address) {

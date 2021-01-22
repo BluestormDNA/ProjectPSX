@@ -19,18 +19,22 @@ namespace ProjectPSX {
         private Controller controller;
         private MemoryCard memoryCard;
         private CD cd;
+        private InterruptController interruptController;
 
         public ProjectPSX(IHostWindow window, string diskFilename) {
             controller = new DigitalController();
             memoryCard = new MemoryCard();
+
+            interruptController = new InterruptController();
+
             cd = new CD(diskFilename);
-            spu = new SPU(window);
+            spu = new SPU(window, interruptController);
             gpu = new GPU(window);
             cdrom = new CDROM(cd, spu);
             joypad = new JOYPAD(controller, memoryCard);
             timers = new TIMERS();
             mdec = new MDEC();
-            bus = new BUS(gpu, cdrom, spu, joypad, timers, mdec);
+            bus = new BUS(gpu, cdrom, spu, joypad, timers, mdec, interruptController);
             cpu = new CPU(bus);
 
             bus.loadBios();

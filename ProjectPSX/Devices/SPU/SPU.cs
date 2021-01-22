@@ -150,9 +150,12 @@ namespace ProjectPSX.Devices {
         Status status;
 
         private IHostWindow window;
+        private InterruptController interruptController;
 
-        public SPU(IHostWindow window) {
+        public SPU(IHostWindow window, InterruptController interruptController) {
             this.window = window;
+            this.interruptController = interruptController;
+
             for (int i = 0; i < voices.Length; i++) {
                 voices[i] = new Voice();
             }
@@ -655,8 +658,7 @@ namespace ProjectPSX.Devices {
             //ramDataTransferAddressInternal and ramIrqAddress already are >> 3
             //so check if it's in the size range and trigger int
             if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
-                //todo trigger irq...
-                Console.WriteLine("[SPU] Unhandled IRQ on DMA Load");
+                interruptController.set(Interrupt.SPU);
             }
 
             ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size * 4);
@@ -675,8 +677,7 @@ namespace ProjectPSX.Devices {
             Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
 
             if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
-                //todo trigger irq... also this would probably need to be handled on overflow too...
-                Console.WriteLine("[SPU] Unhandled IRQ on DMA Write");
+                interruptController.set(Interrupt.SPU);
             }
 
             if (destAddress <= 0x7FFFF) {
