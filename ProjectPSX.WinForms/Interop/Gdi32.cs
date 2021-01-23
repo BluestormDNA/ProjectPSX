@@ -75,6 +75,13 @@ namespace ProjectPSX.Interop.Gdi32
         CAPTUREBLT = 0x40000000, // Include layered windows
     }
 
+    internal enum BltMode : uint {
+        STRETCH_ANDSCANS = 0x01,
+        STRETCH_ORSCANS = 0x02,
+        STRETCH_DELETESCANS = 0x03,
+        STRETCH_HALFTONE = 0x04,
+    }
+
     [SuppressUnmanagedCodeSecurity]
     internal static class NativeMethods
     {
@@ -101,6 +108,9 @@ namespace ProjectPSX.Interop.Gdi32
         internal static extern bool StretchBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
                                                IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc,
                                                RasterOp rop);
+
+        [DllImport(ExternDll.Gdi32)]
+        internal static extern int SetStretchBltMode(IntPtr hdc, BltMode mode);
 
         [DllImport(ExternDll.Gdi32)]
         internal static extern int StretchDIBits(IntPtr hdc, int xDest, int yDest, int DestWidth, int DestHeight,
