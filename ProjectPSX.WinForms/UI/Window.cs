@@ -63,7 +63,6 @@ namespace ProjectPSX {
             FormBorderStyle = FormBorderStyle.FixedDialog;
             KeyUp += new KeyEventHandler(vramViewerToggle);
 
-
             screen.Size = _640x480;
             screen.Margin = new Padding(0);
             screen.MouseDoubleClick += new MouseEventHandler(toggleDebug);
@@ -144,14 +143,12 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Render(int[] vram) {
             //Console.WriteLine($"x1 {displayX1} x2 {displayX2} y1 {displayY1} y2 {displayY2}");
-            int horizontalStart = 0;
+
             int horizontalEnd = horizontalRes;
-            int verticalStart = 0;
             int verticalEnd = verticalRes;
 
             if (isVramViewer) {
                 horizontalEnd = 1024;
-                verticalStart = 0;
                 verticalEnd = 512;
                 
                 Marshal.Copy(vram, 0, display.BitmapData, 0x80000);
@@ -166,17 +163,14 @@ namespace ProjectPSX {
             using var deviceContext = new GdiDeviceContext(screen.Handle);
 
             Gdi32.StretchBlt(deviceContext, 0, 0, screen.Width, screen.Height,
-                     display.DeviceContext, horizontalStart, verticalStart, horizontalEnd, verticalEnd,
+                     display.DeviceContext, 0, 0, horizontalEnd, verticalEnd,
                      RasterOp.SRCCOPY);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void blit24bpp(int[] vramBits) {
-            int range = (240 - (displayY2 - displayY1)) / 2;
-
-            int yRangeOffset;
-            if (range < 0) yRangeOffset = 0;
-            else yRangeOffset = range;
+            int yRangeOffset = (240 - (displayY2 - displayY1)) >> (verticalRes == 480 ? 0 : 1);
+            if (yRangeOffset < 0) yRangeOffset = 0;
 
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
                 int offset = 0;
@@ -213,11 +207,8 @@ namespace ProjectPSX {
         private void blit16bpp(int[] vramBits) {
             //Console.WriteLine($"x1 {displayX1} x2 {displayX2} y1 {displayY1} y2 {displayY2}");
             //Console.WriteLine($"Display Height {display.Height}  Width {display.Width}");
-            int range = (240 - (displayY2 - displayY1)) / 2;
-
-            int yRangeOffset;
-            if (range < 0) yRangeOffset = 0;
-            else yRangeOffset = range;
+            int yRangeOffset = (240 - (displayY2 - displayY1)) >> (verticalRes == 480 ? 0 : 1);
+            if (yRangeOffset < 0) yRangeOffset = 0;
 
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
                 for (int x = 0; x < horizontalRes; x++) {
@@ -251,6 +242,7 @@ namespace ProjectPSX {
                 this.horizontalRes = horizontalRes;
                 this.verticalRes = verticalRes;
 
+                clearDisplay();
                 //Console.WriteLine($"setDisplayMode {horizontalRes} {verticalRes} {is24BitDepth}");
             }
 
@@ -285,7 +277,13 @@ namespace ProjectPSX {
                     screen.Size = _640x480;
                 }
                 isVramViewer = !isVramViewer;
+                clearDisplay();
             }
+        }
+
+        private unsafe void clearDisplay() {
+            Span<uint> span = new Span<uint>(display.BitmapData.ToPointer(), 0x80000);
+            span.Clear();
         }
 
         public void Play(byte[] samples) {
