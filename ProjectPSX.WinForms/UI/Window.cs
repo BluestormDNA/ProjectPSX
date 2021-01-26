@@ -204,17 +204,19 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void blit16bpp(int[] vramBits) {
+        private unsafe void blit16bpp(int[] vramBits) {
             //Console.WriteLine($"x1 {displayX1} x2 {displayX2} y1 {displayY1} y2 {displayY2}");
             //Console.WriteLine($"Display Height {display.Height}  Width {display.Width}");
             int yRangeOffset = (240 - (displayY2 - displayY1)) >> (verticalRes == 480 ? 0 : 1);
             if (yRangeOffset < 0) yRangeOffset = 0;
 
+            var vram = new Span<int>(vramBits);
+            var display = new Span<int>(this.display.BitmapData.ToPointer(), 0x80000);
+
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
-                for (int x = 0; x < horizontalRes; x++) {
-                    int pixel = vramBits[(x + displayVRAMXStart) + ((y - yRangeOffset + displayVRAMYStart) * 1024)];
-                    display.DrawPixel(x, y, pixel);
-                }
+                var from = vram.Slice(displayVRAMXStart + ((y - yRangeOffset + displayVRAMYStart) * 1024), horizontalRes);
+                var to = display.Slice(y * 1024);
+                from.CopyTo(to);
             }
 
         }
