@@ -141,7 +141,19 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void handleInterrupts() {
-            uint load = bus.load32(PC);
+            //Executable address space is limited to ram and bios on psx
+            uint maskedPC = PC & 0x1FFF_FFFF;
+            uint load;
+            if (maskedPC < 0x1F00_0000) {
+                load = bus.LoadFromRam(maskedPC);
+            }
+            else {
+                load = bus.LoadFromBios(maskedPC);
+            }
+
+            //This is actually the "next" opcode if it's a GTE one
+            //just postpone the interrupt so it doesn't glith out
+            //Crash Bandicoot intro is a good example for this
             uint instr = load >> 26;
             if (instr == 0x12) { //COP2 MTC2
                 //Console.WriteLine("WARNING COP2 OPCODE ON INTERRUPT");
@@ -165,7 +177,15 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void fetchDecode() {
-            uint load = bus.load32(PC);
+            //Executable address space is limited to ram and bios on psx
+            uint maskedPC = PC & 0x1FFF_FFFF;
+            uint load;
+            if (maskedPC < 0x1F00_0000) {
+                load = bus.LoadFromRam(maskedPC);
+            } else {
+                load = bus.LoadFromBios(maskedPC);
+            }
+
             PC_Now = PC;
             PC = PC_Predictor;
             PC_Predictor += 4;

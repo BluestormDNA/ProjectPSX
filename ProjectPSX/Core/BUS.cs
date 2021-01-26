@@ -463,8 +463,13 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe uint DmaFromRam(uint addr) {
+        public unsafe uint LoadFromRam(uint addr) {
             return *(uint*)(ramPtr + (addr & 0x1F_FFFF));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uint LoadFromBios(uint addr) {
+            return *(uint*)(biosPtr + (addr & 0x7_FFFF));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

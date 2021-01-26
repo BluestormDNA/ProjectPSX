@@ -229,7 +229,7 @@ namespace ProjectPSX.Devices {
 
                 while ((header & 0x800000) == 0) {
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
-                    header = bus.DmaFromRam(baseAddress);
+                    header = bus.LoadFromRam(baseAddress);
                     //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8") + " value: " + header.ToString("x8"));
                     uint size = header >> 24;
 
