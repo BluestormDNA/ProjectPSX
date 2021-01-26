@@ -90,7 +90,9 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
-            Execute();
+            if(instr.value != 0) { //Skip Nops
+                Execute();
+            }
             MemAccess();
             WriteBack();
 
@@ -201,7 +203,6 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute() {
-            if (instr.value == 0) return; //early NOP return avoids the nested switchs
             switch (instr.opcode) {
                 case 0b00_0000: SPECIAL(); break;//R-Type opcodes
                 case 0b10_1011: SW(); break;
