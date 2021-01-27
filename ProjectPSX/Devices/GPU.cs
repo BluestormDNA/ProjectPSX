@@ -566,8 +566,8 @@ namespace ProjectPSX.Devices {
                 if (isShaded) c[i] = buffer[pointer++];
 
                 v[i].val = buffer[pointer++];
-                v[i].x = (short)(signed11bit((uint)v[i].x) + drawingXOffset);
-                v[i].y = (short)(signed11bit((uint)v[i].y) + drawingYOffset);
+                v[i].x = signed11bit((uint)(v[i].x + drawingXOffset));
+                v[i].y = signed11bit((uint)(v[i].y + drawingYOffset));
 
                 if (isTextured) {
                     uint textureData = buffer[pointer++];
@@ -811,8 +811,8 @@ namespace ProjectPSX.Devices {
             primitive.isRawTextured = isRawTextured;
 
             uint vertex = buffer[pointer++];
-            short xo = signed11bit(vertex & 0xFFFF);
-            short yo = signed11bit(vertex >> 16);
+            short xo = (short)(vertex & 0xFFFF);
+            short yo = (short)(vertex >> 16);
 
             ushort palette = 0;
             byte textureX = 0;
@@ -844,8 +844,8 @@ namespace ProjectPSX.Devices {
                     break;
             }
 
-            int y = yo + drawingYOffset;
-            int x = xo + drawingXOffset;
+            int y = signed11bit((uint)(yo + drawingYOffset));
+            int x = signed11bit((uint)(xo + drawingXOffset));
 
             v[0].x = (short)x;
             v[0].y = (short)y;
