@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using ProjectPSX.Disassembler;
 
 namespace ProjectPSX {
-    internal class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
+    internal unsafe class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
 
         private BUS bus;
 
@@ -85,13 +85,118 @@ namespace ProjectPSX {
             mips = new MIPS_Disassembler(ref HI, ref LO, GPR, COP0_GPR);
             COP0_GPR[15] = 0x2; //PRID Processor ID
             gte = new GTE(this); //debug
+
+            initOpCodeTable();
         }
+
+        public static delegate*<CPU, void>[] opcodeMainTable;
+        public static delegate*<CPU, void>[] opcodeSpecialTable;
+
+        public void initOpCodeTable() {
+            static void SPECIAL2(CPU cpu) => cpu.SPECIAL2();
+            static void BCOND(CPU cpu) => cpu.BCOND();
+            static void J(CPU cpu) => cpu.J();
+            static void JAL(CPU cpu) => cpu.JAL();
+            static void BEQ(CPU cpu) => cpu.BEQ();
+            static void BNE(CPU cpu) => cpu.BNE();
+            static void BLEZ(CPU cpu) => cpu.BLEZ();
+            static void BGTZ(CPU cpu) => cpu.BGTZ();
+            static void ADDI(CPU cpu) => cpu.ADDI();
+            static void ADDIU(CPU cpu) => cpu.ADDIU();
+            static void SLTI(CPU cpu) => cpu.SLTI();
+            static void SLTIU(CPU cpu) => cpu.SLTIU();
+            static void ANDI(CPU cpu) => cpu.ANDI();
+            static void ORI(CPU cpu) => cpu.ORI();
+            static void XORI(CPU cpu) => cpu.XORI();
+            static void LUI(CPU cpu) => cpu.LUI();
+            static void COP0(CPU cpu) => cpu.COP0();
+            static void NOP(CPU cpu) => cpu.NOP();
+            static void COP2(CPU cpu) => cpu.COP2();
+            static void NA(CPU cpu) => cpu.NA();
+            static void LB(CPU cpu) => cpu.LB();
+            static void LH(CPU cpu) => cpu.LH();
+            static void LWL(CPU cpu) => cpu.LWL();
+            static void LW(CPU cpu) => cpu.LW();
+            static void LBU(CPU cpu) => cpu.LBU();
+            static void LHU(CPU cpu) => cpu.LHU();
+            static void LWR(CPU cpu) => cpu.LWR();
+            static void SB(CPU cpu) => cpu.SB();
+            static void SH(CPU cpu) => cpu.SH();
+            static void SWL(CPU cpu) => cpu.SWL();
+            static void SW(CPU cpu) => cpu.SW();
+            static void SWR(CPU cpu) => cpu.SWR();
+            static void LWC2(CPU cpu) => cpu.LWC2();
+            static void SWC2(CPU cpu) => cpu.SWC2();
+
+            opcodeMainTable = new delegate*<CPU, void>[] {
+                &SPECIAL2, &BCOND,  &J,      &JAL,    &BEQ,    &BNE,    &BLEZ,   &BGTZ,
+                &ADDI,     &ADDIU,  &SLTI,   &SLTIU,  &ANDI,   &ORI,    &XORI,   &LUI,
+                &COP0,     &NOP,    &COP2,   &NOP,    &NA,     &NA,     &NA,     &NA,
+                &NA,       &NA,     &NA,     &NA,     &NA,     &NA,     &NA,     &NA,
+                &LB,       &LH,     &LWL,    &LW,     &LBU,    &LHU,    &LWR,    &NA,
+                &SB,       &SH,     &SWL,    &SW,     &NA,     &NA,     &SWR,    &NA,
+                &NOP,      &NOP,    &LWC2,   &NOP,    &NA,     &NA,     &NA,     &NA,
+                &NOP,      &NOP,    &SWC2,   &NOP,    &NA,     &NA,     &NA,     &NA,
+            };
+
+            static void SLL(CPU cpu) => cpu.SLL();
+            static void SRL(CPU cpu) => cpu.SRL();
+            static void SRA(CPU cpu) => cpu.SRA();
+            static void SLLV(CPU cpu) => cpu.SLLV();
+            static void SRLV(CPU cpu) => cpu.SRLV();
+            static void SRAV(CPU cpu) => cpu.SRAV();
+            static void JR(CPU cpu) => cpu.JR();
+            static void SYSCALL(CPU cpu) => cpu.SYSCALL();
+            static void BREAK(CPU cpu) => cpu.BREAK();
+            static void JALR(CPU cpu) => cpu.JALR();
+            static void MFHI(CPU cpu) => cpu.MFHI();
+            static void MTHI(CPU cpu) => cpu.MTHI();
+            static void MFLO(CPU cpu) => cpu.MFLO();
+            static void MTLO(CPU cpu) => cpu.MTLO();
+            static void MULT(CPU cpu) => cpu.MULT();
+            static void MULTU(CPU cpu) => cpu.MULTU();
+            static void DIV(CPU cpu) => cpu.DIV();
+            static void DIVU(CPU cpu) => cpu.DIVU();
+            static void ADD(CPU cpu) => cpu.ADD();
+            static void ADDU(CPU cpu) => cpu.ADDU();
+            static void SUB(CPU cpu) => cpu.SUB();
+            static void SUBU(CPU cpu) => cpu.SUBU();
+            static void AND(CPU cpu) => cpu.AND();
+            static void OR(CPU cpu) => cpu.OR();
+            static void XOR(CPU cpu) => cpu.XOR();
+            static void NOR(CPU cpu) => cpu.NOR();
+            static void SLT(CPU cpu) => cpu.SLT();
+            static void SLTU(CPU cpu) => cpu.SLTU();
+
+            opcodeSpecialTable = new delegate*<CPU, void>[] {
+                &SLL,   &NA,    &SRL,   &SRA,   &SLLV,    &NA,     &SRLV, &SRAV,
+                &JR,    &JALR,  &NA,    &NA,    &SYSCALL, &BREAK,  &NA,   &NA,
+                &MFHI,  &MTHI,  &MFLO,  &MTLO,  &NA,      &NA,     &NA,   &NA,
+                &MULT,  &MULTU, &DIV,   &DIVU,  &NA,      &NA,     &NA,   &NA,
+                &ADD,   &ADDU,  &SUB,   &SUBU,  &AND,     &OR,     &XOR,  &NOR,
+                &NA,    &NA,    &SLT,   &SLTU,  &NA,      &NA,     &NA,   &NA,
+                &NA,    &NA,    &NA,    &NA,    &NA,      &NA,     &NA,   &NA,
+                &NA,    &NA,    &NA,    &NA,    &NA,      &NA,     &NA,   &NA,
+            };
+        }
+
+        private void SPECIAL2() {
+            opcodeSpecialTable[instr.function](this);
+        }
+
+        private void NOP() { /*nop*/ }
+
+        private void NA() {
+            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
+        }
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Run() {
             fetchDecode();
             if(instr.value != 0) { //Skip Nops
-                Execute();
+                //Execute();
+                opcodeMainTable[instr.opcode](this);
             }
             MemAccess();
             WriteBack();
