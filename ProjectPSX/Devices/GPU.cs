@@ -112,10 +112,11 @@ namespace ProjectPSX.Devices {
         private bool isTexturedRectangleXFlipped;
         private bool isTexturedRectangleYFlipped;
 
-        private byte textureWindowMaskX;
-        private byte textureWindowMaskY;
-        private byte textureWindowOffsetX;
-        private byte textureWindowOffsetY;
+        private uint textureWindowBits = 0xFFFF_FFFF;
+        private int preMaskX;
+        private int preMaskY;
+        private int postMaskX;
+        private int postMaskY;
 
         private ushort drawingAreaLeft;
         private ushort drawingAreaRight;
@@ -258,7 +259,7 @@ namespace ProjectPSX.Devices {
             drawVRAMPixel(pixel0);
 
             //Force exit if we arrived to the end pixel (fixes weird artifacts on textures on Metal Gear Solid)
-            if(vram_coord.size == 0 && vram_coord.x == vram_coord.origin_x && vram_coord.y == vram_coord.origin_y + vram_coord.h) {
+            if (vram_coord.size == 0 && vram_coord.x == vram_coord.origin_x && vram_coord.y == vram_coord.origin_y + vram_coord.h) {
                 mode = Mode.COMMAND;
                 return;
             }
@@ -423,9 +424,6 @@ namespace ProjectPSX.Devices {
             primitive.isRawTextured = isRawTextured;
 
             int vertexN = isQuad ? 4 : 3;
-
-            //Point2D[] v = new Point2D[vertexN];
-            //TextureData[] t = new TextureData[vertexN];
             Span<uint> c = stackalloc uint[vertexN];
 
             if (!isShaded) {
@@ -449,8 +447,7 @@ namespace ProjectPSX.Devices {
                     t[i].val = (ushort)textureData;
                     if (i == 0) {
                         palette = textureData >> 16;
-                    }
-                    else if (i == 1) {
+                    } else if (i == 1) {
                         texpage = textureData >> 16;
                     }
                 }
@@ -553,7 +550,8 @@ namespace ProjectPSX.Devices {
                         if (primitive.isTextured) {
                             int texelX = interpolateCoords(w0, w1, w2, t0.x, t1.x, t2.x, area);
                             int texelY = interpolateCoords(w0, w1, w2, t0.y, t1.y, t2.y, area);
-                            int texel = getTexel(texelX, texelY, clut, textureBase, depth);
+                            //int texel = getTexel(texelX, texelY, clut, textureBase, depth);
+                            int texel = getTexel2(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), clut, textureBase, depth);
                             if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -811,7 +809,8 @@ namespace ProjectPSX.Devices {
                     int color = baseColor;
 
                     if (primitive.isTextured) {
-                        int texel = getTexel(u, v, clut, textureBase, depth);
+                        //int texel = getTexel(u, v, clut, textureBase, depth);
+                        int texel = getTexel2(maskTexelAxis(u, preMaskX, postMaskX), maskTexelAxis(v, preMaskY, postMaskY), clut, textureBase, depth);
                         if (texel == 0) {
                             continue;
                         }
@@ -934,14 +933,12 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
-            x &= 0xFF;
-            y &= 0xFF;
+        private int maskTexelAxis(int axis, int preMaskAxis, int postMaskAxis) {
+            return axis & 0xFF & preMaskAxis | postMaskAxis;
+        }
 
-            // Texture masking: texel = (texel AND(NOT(Mask * 8))) OR((Offset AND Mask) * 8)
-            x = (x & ~(textureWindowMaskX * 8)) | ((textureWindowOffsetX & textureWindowMaskX) * 8);
-            y = (y & ~(textureWindowMaskY * 8)) | ((textureWindowOffsetY & textureWindowMaskY) * 8);
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int getTexel2(int x, int y, Point2D clut, Point2D textureBase, int depth) {
             if (depth == 0) {
                 return get4bppTexel(x, y, clut, textureBase);
             } else if (depth == 1) {
@@ -1000,10 +997,21 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP0_E2_SetTextureWindow(uint val) {
-            textureWindowMaskX = (byte)(val & 0x1F);
-            textureWindowMaskY = (byte)((val >> 5) & 0x1F);
-            textureWindowOffsetX = (byte)((val >> 10) & 0x1F);
-            textureWindowOffsetY = (byte)((val >> 15) & 0x1F);
+            uint bits = val & 0xFF_FFFF;
+
+            if (bits == textureWindowBits) return;
+
+            textureWindowBits = bits;
+
+            byte textureWindowMaskX = (byte)(val & 0x1F);
+            byte textureWindowMaskY = (byte)((val >> 5) & 0x1F);
+            byte textureWindowOffsetX = (byte)((val >> 10) & 0x1F);
+            byte textureWindowOffsetY = (byte)((val >> 15) & 0x1F);
+
+            preMaskX = ~(textureWindowMaskX * 8);
+            preMaskY = ~(textureWindowMaskY * 8);
+            postMaskX = (textureWindowOffsetX & textureWindowMaskX) * 8;
+            postMaskY = (textureWindowOffsetY & textureWindowMaskY) * 8;
         }
 
         private void GP0_E3_SetDrawingAreaTopLeft(uint val) {
@@ -1118,7 +1126,7 @@ namespace ProjectPSX.Devices {
         private void GP1_GPUInfo(uint value) {
             uint info = value & 0xF;
             switch (info) {
-                case 0x2: GPUREAD = (uint)(textureWindowOffsetY << 15 | textureWindowOffsetX << 10 | textureWindowMaskY << 5 | textureWindowMaskX); break;
+                case 0x2: GPUREAD = textureWindowBits; break;
                 case 0x3: GPUREAD = (uint)(drawingAreaTop << 10 | drawingAreaLeft); break;
                 case 0x4: GPUREAD = (uint)(drawingAreaBottom << 10 | drawingAreaRight); break;
                 case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | (ushort)drawingXOffset); break;
