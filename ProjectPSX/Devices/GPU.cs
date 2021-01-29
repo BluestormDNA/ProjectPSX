@@ -11,7 +11,6 @@ namespace ProjectPSX.Devices {
         private uint command;
         private int commandSize;
         private uint[] commandBuffer = new uint[16];
-        private uint[] emptyBuffer = new uint[16]; //fallback to rewrite
         private int pointer;
 
         private int scanLine = 0;
@@ -84,7 +83,7 @@ namespace ProjectPSX.Devices {
         //GP0
         private byte textureXBase;
         private byte textureYBase;
-        private byte transparency;
+        private byte transparencyMode;
         private byte textureDepth;
         private bool isDithered;
         private bool isDrawingToDisplayAllowed;
@@ -139,7 +138,7 @@ namespace ProjectPSX.Devices {
         public GPU(IHostWindow window) {
             this.window = window;
             mode = Mode.COMMAND;
-            GP1_ResetGPU();
+            GP1_00_ResetGPU();
         }
 
         public bool tick(int cycles) {
@@ -182,7 +181,7 @@ namespace ProjectPSX.Devices {
 
             GPUSTAT |= textureXBase;
             GPUSTAT |= (uint)textureYBase << 4;
-            GPUSTAT |= (uint)transparency << 5;
+            GPUSTAT |= (uint)transparencyMode << 5;
             GPUSTAT |= (uint)textureDepth << 7;
             GPUSTAT |= (uint)(isDithered ? 1 : 0) << 9;
             GPUSTAT |= (uint)(isDrawingToDisplayAllowed ? 1 : 0) << 10;
@@ -237,13 +236,10 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void processDma(Span<uint> buffer) {
-            //Console.WriteLine("buffer");
-            //Console.WriteLine(mode);
             if (mode == Mode.COMMAND) {
                 DecodeGP0Command(buffer);
             } else {
                 for (int i = 0; i < buffer.Length; i++) {
-                    //Console.WriteLine(i + " " + buffer[i].ToString("x8"));
                     WriteToVRAM(buffer[i]);
                 }
             }
@@ -306,22 +302,11 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        //This needs to go away once a BGR bitmap is achieved
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int get555Color(ushort val) {
-            byte m = (byte)(val >> 15);
-            byte r = (byte)((val & 0x1F) << 3);
-            byte g = (byte)(((val >> 5) & 0x1F) << 3);
-            byte b = (byte)(((val >> 10) & 0x1F) << 3);
-
-            return (m << 24 | r << 16 | g << 8 | b);
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DecodeGP0Command(uint value) {
             if (pointer == 0) {
                 command = value >> 24;
-                commandSize = CommandSize[command];
+                commandSize = CommandSizeTable[(int)command];
                 //Console.WriteLine("[GPU] Direct GP0 COMMAND: {0} size: {1}", value.ToString("x8"), commandSize);
             }
 
@@ -350,25 +335,23 @@ namespace ProjectPSX.Devices {
                 }
             }
             pointer = 0;
-
             //Console.WriteLine("fin");
         }
-
 
         private void ExecuteGP0(uint opcode, Span<uint> buffer) {
             //Console.WriteLine("GP0 Command: " + opcode.ToString("x2"));
             switch (opcode) {
-                case 0x00: GP0_NOP(); break;
-                case 0x01: GP0_MemClearCache(); break;
-                case 0x02: GP0_FillRectVRAM(buffer); break;
-                case 0x1F: GP0_InterruptRequest(); break;
+                case 0x00: GP0_00_NOP(); break;
+                case 0x01: GP0_01_MemClearCache(); break;
+                case 0x02: GP0_02_FillRectVRAM(buffer); break;
+                case 0x1F: GP0_1F_InterruptRequest(); break;
 
-                case 0xE1: GP0_SetDrawMode(buffer); break;
-                case 0xE2: GP0_SetTextureWindow(buffer); break;
-                case 0xE3: GP0_SetDrawingAreaTopLeft(buffer); break;
-                case 0xE4: GP0_SetDrawingAreaBottomRight(buffer); break;
-                case 0xE5: GP0_SetDrawingOffset(buffer); break;
-                case 0xE6: GP0_SetMaskBit(buffer); break;
+                case 0xE1: GP0_E1_SetDrawMode(buffer[pointer++]); break;
+                case 0xE2: GP0_E2_SetTextureWindow(buffer[pointer++]); break;
+                case 0xE3: GP0_E3_SetDrawingAreaTopLeft(buffer[pointer++]); break;
+                case 0xE4: GP0_E4_SetDrawingAreaBottomRight(buffer[pointer++]); break;
+                case 0xE5: GP0_E5_SetDrawingOffset(buffer[pointer++]); break;
+                case 0xE6: GP0_E6_SetMaskBit(buffer[pointer++]); break;
 
                 case uint _ when opcode >= 0x20 && opcode <= 0x3F:
                     GP0_RenderPolygon(buffer); break;
@@ -383,153 +366,45 @@ namespace ProjectPSX.Devices {
                 case uint _ when opcode >= 0xC0 && opcode <= 0xDF:
                     GP0_MemCopyRectVRAMtoCPU(buffer); break;
                 case uint _ when (opcode >= 0x3 && opcode <= 0x1E) || opcode == 0xE0 || opcode >= 0xE7 && opcode <= 0xEF:
-                    GP0_NOP(); break;
+                    GP0_00_NOP(); break;
 
-                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_NOP(); break;
+                default: Console.WriteLine("[GPU] Unsupported GP0 Command " + opcode.ToString("x8")); /*Console.ReadLine();*/ GP0_00_NOP(); break;
             }
         }
 
-        private void GP0_InterruptRequest() {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GP0_00_NOP() => pointer++;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GP0_01_MemClearCache() => pointer++;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GP0_02_FillRectVRAM(Span<uint> buffer) {
+            color0.val = buffer[pointer++];
+            uint yx = buffer[pointer++];
+            uint hw = buffer[pointer++];
+
+            ushort x = (ushort)(yx & 0x3F0);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
+
+            ushort w = (ushort)(((hw & 0x3FF) + 0xF) & ~0xF);
+            ushort h = (ushort)((hw >> 16) & 0x1FF);
+
+            int color = (color0.r << 16 | color0.g << 8 | color0.b);
+
+            for (int yPos = y; yPos < h + y; yPos++) {
+                for (int xPos = x; xPos < w + x; xPos++) {
+                    vram.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GP0_1F_InterruptRequest() {
             pointer++;
             isInterruptRequested = true;
         }
 
-        //int renderline;
-        //int rasterizeline;
-        private void GP0_RenderLine(Span<uint> buffer) {
-            //Console.WriteLine("size " + commandBuffer.Count);
-            //int arguments = 0;
-            uint command = buffer[pointer++];
-            //arguments++;
-
-            uint color1 = command & 0xFFFFFF;
-            uint color2 = color1;
-
-            bool isPoly = (command & (1 << 27)) != 0;
-            bool isShaded = (command & (1 << 28)) != 0;
-            bool isTransparent = (command & (1 << 25)) != 0;
-
-            //if (isTextureMapped /*isRaw*/) return;
-
-            uint v1 = buffer[pointer++];
-            //arguments++;
-
-            if (isShaded) {
-                color2 = buffer[pointer++];
-                //arguments++;
-            }
-            uint v2 = buffer[pointer++];
-            //arguments++;
-
-            rasterizeLine(v1, v2, color1, color2, isTransparent);
-
-            if (!isPoly) return;
-            //renderline = 0;
-            while (/*arguments < 0xF &&*/ (buffer[pointer] & 0xF000_F000) != 0x5000_5000) {
-                //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
-                //arguments++;
-                color1 = color2;
-                if (isShaded) {
-                    color2 = buffer[pointer++];
-                    //arguments++;
-                }
-                v1 = v2;
-                v2 = buffer[pointer++];
-                rasterizeLine(v1, v2, color1, color2, isTransparent);
-                //Console.WriteLine("RASTERIZE " + ++rasterizeline);
-                //window.update(VRAM.Bits);
-                //Console.ReadLine();
-            }
-
-            /*if (arguments != 0xF) */
-            pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static short signed11bit(uint n) {
-            return (short)(((int)n << 21) >> 21);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void rasterizeLine(uint v1, uint v2, uint color1, uint color2, bool isTransparent) {
-            short x = signed11bit(v1 & 0xFFFF);
-            short y = signed11bit(v1 >> 16);
-
-            short x2 = signed11bit(v2 & 0xFFFF);
-            short y2 = signed11bit(v2 >> 16);
-
-            if (Math.Abs(x - x2) > 0x3FF || Math.Abs(y - y2) > 0x1FF) return;
-
-            x += drawingXOffset;
-            y += drawingYOffset;
-
-            x2 += drawingXOffset;
-            y2 += drawingYOffset;
-
-            int w = x2 - x;
-            int h = y2 - y;
-            int dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
-
-            if (w < 0) dx1 = -1; else if (w > 0) dx1 = 1;
-            if (h < 0) dy1 = -1; else if (h > 0) dy1 = 1;
-            if (w < 0) dx2 = -1; else if (w > 0) dx2 = 1;
-
-            int longest = Math.Abs(w);
-            int shortest = Math.Abs(h);
-
-            if (!(longest > shortest)) {
-                longest = Math.Abs(h);
-                shortest = Math.Abs(w);
-                if (h < 0) dy2 = -1; else if (h > 0) dy2 = 1;
-                dx2 = 0;
-            }
-
-            int numerator = longest >> 1;
-
-            for (int i = 0; i <= longest; i++) {
-                float ratio = (float)i / longest;
-                int color = interpolate(color1, color2, ratio);
-
-                //x = (short)Math.Min(Math.Max(x, drawingAreaLeft), drawingAreaRight); //this generates glitches on RR4
-                //y = (short)Math.Min(Math.Max(y, drawingAreaTop), drawingAreaBottom);
-
-                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
-                    //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                    if (isTransparent) {
-                        color = handleSemiTransp(x, y, color, transparency);
-                    }
-
-                    color |= maskWhileDrawing << 24;
-
-                    vram.SetPixel(x, y, color);
-                }
-
-                numerator += shortest;
-                if (!(numerator < longest)) {
-                    numerator -= longest;
-                    x += (short)dx1;
-                    y += (short)dy1;
-                } else {
-                    x += (short)dx2;
-                    y += (short)dy2;
-                }
-            }
-            //Console.ReadLine();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int interpolate(uint c1, uint c2, float ratio) {
-            color1.val = c1;
-            color2.val = c2;
-
-            byte r = (byte)(color2.r * ratio + color1.r * (1 - ratio));
-            byte g = (byte)(color2.g * ratio + color1.g * (1 - ratio));
-            byte b = (byte)(color2.b * ratio + color1.b * (1 - ratio));
-
-            return (r << 16 | g << 8 | b);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void GP0_RenderPolygon(Span<uint> buffer) {
             uint command = buffer[pointer];
             //Console.WriteLine(command.ToString("x8") +  " "  + commandBuffer.Length + " " + pointer);
@@ -560,7 +435,7 @@ namespace ProjectPSX.Devices {
             }
 
             uint palette = 0;
-            uint texpage = (uint)transparency << 5;
+            uint texpage = (uint)transparencyMode << 5;
 
             for (int i = 0; i < vertexN; i++) {
                 if (isShaded) c[i] = buffer[pointer++];
@@ -574,7 +449,8 @@ namespace ProjectPSX.Devices {
                     t[i].val = (ushort)textureData;
                     if (i == 0) {
                         palette = textureData >> 16;
-                    } else if (i == 1) {
+                    }
+                    else if (i == 1) {
                         texpage = textureData >> 16;
                     }
                 }
@@ -584,8 +460,6 @@ namespace ProjectPSX.Devices {
             if (isQuad) rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
         }
 
-        //Mother of parameters. this should be better when c#8 ranges come into play. I could declare 2 new arrays segments but i dont like them
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Primitive primitive) {
 
             int area = orient2d(v0, v1, v2);
@@ -628,7 +502,7 @@ namespace ProjectPSX.Devices {
             int w2_row = orient2d(v0, v1, min);
 
             int depth = 0;
-            int semiTransp = (int)((texpage >> 5) & 0x3);
+            int semiTransparencyMode = (int)((texpage >> 5) & 0x3);
             Point2D clut = new Point2D();
             Point2D textureBase = new Point2D();
 
@@ -701,7 +575,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                            color = handleSemiTransp(x, y, color, semiTransp);
+                            color = handleSemiTransp(x, y, color, semiTransparencyMode);
                         }
 
                         color |= maskWhileDrawing << 24;
@@ -720,76 +594,119 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool isTopLeft(Point2D a, Point2D b) {
-            return a.y == b.y && b.x > a.x || b.y < a.y;
+        private void GP0_RenderLine(Span<uint> buffer) {
+            //Console.WriteLine("size " + commandBuffer.Count);
+            //int arguments = 0;
+            uint command = buffer[pointer++];
+            //arguments++;
+
+            uint color1 = command & 0xFFFFFF;
+            uint color2 = color1;
+
+            bool isPoly = (command & (1 << 27)) != 0;
+            bool isShaded = (command & (1 << 28)) != 0;
+            bool isTransparent = (command & (1 << 25)) != 0;
+
+            //if (isTextureMapped /*isRaw*/) return;
+
+            uint v1 = buffer[pointer++];
+            //arguments++;
+
+            if (isShaded) {
+                color2 = buffer[pointer++];
+                //arguments++;
+            }
+            uint v2 = buffer[pointer++];
+            //arguments++;
+
+            rasterizeLine(v1, v2, color1, color2, isTransparent);
+
+            if (!isPoly) return;
+            //renderline = 0;
+            while (/*arguments < 0xF &&*/ (buffer[pointer] & 0xF000_F000) != 0x5000_5000) {
+                //Console.WriteLine("DOING ANOTHER LINE " + ++renderline);
+                //arguments++;
+                color1 = color2;
+                if (isShaded) {
+                    color2 = buffer[pointer++];
+                    //arguments++;
+                }
+                v1 = v2;
+                v2 = buffer[pointer++];
+                rasterizeLine(v1, v2, color1, color2, isTransparent);
+                //Console.WriteLine("RASTERIZE " + ++rasterizeline);
+                //window.update(VRAM.Bits);
+                //Console.ReadLine();
+            }
+
+            /*if (arguments != 0xF) */
+            pointer++; // discard 5555_5555 termination (need to rewrite all this from the GP0...)
         }
 
-        private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
-            color0.val = (uint)vram.GetPixelRGB888(x, y); //back
-            color1.val = (uint)color; //front
-            switch (semiTranspMode) {
-                case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
-                    color1.r = (byte)((color0.r + color1.r) >> 1);
-                    color1.g = (byte)((color0.g + color1.g) >> 1);
-                    color1.b = (byte)((color0.b + color1.b) >> 1);
-                    break;
-                case 1://1.0 x B + 1.0 x F    ;aka B+F
-                    color1.r = clampToFF(color0.r + color1.r);
-                    color1.g = clampToFF(color0.g + color1.g);
-                    color1.b = clampToFF(color0.b + color1.b);
-                    break;
-                case 2: //1.0 x B - 1.0 x F    ;aka B-F
-                    color1.r = clampToZero(color0.r - color1.r);
-                    color1.g = clampToZero(color0.g - color1.g);
-                    color1.b = clampToZero(color0.b - color1.b);
-                    break;
-                case 3: //1.0 x B +0.25 x F    ;aka B+F/4
-                    color1.r = clampToFF(color0.r + (color1.r >> 2));
-                    color1.g = clampToFF(color0.g + (color1.g >> 2));
-                    color1.b = clampToFF(color0.b + (color1.b >> 2));
-                    break;
-            }//actually doing RGB calcs on BGR struct...
-            return (int)color1.val;
-        }
+        private void rasterizeLine(uint v1, uint v2, uint color1, uint color2, bool isTransparent) {
+            short x = signed11bit(v1 & 0xFFFF);
+            short y = signed11bit(v1 >> 16);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte clampToZero(int v) {
-            if (v < 0) return 0;
-            else return (byte)v;
-        }
+            short x2 = signed11bit(v2 & 0xFFFF);
+            short y2 = signed11bit(v2 >> 16);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte clampToFF(int v) {
-            if (v > 0xFF) return 0xFF;
-            else return (byte)v;
-        }
+            if (Math.Abs(x - x2) > 0x3FF || Math.Abs(y - y2) > 0x1FF) return;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetRgbColor(uint value) {
-            color0.val = value;
-            return (color0.m << 24 | color0.r << 16 | color0.g << 8 | color0.b);
-        }
+            x += drawingXOffset;
+            y += drawingYOffset;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void GP0_FillRectVRAM(Span<uint> buffer) {
-            color0.val = buffer[pointer++];
-            uint yx = buffer[pointer++];
-            uint hw = buffer[pointer++];
+            x2 += drawingXOffset;
+            y2 += drawingYOffset;
 
-            ushort x = (ushort)(yx & 0x3F0);
-            ushort y = (ushort)((yx >> 16) & 0x1FF);
+            int w = x2 - x;
+            int h = y2 - y;
+            int dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
 
-            ushort w = (ushort)(((hw & 0x3FF) + 0xF) & ~0xF);
-            ushort h = (ushort)((hw >> 16) & 0x1FF);
+            if (w < 0) dx1 = -1; else if (w > 0) dx1 = 1;
+            if (h < 0) dy1 = -1; else if (h > 0) dy1 = 1;
+            if (w < 0) dx2 = -1; else if (w > 0) dx2 = 1;
 
-            int color = (color0.r << 16 | color0.g << 8 | color0.b);
+            int longest = Math.Abs(w);
+            int shortest = Math.Abs(h);
 
-           for (int yPos = y; yPos < h + y; yPos++) {
-               for (int xPos = x; xPos < w + x; xPos++) {
-                   vram.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
-               }
-           }
+            if (!(longest > shortest)) {
+                longest = Math.Abs(h);
+                shortest = Math.Abs(w);
+                if (h < 0) dy2 = -1; else if (h > 0) dy2 = 1;
+                dx2 = 0;
+            }
+
+            int numerator = longest >> 1;
+
+            for (int i = 0; i <= longest; i++) {
+                float ratio = (float)i / longest;
+                int color = interpolate(color1, color2, ratio);
+
+                //x = (short)Math.Min(Math.Max(x, drawingAreaLeft), drawingAreaRight); //this generates glitches on RR4
+                //y = (short)Math.Min(Math.Max(y, drawingAreaTop), drawingAreaBottom);
+
+                if (x >= drawingAreaLeft && x < drawingAreaRight && y >= drawingAreaTop && y < drawingAreaBottom) {
+                    //if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
+                    if (isTransparent) {
+                        color = handleSemiTransp(x, y, color, transparencyMode);
+                    }
+
+                    color |= maskWhileDrawing << 24;
+
+                    vram.SetPixel(x, y, color);
+                }
+
+                numerator += shortest;
+                if (!(numerator < longest)) {
+                    numerator -= longest;
+                    x += (short)dx1;
+                    y += (short)dy1;
+                } else {
+                    x += (short)dx2;
+                    y += (short)dy2;
+                }
+            }
+            //Console.ReadLine();
         }
 
         private void GP0_RenderRectangle(Span<uint> buffer) {
@@ -868,7 +785,7 @@ namespace ProjectPSX.Devices {
             int height = Math.Min(vec[3].y, drawingAreaBottom);
 
             int depth = (int)(texpage >> 7) & 0x3;
-            int semiTransp = (int)((texpage >> 5) & 0x3);
+            int semiTransparencyMode = (int)((texpage >> 5) & 0x3);
 
             Point2D clut = new Point2D();
             clut.x = (short)((palette & 0x3f) << 4);
@@ -913,7 +830,7 @@ namespace ProjectPSX.Devices {
                     }
 
                     if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                        color = handleSemiTransp(x, y, color, semiTransp);
+                        color = handleSemiTransp(x, y, color, semiTransparencyMode);
                     }
 
                     color |= maskWhileDrawing << 24;
@@ -922,48 +839,6 @@ namespace ProjectPSX.Devices {
                 }
 
             }
-        }
-
-        private void GP0_MemCopyRectVRAMtoCPU(Span<uint> buffer) {
-            pointer++; //Command/Color parameter unused
-            uint yx = buffer[pointer++];
-            uint wh = buffer[pointer++];
-
-            ushort x = (ushort)(yx & 0x3FF);
-            ushort y = (ushort)((yx >> 16) & 0x1FF);
-
-            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
-            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
-
-            vram_coord.x = x;
-            vram_coord.origin_x = x;
-            vram_coord.y = y;
-            vram_coord.origin_y = y;
-            vram_coord.w = w;
-            vram_coord.h = h;
-            vram_coord.size = h * w;
-        }
-
-        private void GP0_MemCopyRectCPUtoVRAM(Span<uint> buffer) { //todo rewrite VRAM coord struct mess
-            pointer++; //Command/Color parameter unused
-            uint yx = buffer[pointer++];
-            uint wh = buffer[pointer++];
-
-            ushort x = (ushort)(yx & 0x3FF);
-            ushort y = (ushort)((yx >> 16) & 0x1FF);
-
-            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
-            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
-
-            vram_coord.x = x;
-            vram_coord.origin_x = x;
-            vram_coord.y = y;
-            vram_coord.origin_y = y;
-            vram_coord.w = w;
-            vram_coord.h = h;
-            vram_coord.size = ((h * w) + 1) >> 1;
-
-            mode = Mode.VRAM;
         }
 
         private void GP0_MemCopyRectVRAMtoVRAM(Span<uint> buffer) {
@@ -997,8 +872,46 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private void GP0_MemClearCache() {
-            pointer++;
+        private void GP0_MemCopyRectCPUtoVRAM(Span<uint> buffer) { //todo rewrite VRAM coord struct mess
+            pointer++; //Command/Color parameter unused
+            uint yx = buffer[pointer++];
+            uint wh = buffer[pointer++];
+
+            ushort x = (ushort)(yx & 0x3FF);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
+
+            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
+            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
+
+            vram_coord.x = x;
+            vram_coord.origin_x = x;
+            vram_coord.y = y;
+            vram_coord.origin_y = y;
+            vram_coord.w = w;
+            vram_coord.h = h;
+            vram_coord.size = ((h * w) + 1) >> 1;
+
+            mode = Mode.VRAM;
+        }
+
+        private void GP0_MemCopyRectVRAMtoCPU(Span<uint> buffer) {
+            pointer++; //Command/Color parameter unused
+            uint yx = buffer[pointer++];
+            uint wh = buffer[pointer++];
+
+            ushort x = (ushort)(yx & 0x3FF);
+            ushort y = (ushort)((yx >> 16) & 0x1FF);
+
+            ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
+            ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
+
+            vram_coord.x = x;
+            vram_coord.origin_x = x;
+            vram_coord.y = y;
+            vram_coord.origin_y = y;
+            vram_coord.w = w;
+            vram_coord.h = h;
+            vram_coord.size = h * w;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1062,49 +975,20 @@ namespace ProjectPSX.Devices {
             return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
         }
 
-        private void GP0_SetTextureWindow(Span<uint> buffer) {
-            uint val = buffer[pointer++];
-
-            textureWindowMaskX = (byte)(val & 0x1F);
-            textureWindowMaskY = (byte)((val >> 5) & 0x1F);
-            textureWindowOffsetX = (byte)((val >> 10) & 0x1F);
-            textureWindowOffsetY = (byte)((val >> 15) & 0x1F);
-        }
-
-        private void GP0_SetMaskBit(Span<uint> buffer) {
-            uint val = buffer[pointer++];
-
-            maskWhileDrawing = (int)(val & 0x1);
-            checkMaskBeforeDraw = (val & 0x2) != 0;
-        }
-
-        private void GP0_SetDrawingOffset(Span<uint> buffer) {
-            uint val = buffer[pointer++];
-
-            drawingXOffset = signed11bit(val & 0x7FF);
-            drawingYOffset = signed11bit((val >> 11) & 0x7FF);
-        }
-
-        private void GP0_NOP() {
-            pointer++;
-        }
-
         private void forceSetE1(uint texpage) {
             textureXBase = (byte)(texpage & 0xF);
             textureYBase = (byte)((texpage >> 4) & 0x1);
-            transparency = (byte)((texpage >> 5) & 0x3);
+            transparencyMode = (byte)((texpage >> 5) & 0x3);
             textureDepth = (byte)((texpage >> 7) & 0x3);
             isTextureDisabled = isTextureDisabledAllowed && ((texpage >> 11) & 0x1) != 0;
 
             //Console.WriteLine("[GPU] [GP0] Force DrawMode ");
         }
 
-        private void GP0_SetDrawMode(Span<uint> buffer) {
-            uint val = buffer[pointer++];
-
+        private void GP0_E1_SetDrawMode(uint val) {
             textureXBase = (byte)(val & 0xF);
             textureYBase = (byte)((val >> 4) & 0x1);
-            transparency = (byte)((val >> 5) & 0x3);
+            transparencyMode = (byte)((val >> 5) & 0x3);
             textureDepth = (byte)((val >> 7) & 0x3);
             isDithered = ((val >> 9) & 0x1) != 0;
             isDrawingToDisplayAllowed = ((val >> 10) & 0x1) != 0;
@@ -1115,97 +999,101 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[GPU] [GP0] DrawMode ");
         }
 
-        private void GP0_SetDrawingAreaTopLeft(Span<uint> buffer) {
-            uint val = buffer[pointer++];
+        private void GP0_E2_SetTextureWindow(uint val) {
+            textureWindowMaskX = (byte)(val & 0x1F);
+            textureWindowMaskY = (byte)((val >> 5) & 0x1F);
+            textureWindowOffsetX = (byte)((val >> 10) & 0x1F);
+            textureWindowOffsetY = (byte)((val >> 15) & 0x1F);
+        }
 
+        private void GP0_E3_SetDrawingAreaTopLeft(uint val) {
             drawingAreaTop = (ushort)((val >> 10) & 0x1FF);
             drawingAreaLeft = (ushort)(val & 0x3FF);
         }
 
-        private void GP0_SetDrawingAreaBottomRight(Span<uint> buffer) {
-            uint val = buffer[pointer++];
-
+        private void GP0_E4_SetDrawingAreaBottomRight(uint val) {
             drawingAreaBottom = (ushort)((val >> 10) & 0x1FF);
             drawingAreaRight = (ushort)(val & 0x3FF);
         }
 
+        private void GP0_E5_SetDrawingOffset(uint val) {
+            drawingXOffset = signed11bit(val & 0x7FF);
+            drawingYOffset = signed11bit((val >> 11) & 0x7FF);
+        }
+
+        private void GP0_E6_SetMaskBit(uint val) {
+            maskWhileDrawing = (int)(val & 0x1);
+            checkMaskBeforeDraw = (val & 0x2) != 0;
+        }
+
         public void writeGP1(uint value) {
-            //Console.WriteLine("[GPU] GP1 Write Value: {0}", value.ToString("x8"));
-            ////Console.ReadLine();
-            //Execute GP1 Command
+            //Console.WriteLine($"[GPU] GP1 Write Value: {value:x8}");
             uint opcode = value >> 24;
             switch (opcode) {
-                case 0x00: GP1_ResetGPU(); break;
-                case 0x01: GP1_ResetCommandBuffer(); break;
-                case 0x02: GP1_AckGPUInterrupt(); break;
-                case 0x03: GP1_DisplayEnable(value); break;
-                case 0x04: GP1_DMADirection(value); break;
-                case 0x05: GP1_DisplayVRAMStart(value); break;
-                case 0x06: GP1_DisplayHorizontalRange(value); break;
-                case 0x07: GP1_DisplayVerticalRange(value); break;
-                case 0x08: GP1_DisplayMode(value); break;
-                case 0x09: GP1_TextureDisable(value); break;
+                case 0x00: GP1_00_ResetGPU(); break;
+                case 0x01: GP1_01_ResetCommandBuffer(); break;
+                case 0x02: GP1_02_AckGPUInterrupt(); break;
+                case 0x03: GP1_03_DisplayEnable(value); break;
+                case 0x04: GP1_04_DMADirection(value); break;
+                case 0x05: GP1_05_DisplayVRAMStart(value); break;
+                case 0x06: GP1_06_DisplayHorizontalRange(value); break;
+                case 0x07: GP1_07_DisplayVerticalRange(value); break;
+                case 0x08: GP1_08_DisplayMode(value); break;
+                case 0x09: GP1_09_TextureDisable(value); break;
                 case uint _ when opcode >= 0x10 && opcode <= 0x1F:
                     GP1_GPUInfo(value); break;
                 default: Console.WriteLine("[GPU] Unsupported GP1 Command " + opcode.ToString("x8")); Console.ReadLine(); break;
             }
         }
 
-        private void GP1_TextureDisable(uint value) {
-            isTextureDisabledAllowed = (value & 0x1) != 0;
+        private void GP1_00_ResetGPU() {
+            GP1_01_ResetCommandBuffer();
+            GP1_02_AckGPUInterrupt();
+            GP1_03_DisplayEnable(1);
+            GP1_04_DMADirection(0);
+            GP1_05_DisplayVRAMStart(0);
+            GP1_06_DisplayHorizontalRange(0xC00200);
+            GP1_07_DisplayVerticalRange(0x100010);
+            GP1_08_DisplayMode(0);
+
+            GP0_E1_SetDrawMode(0);
+            GP0_E2_SetTextureWindow(0);
+            GP0_E3_SetDrawingAreaTopLeft(0);
+            GP0_E4_SetDrawingAreaBottomRight(0);
+            GP0_E5_SetDrawingOffset(0);
+            GP0_E6_SetMaskBit(0);
         }
 
-        private void GP1_GPUInfo(uint value) {
-            uint info = value & 0xF;
-            switch (info) {
-                case 0x2: GPUREAD = (uint)(textureWindowOffsetY << 15 | textureWindowOffsetX << 10 | textureWindowMaskY << 5 | textureWindowMaskX); break;
-                case 0x3: GPUREAD = (uint)(drawingAreaTop << 10 | drawingAreaLeft); break;
-                case 0x4: GPUREAD = (uint)(drawingAreaBottom << 10 | drawingAreaRight); break;
-                case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | (ushort)drawingXOffset); break;
-                case 0x7: GPUREAD = 2; break;
-                case 0x8: GPUREAD = 0; break;
-                default: Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
-            }
-        }
+        private void GP1_01_ResetCommandBuffer() => pointer = 0;
 
-        private void GP1_ResetCommandBuffer() {
-            pointer = 0;
-        }
+        private void GP1_02_AckGPUInterrupt() => isInterruptRequested = false;
 
-        private void GP1_AckGPUInterrupt() {
-            isInterruptRequested = false;
-        }
+        private void GP1_03_DisplayEnable(uint value) => isDisplayDisabled = (value & 1) != 0;
 
-        private void GP1_DisplayEnable(uint value) {
-            isDisplayDisabled = (value & 1) != 0;
-        }
+        private void GP1_04_DMADirection(uint value) => dmaDirection = (byte)(value & 0x3);
 
-        private void GP1_DisplayVerticalRange(uint value) {
-            displayY1 = (ushort)(value & 0x3FF);
-            displayY2 = (ushort)((value >> 10) & 0x3FF);
-
-            window.SetVerticalRange(displayY1, displayY2);
-        }
-
-        private void GP1_DisplayHorizontalRange(uint value) {
-            displayX1 = (ushort)(value & 0xFFF);
-            displayX2 = (ushort)((value >> 12) & 0xFFF);
-
-            window.SetHorizontalRange(displayX1, displayX2);
-        }
-
-        private void GP1_DisplayVRAMStart(uint value) {
+        private void GP1_05_DisplayVRAMStart(uint value) {
             displayVRAMXStart = (ushort)(value & 0x3FE);
             displayVRAMYStart = (ushort)((value >> 10) & 0x1FE);
 
             window.SetVRAMStart(displayVRAMXStart, displayVRAMYStart);
         }
 
-        private void GP1_DMADirection(uint value) {
-            dmaDirection = (byte)(value & 0x3);
+        private void GP1_06_DisplayHorizontalRange(uint value) {
+            displayX1 = (ushort)(value & 0xFFF);
+            displayX2 = (ushort)((value >> 12) & 0xFFF);
+
+            window.SetHorizontalRange(displayX1, displayX2);
         }
 
-        private void GP1_DisplayMode(uint value) {
+        private void GP1_07_DisplayVerticalRange(uint value) {
+            displayY1 = (ushort)(value & 0x3FF);
+            displayY2 = (ushort)((value >> 10) & 0x3FF);
+
+            window.SetVerticalRange(displayY1, displayY2);
+        }
+
+        private void GP1_08_DisplayMode(uint value) {
             horizontalResolution1 = (byte)(value & 0x3);
             isVerticalResolution480 = (value & 0x4) != 0;
             isPal = (value & 0x8) != 0;
@@ -1225,48 +1113,19 @@ namespace ProjectPSX.Devices {
             window.SetDisplayMode(horizontalRes, verticalRes, is24BitDepth);
         }
 
-        private void GP1_ResetGPU() {
-            GP1_ResetCommandBuffer();
-            GP1_AckGPUInterrupt();
-            GP1_DisplayEnable(1);
-            GP1_DMADirection(0);
-            GP1_DisplayVRAMStart(0);
-            GP1_DisplayHorizontalRange(0xC00200);
-            GP1_DisplayVerticalRange(0x100010);
-            GP1_DisplayMode(0);
+        private void GP1_09_TextureDisable(uint value) => isTextureDisabledAllowed = (value & 0x1) != 0;
 
-            //GP0 E1
-            textureXBase = 0;
-            textureYBase = 0;
-            transparency = 0;
-            textureDepth = 0;
-            isDithered = false;
-            isDrawingToDisplayAllowed = false;
-            isTextureDisabled = false;
-            isTexturedRectangleXFlipped = false;
-            isTexturedRectangleYFlipped = false;
-
-            //GP0 E2
-            textureWindowMaskX = 0;
-            textureWindowMaskY = 0;
-            textureWindowOffsetX = 0;
-            textureWindowOffsetY = 0;
-
-            //GP0 E3
-            drawingAreaTop = 0;
-            drawingAreaLeft = 0;
-
-            //GP0 E4
-            drawingAreaBottom = 0;
-            drawingAreaRight = 0;
-
-            //GP0 E5
-            drawingXOffset = 0;
-            drawingYOffset = 0;
-
-            //GP0 E6
-            maskWhileDrawing = 0;
-            checkMaskBeforeDraw = false;
+        private void GP1_GPUInfo(uint value) {
+            uint info = value & 0xF;
+            switch (info) {
+                case 0x2: GPUREAD = (uint)(textureWindowOffsetY << 15 | textureWindowOffsetX << 10 | textureWindowMaskY << 5 | textureWindowMaskX); break;
+                case 0x3: GPUREAD = (uint)(drawingAreaTop << 10 | drawingAreaLeft); break;
+                case 0x4: GPUREAD = (uint)(drawingAreaBottom << 10 | drawingAreaRight); break;
+                case 0x5: GPUREAD = (uint)(drawingYOffset << 11 | (ushort)drawingXOffset); break;
+                case 0x7: GPUREAD = 2; break;
+                case 0x8: GPUREAD = 0; break;
+                default: Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
+            }
         }
 
         private uint getTexpageFromGPU() {
@@ -1278,36 +1137,110 @@ namespace ProjectPSX.Devices {
             texpage |= (isDrawingToDisplayAllowed ? 1u : 0) << 10;
             texpage |= (isDithered ? 1u : 0) << 9;
             texpage |= (uint)(textureDepth << 7);
-            texpage |= (uint)(transparency << 5);
+            texpage |= (uint)(transparencyMode << 5);
             texpage |= (uint)(textureYBase << 4);
             texpage |= textureXBase;
 
             return texpage;
         }
 
+        private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
+            color0.val = (uint)vram.GetPixelRGB888(x, y); //back
+            color1.val = (uint)color; //front
+            switch (semiTranspMode) {
+                case 0: //0.5 x B + 0.5 x F    ;aka B/2+F/2
+                    color1.r = (byte)((color0.r + color1.r) >> 1);
+                    color1.g = (byte)((color0.g + color1.g) >> 1);
+                    color1.b = (byte)((color0.b + color1.b) >> 1);
+                    break;
+                case 1://1.0 x B + 1.0 x F    ;aka B+F
+                    color1.r = clampToFF(color0.r + color1.r);
+                    color1.g = clampToFF(color0.g + color1.g);
+                    color1.b = clampToFF(color0.b + color1.b);
+                    break;
+                case 2: //1.0 x B - 1.0 x F    ;aka B-F
+                    color1.r = clampToZero(color0.r - color1.r);
+                    color1.g = clampToZero(color0.g - color1.g);
+                    color1.b = clampToZero(color0.b - color1.b);
+                    break;
+                case 3: //1.0 x B +0.25 x F    ;aka B+F/4
+                    color1.r = clampToFF(color0.r + (color1.r >> 2));
+                    color1.g = clampToFF(color0.g + (color1.g >> 2));
+                    color1.b = clampToFF(color0.b + (color1.b >> 2));
+                    break;
+            }//actually doing RGB calcs on BGR struct...
+            return (int)color1.val;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte clampToZero(int v) {
+            if (v < 0) return 0;
+            else return (byte)v;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte clampToFF(int v) {
+            if (v > 0xFF) return 0xFF;
+            else return (byte)v;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetRgbColor(uint value) {
+            color0.val = value;
+            return (color0.m << 24 | color0.r << 16 | color0.g << 8 | color0.b);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool isTopLeft(Point2D a, Point2D b) => a.y == b.y && b.x > a.x || b.y < a.y;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int interpolate(uint c1, uint c2, float ratio) {
+            color1.val = c1;
+            color2.val = c2;
+
+            byte r = (byte)(color2.r * ratio + color1.r * (1 - ratio));
+            byte g = (byte)(color2.g * ratio + color1.g * (1 - ratio));
+            byte b = (byte)(color2.b * ratio + color1.b * (1 - ratio));
+
+            return (r << 16 | g << 8 | b);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static short signed11bit(uint n) {
+            return (short)(((int)n << 21) >> 21);
+        }
+
+        //This needs to go away once a BGR bitmap is achieved
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int get555Color(ushort val) {
+            byte m = (byte)(val >> 15);
+            byte r = (byte)((val & 0x1F) << 3);
+            byte g = (byte)(((val >> 5) & 0x1F) << 3);
+            byte b = (byte)(((val >> 10) & 0x1F) << 3);
+
+            return (m << 24 | r << 16 | g << 8 | b);
+        }
+
         //This is only needed for the Direct GP0 commands as the command number needs to be
         //known ahead of the first command on queue.
-        //GP0 DMA buffer write already doesn't use this.
-        //TODO: Rework the direct GP0 Write as if they were GP0 DMA and execute the buffer.
-        //Maybe fake a 16/32 buffer and draw then. Maybe is faster this?
-        private static readonly int[] CommandSize = {
-        //0  1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-         1,  1,  3,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //0
-         1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //1
-         4,  4,  4,  4,  7,  7,  7,  7,  5,  5,  5,  5,  9,  9,  9,  9, //2
-         6,  6,  6,  6,  9,  9,  9,  9,  8,  8,  8,  8, 12, 12, 12, 12, //3
-         3,  3,  3,  3,  3,  3,  3,  3, 16, 16, 16, 16, 16, 16, 16, 16, //4
-         4,  4,  4,  4,  4,  4,  4,  4, 16, 16, 16, 16, 16, 16, 16, 16, //5
-         3,  3,  3,  1,  4,  4,  4,  4,  2,  1,  2,  1,  3,  3,  3,  3, //6
-         2,  1,  2,  1,  3,  3,  3,  3,  2,  1,  2,  2,  3,  3,  3,  3, //7
-         4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4, //8
-         4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4, //9
-         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //A
-         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //B
-         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //C
-         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //D
-         1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //E
-         1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1  //F
-    };
+        private static ReadOnlySpan<byte> CommandSizeTable => new byte[] {
+            //0  1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+             1,  1,  3,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //0
+             1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //1
+             4,  4,  4,  4,  7,  7,  7,  7,  5,  5,  5,  5,  9,  9,  9,  9, //2
+             6,  6,  6,  6,  9,  9,  9,  9,  8,  8,  8,  8, 12, 12, 12, 12, //3
+             3,  3,  3,  3,  3,  3,  3,  3, 16, 16, 16, 16, 16, 16, 16, 16, //4
+             4,  4,  4,  4,  4,  4,  4,  4, 16, 16, 16, 16, 16, 16, 16, 16, //5
+             3,  3,  3,  1,  4,  4,  4,  4,  2,  1,  2,  1,  3,  3,  3,  3, //6
+             2,  1,  2,  1,  3,  3,  3,  3,  2,  1,  2,  2,  3,  3,  3,  3, //7
+             4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4, //8
+             4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4, //9
+             3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //A
+             3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //B
+             3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //C
+             3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, //D
+             1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, //E
+             1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1  //F
+        };
     }
 }
