@@ -171,16 +171,8 @@ namespace ProjectPSX.Devices {
             private void handleDMA() {
                 if (!isActive()) return;
                 if (syncMode == 0) {
-                    if (blockSize == 0) {
-                        Console.WriteLine($"[DMA] [Channel {channelNumber}] WARNING UNHANDLED BLOCKSIZE 0 = 0xFFFF");
-                        Console.ReadLine();
-                    }
                     blockCopy(blockSize);
                 } else if (syncMode == 1) {
-                    if (blockSize == 0) {
-                        Console.WriteLine($"[DMA] [Channel {channelNumber}] WARNING UNHANDLED BLOCKSIZE 0 = 0xFFFF");
-                        Console.ReadLine();
-                    }
                     blockCopy(blockSize * blockCount);
                 } else if (syncMode == 2) {
                     linkedList();
@@ -226,17 +218,17 @@ namespace ProjectPSX.Devices {
 
             private void linkedList() {
                 uint header = 0;
+                uint linkedListHardStop = 0xFFFF; //an arbitrary value to avoid infinity linked lists as we don't run the cpu in between blocks
 
-                while ((header & 0x800000) == 0) {
-                    //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8"));
+                while ((header & 0x800000) == 0 && linkedListHardStop-- != 0) {
                     header = bus.LoadFromRam(baseAddress);
-                    //Console.WriteLine("HEADER addr " + baseAddress.ToString("x8") + " value: " + header.ToString("x8"));
                     uint size = header >> 24;
+                    //Console.WriteLine($"[DMA] [LinkedList] Header: {baseAddress:x8} size: {size}");
 
                     if (size > 0) {
                         baseAddress = (baseAddress + 4) & 0x1ffffc;
                         Span<uint> load = bus.DmaFromRam(baseAddress, size);
-                        // Console.WriteLine("GPU SEND addr " + dmaAddress.ToString("x8") + " value: " + load.ToString("x8"));
+                        //Console.WriteLine($"[DMA] [LinkedList] DMAtoGPU size: {load.Length}");
                         bus.DmaToGpu(load);
                     }
 
@@ -246,13 +238,9 @@ namespace ProjectPSX.Devices {
 
             }
 
-            private bool isActive() {
-                if (syncMode == 0) { //0  Start immediately and transfer all at once (used for CDROM, OTC) needs TRIGGER
-                    return enable && trigger;
-                } else {
-                    return enable;
-                }
-            }
+            //0  Start immediately and transfer all at once (used for CDROM, OTC) needs TRIGGER
+            private bool isActive() => syncMode == 0 ? enable && trigger : enable;
+
         }
 
         AChannel[] channels = new AChannel[8];
