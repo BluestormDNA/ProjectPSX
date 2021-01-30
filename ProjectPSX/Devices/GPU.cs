@@ -439,8 +439,8 @@ namespace ProjectPSX.Devices {
                 if (isShaded) c[i] = buffer[pointer++];
 
                 v[i].val = buffer[pointer++];
-                v[i].x = signed11bit((uint)(v[i].x + drawingXOffset));
-                v[i].y = signed11bit((uint)(v[i].y + drawingYOffset));
+                v[i].x = (short)(signed11bit((uint)v[i].x) + drawingXOffset);
+                v[i].y = (short)(signed11bit((uint)v[i].y) + drawingYOffset);
 
                 if (isTextured) {
                     uint textureData = buffer[pointer++];
