@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX {
     class GTE { //PSX MIPS Coprocessor 02 - Geometry Transformation Engine
 
-        private byte[] unrTable = {
+        private static ReadOnlySpan<byte> unrTable => new byte[] {
             0xFF, 0xFD, 0xFB, 0xF9, 0xF7, 0xF5, 0xF3, 0xF1, 0xEF, 0xEE, 0xEC, 0xEA, 0xE8, 0xE6, 0xE4, 0xE3,
             0xE1, 0xDF, 0xDD, 0xDC, 0xDA, 0xD8, 0xD6, 0xD5, 0xD3, 0xD1, 0xD0, 0xCE, 0xCD, 0xCB, 0xC9, 0xC8,
             0xC6, 0xC5, 0xC3, 0xC1, 0xC0, 0xBE, 0xBD, 0xBB, 0xBA, 0xB8, 0xB7, 0xB5, 0xB4, 0xB2, 0xB1, 0xB0,
@@ -532,9 +532,6 @@ namespace ProjectPSX {
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
 
-            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
-            //             + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
-
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
             MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
@@ -651,11 +648,11 @@ namespace ProjectPSX {
             //}
 
             long n = 0;
-            if(H < SZ[3] * 2) {
+            if (H < SZ[3] * 2) {
                 int z = BitOperations.LeadingZeroCount(SZ[3]) - 16;
                 n = H << z;
                 uint d = (uint)(SZ[3] << z);
-                ushort u = (ushort)(unrTable[(d - 0x7FC0) >> 7] + 0x101);
+                ushort u = (ushort)(unrTable[(int)(d - 0x7FC0) >> 7] + 0x101);
                 d = ((0x2000080 - (d * u)) >> 8);
                 d = ((0x0000080 + (d * u)) >> 8);
                 n = (int)Math.Min(0x1FFFF, ((n * d) + 0x8000) >> 16);
