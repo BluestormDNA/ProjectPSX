@@ -21,6 +21,7 @@ namespace ProjectPSX.Devices {
         private IHostWindow window;
 
         private VRAM vram = new VRAM(1024, 512);
+        private VRAM vram1555 = new VRAM(1024, 512); //an un transformed 1555 to 8888 vram so we can fetch clut indexes without reverting to 1555
 
         public bool debug;
 
@@ -290,9 +291,11 @@ namespace ProjectPSX.Devices {
 
                 if (bg >> 24 == 0) {
                     vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
+                    vram1555.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, val);
                 }
             } else {
                 vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, get555Color(val));
+                vram1555.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, val);
             }
 
             vram_coord.x++;
@@ -950,14 +953,16 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get4bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = vram.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
+            ushort index = (ushort)vram1555.GetPixelRGB888(x / 4 + textureBase.x, y + textureBase.y);
+            //ushort index = vram.GetPixelBGR555(x / 4 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 3) * 4) & 0xF;
             return vram.GetPixelRGB888(clut.x + p, clut.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int get8bppTexel(int x, int y, Point2D clut, Point2D textureBase) {
-            ushort index = vram.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
+            ushort index = (ushort)vram1555.GetPixelRGB888(x / 2 + textureBase.x, y + textureBase.y);
+            //ushort index = vram.GetPixelBGR555(x / 2 + textureBase.x, y + textureBase.y);
             int p = (index >> (x & 1) * 8) & 0xFF;
             return vram.GetPixelRGB888(clut.x + p, clut.y);
         }
