@@ -224,7 +224,18 @@ namespace ProjectPSX.Devices {
             //Console.WriteLine("[GPU] LOAD GPUREAD: {0}", value.ToString("x8"));
             return value;
         }
-        //All this should be cleaner if delegate function calls werent so slow :\
+
+        public void write(uint addr, uint value) {
+            uint register = addr & 0xF;
+            if (register == 0) {
+                writeGP0(value);
+            } else if (register == 4) {
+                writeGP1(value);
+            } else {
+                Console.WriteLine($"[GPU] Unhandled GPU write access to register {register} : {value}");
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void writeGP0(uint value) {
             //Console.WriteLine("Direct " + value.ToString("x8"));
@@ -553,8 +564,7 @@ namespace ProjectPSX.Devices {
                         if (primitive.isTextured) {
                             int texelX = interpolateCoords(w0, w1, w2, t0.x, t1.x, t2.x, area);
                             int texelY = interpolateCoords(w0, w1, w2, t0.y, t1.y, t2.y, area);
-                            //int texel = getTexel(texelX, texelY, clut, textureBase, depth);
-                            int texel = getTexel2(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), clut, textureBase, depth);
+                            int texel = getTexel(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), clut, textureBase, depth);
                             if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -813,7 +823,7 @@ namespace ProjectPSX.Devices {
 
                     if (primitive.isTextured) {
                         //int texel = getTexel(u, v, clut, textureBase, depth);
-                        int texel = getTexel2(maskTexelAxis(u, preMaskX, postMaskX), maskTexelAxis(v, preMaskY, postMaskY), clut, textureBase, depth);
+                        int texel = getTexel(maskTexelAxis(u, preMaskX, postMaskX), maskTexelAxis(v, preMaskY, postMaskY), clut, textureBase, depth);
                         if (texel == 0) {
                             continue;
                         }
@@ -941,7 +951,7 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getTexel2(int x, int y, Point2D clut, Point2D textureBase, int depth) {
+        private int getTexel(int x, int y, Point2D clut, Point2D textureBase, int depth) {
             if (depth == 0) {
                 return get4bppTexel(x, y, clut, textureBase);
             } else if (depth == 1) {

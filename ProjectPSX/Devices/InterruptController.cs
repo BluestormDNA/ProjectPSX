@@ -41,5 +41,25 @@ namespace ProjectPSX.Devices {
         internal bool interruptPending() {
             return (ISTAT & IMASK) != 0;
         }
+
+        internal void write(uint addr, uint value) {
+            uint register = addr & 0xF;
+            if(register == 0) {
+                ISTAT &= value & 0x7FF;
+            } else if(register == 4) {
+                IMASK = value & 0x7FF;
+            }
+        }
+
+        internal uint load(uint addr) {
+            uint register = addr & 0xF;
+            if (register == 0) {
+                return ISTAT;
+            } else if (register == 4) {
+                return IMASK;
+            } else {
+                return 0xFFFF_FFFF;
+            }
+        }
     }
 }

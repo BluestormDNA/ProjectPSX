@@ -53,7 +53,7 @@ namespace ProjectPSX.Devices {
                     case 0: control = value; break;
                     case 4: writeInterrupt(value); break;
                     case 6: writeInterrupt(value << 16 | (forceIRQ ? 1u : 0) << 15); break;
-                    default: Console.WriteLine("Unhandled write on DMA register" + register); break;
+                    default: Console.WriteLine($"Unhandled write on DMA Interrupt register {register}"); break;
                 }
                 //Console.WriteLine("irqflag post: " + irqFlag.ToString("x8"));
             }
@@ -151,7 +151,7 @@ namespace ProjectPSX.Devices {
                     case 0: baseAddress = value & 0xFFFFFF; break;
                     case 4: blockCount = value >> 16; blockSize = value & 0xFFFF; break;
                     case 8: writeChannelControl(value); break;
-                    default: Console.WriteLine("Unhandled Write on register " + register); break;
+                    default: Console.WriteLine($"Unhandled Write on DMA Channel: {channelNumber} register: {register} value: {value}"); break;
                 }
             }
 

@@ -202,7 +202,7 @@ namespace ProjectPSX {
             WriteBack();
 
             /*debug*/
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
+            if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
             //if (isEX1) forceEX1();
 
             //if (debug) {
@@ -639,7 +639,7 @@ namespace ProjectPSX {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x1) == 0) {
-                    uint value = (uint)(short)bus.load16(addr);
+                    uint value = (uint)(short)bus.load32(addr);
                     delayedLoad(instr.rt, value);
                 } else {
                     COP0_GPR[BADA] = addr;
@@ -660,7 +660,7 @@ namespace ProjectPSX {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x1) == 0) {
-                    uint value = bus.load16(addr);
+                    uint value = (ushort)bus.load32(addr);
                     //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
                     delayedLoad(instr.rt, value);
                 } else {
@@ -825,7 +825,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LBU() {
             if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint value = bus.load8(GPR[instr.rs] + instr.imm_s);
+                uint value = (byte)bus.load32(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Load");
         }
@@ -883,7 +883,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LB() { //todo redo this as it unnecesary load32
             if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint value = (uint)(sbyte)bus.load8(GPR[instr.rs] + instr.imm_s);
+                uint value = (uint)(sbyte)bus.load32(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
             } //else Console.WriteLine("Ignoring Write");
         }

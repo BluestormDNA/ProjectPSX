@@ -42,6 +42,17 @@ namespace ProjectPSX.Devices {
         private IMemoryOwner<byte> outBuffer = MemoryPool<byte>.Shared.Rent(0x30000); //wild guess while resumable dmas come...
         private int outBufferPos = 0;
 
+        public void write(uint addr, uint value) {
+            uint register = addr & 0xF;
+            if (register == 0) {
+                writeMDEC0_Command(value);
+            } else if (register == 4) {
+                writeMDEC1_Control(value);
+            } else {
+                Console.WriteLine($"[GPU] Unhandled GPU write access to register {register} : {value}");
+            }
+        }
+
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
             //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
             if (remainingDataWords == 0) {

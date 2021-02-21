@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace ProjectPSX {
     //TODO:
@@ -16,8 +17,11 @@ namespace ProjectPSX {
         private unsafe byte* ramPtr = (byte*)Marshal.AllocHGlobal(2048 * 1024);
         private unsafe byte* ex1Ptr = (byte*)Marshal.AllocHGlobal(512 * 1024);
         private unsafe byte* scrathpadPtr = (byte*)Marshal.AllocHGlobal(1024);
-        private unsafe byte* registersPtr = (byte*)Marshal.AllocHGlobal(4 * 1024);
         private unsafe byte* biosPtr = (byte*)Marshal.AllocHGlobal(512 * 1024);
+        private unsafe byte* sio = (byte*)Marshal.AllocHGlobal(0x10);
+        private unsafe byte* memoryControl1 = (byte*)Marshal.AllocHGlobal(0x40);
+        private unsafe byte* memoryControl2 = (byte*)Marshal.AllocHGlobal(0x10);
+
         private uint memoryCache;
 
         //Other Subsystems
@@ -45,42 +49,43 @@ namespace ProjectPSX {
             this.interruptController = interruptController;
         }
 
-        internal unsafe uint load32(uint address) {
+        public unsafe uint load32(uint address) {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
             if (addr < 0x1F00_0000) {
                 return load<uint>(addr & 0x1F_FFFF, ramPtr);
-            } else if (addr < 0x1F08_0000) {
+            } else if (addr < 0x1F80_0000) {
                 return load<uint>(addr & 0x7_FFFF, ex1Ptr);
-            } else if (addr >= 0x1f80_0000 && addr < 0x1f80_0400) {
+            } else if (addr < 0x1f80_0400) {
                 return load<uint>(addr & 0xFFF, scrathpadPtr);
-            } else if (addr >= 0x1F80_1000 && addr < 0x1F80_2000) {
-                if (addr == 0x1F801070) {
-                    return interruptController.loadISTAT();
-                } else if (addr == 0x1F80_1074) {
-                    return interruptController.loadIMASK();
-                } else if (addr >= 0x1F80_1040 && addr <= 0x1F80_104F) {
-                    return joypad.load(addr);
-                } else if (addr >= 0x1F80_1080 && addr <= 0x1F80_10FF) {
-                    return dma.load(addr);
-                } else if (addr >= 0x1F80_1100 && addr <= 0x1F80_112B) {
-                    return timers.load(addr);
-                } else if (addr >= 0x1F80_1800 && addr <= 0x1F80_1803) {
-                    return cdrom.load(addr);
-                } else if (addr == 0x1F80_1810) {
-                    return gpu.loadGPUREAD();
-                } else if (addr == 0x1F80_1814) {
-                    return gpu.loadGPUSTAT();
-                } else if (addr == 0x1F80_1820) {
-                    return mdec.readMDEC0_Data();
-                } else if (addr == 0x1F80_1824) {
-                    return mdec.readMDEC1_Status();
-                } else if (addr >= 0x1F801C00 && addr <= 0x1F801FFF) {
-                    return spu.load(addr);
-                } else {
-                    return load<uint>(addr & 0xFFF, registersPtr);
-                }
-            } else if (addr >= 0x1FC0_0000 && addr < 0x1FC8_0000) {
+            } else if (addr < 0x1F80_1040) {
+                return load<uint>(addr & 0x3F, memoryControl1);
+            } else if (addr < 0x1F80_1050) {
+                return joypad.load(addr);
+            } else if (addr < 0x1F80_1060) {
+                Console.WriteLine($"[BUS] Read Unsupported to SIO address: {addr:x8}");
+                return load<uint>(addr & 0x3F, sio);
+            } else if (addr < 0x1F80_1070) {
+                return load<uint>(addr & 0xF, memoryControl2);
+            } else if (addr < 0x1F801080) {
+                return interruptController.load(addr);
+            } else if (addr < 0x1F80_1100) {
+                return dma.load(addr);
+            } else if (addr < 0x1F80_1140) {
+                return timers.load(addr);
+            } else if (addr <= 0x1F80_1803) {
+                return cdrom.load(addr);
+            } else if (addr == 0x1F80_1810) {
+                return gpu.loadGPUREAD();
+            } else if (addr == 0x1F80_1814) {
+                return gpu.loadGPUSTAT();
+            } else if (addr == 0x1F80_1820) {
+                return mdec.readMDEC0_Data();
+            } else if (addr == 0x1F80_1824) {
+                return mdec.readMDEC1_Status();
+            } else if (addr < 0x1F802000) {
+                return spu.load(addr);
+            } else if (addr < 0x1FC8_0000) {
                 return load<uint>(addr & 0x7_FFFF, biosPtr);
             } else if (addr == 0xFFFE0130) {
                 return memoryCache;
@@ -90,296 +95,121 @@ namespace ProjectPSX {
             }
         }
 
-        internal unsafe uint load16(uint address) {
+        public unsafe void write32(uint address, uint value) {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
-            switch (addr) {
-                case uint _ when addr < 0x1F00_0000:
-                    return load<ushort>(addr & 0x1F_FFFF, ramPtr);
-
-                case uint _ when addr < 0x1F08_0000:
-                    return load<ushort>(addr & 0x7_FFFF, ex1Ptr);
-
-                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    return load<ushort>(addr & 0xFFF, scrathpadPtr);
-
-                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-                    switch (addr) {
-                        case 0x1F801070:
-                            return interruptController.loadISTAT();
-                        case 0x1F801074:
-                            return interruptController.loadIMASK();
-                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            return joypad.load(addr);
-                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            return dma.load(addr);
-                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            return timers.load(addr);
-                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            return cdrom.load(addr);
-                        case 0x1F801810:
-                            return gpu.loadGPUREAD();
-                        case 0x1F801814:
-                            return gpu.loadGPUSTAT();
-                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            return spu.load(addr);
-                        default:
-                            return load<ushort>(addr & 0xFFF, registersPtr);
-                    }
-
-                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    return load<ushort>(addr & 0x7_FFFF, biosPtr);
-
-                case 0xFFFE0130:
-                    return memoryCache;
-
-                default:
-                    Console.WriteLine("[BUS] Load16 Unsupported: " + addr.ToString("x8"));
-                    return 0xFFFF_FFFF;
+            if (addr < 0x1F00_0000) {
+                write(addr & 0x1F_FFFF, value, ramPtr);
+            } else if (addr < 0x1F80_0000) {
+                write(addr & 0x7_FFFF, value, ex1Ptr);
+            } else if (addr < 0x1f80_0400) {
+                write(addr & 0x3FF, value, scrathpadPtr);
+            } else if (addr < 0x1F80_1040) {
+                write(addr & 0x3F, value, memoryControl1);
+            } else if (addr < 0x1F80_1050) {
+                joypad.write(addr, value);
+            } else if (addr < 0x1F80_1060) {
+                Console.WriteLine($"[BUS] Write Unsupported to SIO address: {addr:x8} : {value:x8}");
+                write(addr & 0xF, value, sio);
+            } else if (addr < 0x1F80_1070) {
+                write(addr & 0xF, value, memoryControl2);
+            } else if (addr < 0x1F801080) {
+                interruptController.write(addr, value);
+            } else if (addr < 0x1F80_1100) {
+                dma.write(addr, value);
+            } else if (addr < 0x1F80_1140) {
+                timers.write(addr, value);
+            } else if (addr < 0x1F80_1810) {
+                cdrom.write(addr, value);
+            } else if (addr < 0x1F80_1820) {
+                //Task.Run(() => gpu.write(addr, value));
+                gpu.write(addr, value);
+            } else if (addr < 0x1F80_1830) {
+                mdec.write(addr, value);
+            } else if (addr < 0x1F802000) {
+                spu.write(addr, (ushort)value);
+            } else if (addr == 0xFFFE0130) {
+                memoryCache = value;
+            } else {
+                Console.WriteLine($"[BUS] Write32 Unsupported: {addr:x8}");
             }
         }
 
-        internal unsafe uint load8(uint address) {
+        public unsafe void write16(uint address, ushort value) {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
-            switch (addr) {
-                case uint _ when addr < 0x1F00_0000:
-                    return load<byte>(addr & 0x1F_FFFF, ramPtr);
-
-                case uint _ when addr < 0x1F08_0000:
-                    return load<byte>(addr & 0x7_FFFF, ex1Ptr);
-
-                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    return load<byte>(addr & 0xFFF, scrathpadPtr);
-
-                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-                    switch (addr) {
-                        case 0x1F801070:
-                            return interruptController.loadISTAT();
-                        case 0x1F801074:
-                            return interruptController.loadIMASK();
-                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            return joypad.load(addr);
-                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            return dma.load(addr);
-                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            return timers.load(addr);
-                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            return cdrom.load(addr);
-                        case 0x1F801810:
-                            return gpu.loadGPUREAD();
-                        case 0x1F801814:
-                            return gpu.loadGPUSTAT();
-                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            return spu.load(addr);
-                        default: //to remove this fallback and nesting as all registers should be handled avobe
-                            return load<byte>(addr & 0xFFF, registersPtr);
-                    }
-
-                case uint _ when addr >= 0x1FC0_0000 && addr < 0x1FC8_0000:
-                    return load<byte>(addr & 0x7_FFFF, biosPtr);
-
-                case 0xFFFE0130:
-                    return memoryCache;
-
-                default:
-                    Console.WriteLine("[BUS] Load8 Unsupported: " + addr.ToString("x8"));
-                    return 0xFFFF_FFFF;
+            if (addr < 0x1F00_0000) {
+                write(addr & 0x1F_FFFF, value, ramPtr);
+            } else if (addr < 0x1F80_0000) {
+                write(addr & 0x7_FFFF, value, ex1Ptr);
+            } else if (addr < 0x1f80_0400) {
+                write(addr & 0x3FF, value, scrathpadPtr);
+            } else if (addr < 0x1F80_1040) {
+                write(addr & 0x3F, value, memoryControl1);
+            } else if (addr < 0x1F80_1050) {
+                joypad.write(addr, value);
+            } else if (addr < 0x1F80_1060) {
+                Console.WriteLine($"[BUS] Write Unsupported to SIO address: {addr:x8} : {value:x8}");
+                write(addr & 0xF, value, sio);
+            } else if (addr < 0x1F80_1070) {
+                write(addr & 0xF, value, memoryControl2);
+            } else if (addr < 0x1F801080) {
+                interruptController.write(addr, value);
+            } else if (addr < 0x1F80_1100) {
+                dma.write(addr, value);
+            } else if (addr < 0x1F80_1140) {
+                timers.write(addr, value);
+            } else if (addr < 0x1F80_1810) {
+                cdrom.write(addr, value);
+            } else if (addr < 0x1F80_1820) {
+                gpu.write(addr, value);
+            } else if (addr < 0x1F80_1830) {
+                mdec.write(addr, value);
+            } else if (addr < 0x1F802000) {
+                spu.write(addr, (ushort)value);
+            } else if (addr == 0xFFFE0130) {
+                memoryCache = value;
+            } else {
+                Console.WriteLine($"[BUS] Write16 Unsupported: {addr:x8}");
             }
         }
 
-        internal unsafe void write32(uint address, uint value) {
+        public unsafe void write8(uint address, byte value) {
             uint i = address >> 29;
             uint addr = address & RegionMask[i];
-            switch (addr) {
-                case uint _ when addr < 0x1F00_0000:
-                    write(addr & 0x1F_FFFF, value, ramPtr);
-                    break;
-
-                case uint _ when addr < 0x1F08_0000:
-                    write(addr & 0x7_FFFF, value, ex1Ptr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write(addr & 0xFFF, value, scrathpadPtr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-                    switch (addr) {
-                        case 0x1F801070:
-                            interruptController.writeISTAT(value);
-                            break;
-                        case 0x1F801074:
-                            interruptController.writeIMASK(value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            dma.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(addr, value);
-                            break;
-                        case 0x1F801810:
-                            gpu.writeGP0(value);
-                            break;
-                        case 0x1F801814:
-                            gpu.writeGP1(value);
-                            break;
-                        case 0x1F801820:
-                            mdec.writeMDEC0_Command(value);
-                            break;
-                        case 0x1F801824:
-                            mdec.writeMDEC1_Control(value);
-                            break;
-                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            spu.write(addr, (ushort)value);
-                            break;
-
-                        default:
-                            addr &= 0xFFF;
-                            write(addr, value, registersPtr);
-                            break;
-                    }
-                    break;
-
-                case 0xFFFE0130:
-                    memoryCache = value;
-                    break;
-
-                default:
-                    Console.WriteLine("[BUS] Write32 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
-                    break;
-            }
-        }
-
-        internal unsafe void write16(uint address, ushort value) {
-            uint i = address >> 29;
-            uint addr = address & RegionMask[i];
-            switch (addr) {
-                case uint _ when addr < 0x1F00_0000:
-                    write(addr & 0x1F_FFFF, value, ramPtr);
-                    break;
-
-                case uint _ when addr < 0x1F08_0000:
-                    write(addr & 0x7_FFFF, value, ex1Ptr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write(addr & 0xFFF, value, scrathpadPtr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-                    switch (addr) {
-                        case 0x1F801070:
-                            interruptController.writeISTAT(value);
-                            break;
-                        case 0x1F801074:
-                            interruptController.writeIMASK(value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            dma.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(addr, value);
-                            break;
-                        case 0x1F801810:
-                            gpu.writeGP0(value);
-                            break;
-                        case 0x1F801814:
-                            gpu.writeGP1(value);
-                            break;
-                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            spu.write(addr, value);
-                            break;
-
-                        default:
-                            addr &= 0xFFF;
-                            write(addr, value, registersPtr);
-                            break;
-                    }
-                    break;
-
-                case 0xFFFE0130:
-                    memoryCache = value;
-                    break;
-
-                default:
-                    Console.WriteLine("[BUS] Write16 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
-                    break;
-            }
-        }
-
-        internal unsafe void write8(uint address, byte value) {
-            uint i = address >> 29;
-            uint addr = address & RegionMask[i];
-            switch (addr) {
-                case uint _ when addr < 0x1F00_0000:
-                    write(addr & 0x1F_FFFF, value, ramPtr);
-                    break;
-
-                case uint _ when addr < 0x1F08_0000:
-                    write(addr & 0x7_FFFF, value, ex1Ptr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_0000 && addr < 0x1F80_0400:
-                    write(addr & 0xFFF, value, scrathpadPtr);
-                    break;
-
-                case uint _ when addr >= 0x1F80_1000 && addr < 0x1F80_2000:
-                    switch (addr) {
-                        case 0x1F801070:
-                            interruptController.writeISTAT(value);
-                            break;
-                        case 0x1F801074:
-                            interruptController.writeIMASK(value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1040 && addr <= 0x1F80_104F:
-                            joypad.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1080 && addr <= 0x1F80_10FF:
-                            dma.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1100 && addr <= 0x1F80_112B:
-                            timers.write(addr, value);
-                            break;
-                        case uint _ when addr >= 0x1F80_1800 && addr <= 0x1F80_1803:
-                            cdrom.write(addr, value);
-                            break;
-                        case 0x1F801810:
-                            gpu.writeGP0(value);
-                            break;
-                        case 0x1F801814:
-                            gpu.writeGP1(value);
-                            break;
-                        case uint _ when addr >= 0x1F801C00 && addr <= 0x1F801FFF:
-                            spu.write(addr, value);
-                            break;
-
-                        default:
-                            addr &= 0xFFF;
-                            write(addr, value, registersPtr);
-                            break;
-                    }
-                    break;
-
-                case 0xFFFE0130:
-                    memoryCache = value;
-                    break;
-
-                default:
-                    Console.WriteLine("[BUS] Write8 Unsupported: " + addr.ToString("x8") + ": " + value.ToString("x8"));
-                    break;
+            if (addr < 0x1F00_0000) {
+                write(addr & 0x1F_FFFF, value, ramPtr);
+            } else if (addr < 0x1F80_0000) {
+                write(addr & 0x7_FFFF, value, ex1Ptr);
+            } else if (addr < 0x1f80_0400) {
+                write(addr & 0x3FF, value, scrathpadPtr);
+            } else if (addr < 0x1F80_1040) {
+                write(addr & 0x3F, value, memoryControl1);
+            } else if (addr < 0x1F80_1050) {
+                joypad.write(addr, value);
+            } else if (addr < 0x1F80_1060) {
+                Console.WriteLine($"[BUS] Write Unsupported to SIO address: {addr:x8} : {value:x8}");
+                write(addr & 0xF, value, sio);
+            } else if (addr < 0x1F80_1070) {
+                write(addr & 0xF, value, memoryControl2);
+            } else if (addr < 0x1F801080) {
+                interruptController.write(addr, value);
+            } else if (addr < 0x1F80_1100) {
+                dma.write(addr, value);
+            } else if (addr < 0x1F80_1140) {
+                timers.write(addr, value);
+            } else if (addr < 0x1F80_1810) {
+                cdrom.write(addr, value);
+            } else if (addr < 0x1F80_1820) {
+                gpu.write(addr, value);
+            } else if (addr < 0x1F80_1830) {
+                mdec.write(addr, value);
+            } else if (addr < 0x1F802000) {
+                spu.write(addr, (ushort)value);
+            } else if (addr == 0xFFFE0130) {
+                memoryCache = value;
+            } else {
+                Console.WriteLine($"[BUS] Write8 Unsupported: {addr:x8}");
             }
         }
 
@@ -499,6 +329,8 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DmaToGpu(Span<uint> buffer) {
+            var array = buffer.ToArray();
+            //Task.Run(() => gpu.processDma(array));
             gpu.processDma(buffer);
         }
 

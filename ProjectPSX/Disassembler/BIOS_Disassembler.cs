@@ -381,10 +381,10 @@ namespace ProjectPSX.Disassembler {
 
         private string biosOutput(uint addr) {
             string output = "";
-            char c = (char)bus.load8(addr++);
+            char c = (char)bus.load32(addr++);
             while (c != '\0') {
                 output += c;
-                c = (char)bus.load8(addr++);
+                c = (char)bus.load32(addr++);
             }
             return output;
             //return null;
