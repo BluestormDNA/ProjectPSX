@@ -747,11 +747,10 @@ namespace ProjectPSX {
             return (value << 20) >> 20;
         }
 
-        private static short saturateRGB(int v) {
-            short saturate = (short)v;
-            if (saturate < 0x00) return 0x00;
-            else if (saturate > 0x1F) return 0x1F;
-            else return saturate;
+        private static byte saturateRGB(int value) {
+            if (value < 0x00) return 0x00;
+            else if (value > 0x1F) return 0x1F;
+            else return (byte)value;
         }
 
         private static int leadingCount(uint v) {
@@ -798,7 +797,7 @@ namespace ProjectPSX {
                 case 27: value = (uint)MAC3; break;
                 case 28:/* value = IRGB; break;*/
                 case 29:/* value = ORGB; break;*/
-                    IRGB = (ushort)(saturateRGB(IR[3] / 0x80) << 10 | saturateRGB(IR[2] / 0x80) << 5 | (ushort)saturateRGB(IR[1] / 0x80));
+                    IRGB = (ushort)(saturateRGB(IR[3] / 0x80) << 10 | saturateRGB(IR[2] / 0x80) << 5 | saturateRGB(IR[1] / 0x80));
                     value = IRGB;
                     break;
                 case 30: value = (uint)LZCS; break;
