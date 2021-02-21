@@ -202,7 +202,7 @@ namespace ProjectPSX {
             WriteBack();
 
             /*debug*/
-            if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
+            //if (exe) forceTest(tgte); //tcpu tcpx tgte tgpu demo <---------------------
             //if (isEX1) forceEX1();
 
             //if (debug) {
@@ -289,6 +289,14 @@ namespace ProjectPSX {
                 load = bus.LoadFromRam(maskedPC);
             } else {
                 load = bus.LoadFromBios(maskedPC);
+            }
+
+            if (PC == 0x8002cdf4) {
+                if (GPR[3] != GPR[2]) {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"Got {GPR[3]:x8} expected {GPR[2]:x8}");
+                    Console.ResetColor();
+                }
             }
 
             PC_Now = PC;
