@@ -93,7 +93,7 @@ namespace ProjectPSX {
         public static delegate*<CPU, void>[] opcodeSpecialTable;
 
         public void initOpCodeTable() {
-            static void SPECIAL2(CPU cpu) => cpu.SPECIAL2();
+            static void SPECIAL2(CPU cpu) => cpu.SPECIAL();
             static void BCOND(CPU cpu) => cpu.BCOND();
             static void J(CPU cpu) => cpu.J();
             static void JAL(CPU cpu) => cpu.JAL();
@@ -180,15 +180,11 @@ namespace ProjectPSX {
             };
         }
 
-        private void SPECIAL2() {
-            opcodeSpecialTable[instr.function](this);
-        }
+        private void SPECIAL() => opcodeSpecialTable[instr.function](this);
 
         private void NOP() { /*nop*/ }
 
-        private void NA() {
-            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-        }
+        private void NA() => EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -291,13 +287,13 @@ namespace ProjectPSX {
                 load = bus.LoadFromBios(maskedPC);
             }
 
-            if (PC == 0x8002cdf4) {
-                if (GPR[3] != GPR[2]) {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"Got {GPR[3]:x8} expected {GPR[2]:x8}");
-                    Console.ResetColor();
-                }
-            }
+            //if (PC == 0x8002cdf4) {
+            //    if (GPR[3] != GPR[2]) {
+            //        Console.ForegroundColor = ConsoleColor.Yellow;
+            //        Console.WriteLine($"Got {GPR[3]:x8} expected {GPR[2]:x8}");
+            //        Console.ResetColor();
+            //    }
+            //}
 
             PC_Now = PC;
             PC = PC_Predictor;
@@ -334,94 +330,94 @@ namespace ProjectPSX {
             GPR[0] = 0;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void Execute() {
-            switch (instr.opcode) {
-                case 0b00_0000: SPECIAL(); break;//R-Type opcodes
-                case 0b10_1011: SW(); break;
-                case 0b10_0011: LW(); break;
-                case 0b00_0100: BEQ(); break;
-                case 0b00_0101: BNE(); break;
-                case 0b00_0001: BCOND(); break;
-                case 0b00_0010: J(); break;
-                case 0b00_0011: JAL(); break;
-                case 0b01_0010: COP2(); break;
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //private void Execute() {
+        //    switch (instr.opcode) {
+        //        case 0b00_0000: SPECIAL(); break;//R-Type opcodes
+        //        case 0b10_1011: SW(); break;
+        //        case 0b10_0011: LW(); break;
+        //        case 0b00_0100: BEQ(); break;
+        //        case 0b00_0101: BNE(); break;
+        //        case 0b00_0001: BCOND(); break;
+        //        case 0b00_0010: J(); break;
+        //        case 0b00_0011: JAL(); break;
+        //        case 0b01_0010: COP2(); break;
+        //
+        //        case 0b00_0110: BLEZ(); break;
+        //        case 0b00_0111: BGTZ(); break;
+        //        case 0b00_1000: ADDI(); break;
+        //        case 0b00_1001: ADDIU(); break;
+        //        case 0b00_1010: SLTI(); break;
+        //        case 0b00_1011: SLTIU(); break;
+        //        case 0b00_1100: ANDI(); break;
+        //        case 0b00_1101: ORI(); break;
+        //        case 0b00_1110: XORI(); break;
+        //        case 0b00_1111: LUI(); break;
+        //        case 0b01_0000: COP0(); break;
+        //        case 0b01_0001: /*COP1()*/ break;
+        //
+        //        case 0b01_0011: /*COP3()*/ break;
+        //        case 0b10_0000: LB(); break;
+        //        case 0b10_0001: LH(); break;
+        //        case 0b10_0010: LWL(); break;
+        //
+        //        case 0b10_0100: LBU(); break;
+        //        case 0b10_0101: LHU(); break;
+        //        case 0b10_0110: LWR(); break;
+        //        case 0b10_1000: SB(); break;
+        //        case 0b10_1001: SH(); break;
+        //        case 0b10_1010: SWL(); break;
+        //
+        //        case 0b10_1110: SWR(); break;
+        //        case 0b11_0000: //LWC0
+        //        case 0b11_0001: //LWC1
+        //        case 0b11_0011: //LWC3
+        //        case 0b11_1000: //SWC0
+        //        case 0b11_1001: //SWC1
+        //        case 0b11_1011: /*SWC3*/break; //All copro and lw sw instr dont trigger exception.
+        //        case 0b11_0010: LWC2(); break;
+        //        case 0b11_1010: SWC2(); break;
+        //        default:
+        //            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
+        //            break;
+        //    }
+        //}
 
-                case 0b00_0110: BLEZ(); break;
-                case 0b00_0111: BGTZ(); break;
-                case 0b00_1000: ADDI(); break;
-                case 0b00_1001: ADDIU(); break;
-                case 0b00_1010: SLTI(); break;
-                case 0b00_1011: SLTIU(); break;
-                case 0b00_1100: ANDI(); break;
-                case 0b00_1101: ORI(); break;
-                case 0b00_1110: XORI(); break;
-                case 0b00_1111: LUI(); break;
-                case 0b01_0000: COP0(); break;
-                case 0b01_0001: /*COP1()*/ break;
-
-                case 0b01_0011: /*COP3()*/ break;
-                case 0b10_0000: LB(); break;
-                case 0b10_0001: LH(); break;
-                case 0b10_0010: LWL(); break;
-
-                case 0b10_0100: LBU(); break;
-                case 0b10_0101: LHU(); break;
-                case 0b10_0110: LWR(); break;
-                case 0b10_1000: SB(); break;
-                case 0b10_1001: SH(); break;
-                case 0b10_1010: SWL(); break;
-
-                case 0b10_1110: SWR(); break;
-                case 0b11_0000: //LWC0
-                case 0b11_0001: //LWC1
-                case 0b11_0011: //LWC3
-                case 0b11_1000: //SWC0
-                case 0b11_1001: //SWC1
-                case 0b11_1011: /*SWC3*/break; //All copro and lw sw instr dont trigger exception.
-                case 0b11_0010: LWC2(); break;
-                case 0b11_1010: SWC2(); break;
-                default:
-                    EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-                    break;
-            }
-        }
-
-        private void SPECIAL() {
-            switch (instr.function) {
-                case 0b00_0000: SLL(); break;
-                case 0b00_0010: SRL(); break;
-                case 0b00_0011: SRA(); break;
-                case 0b00_0100: SLLV(); break;
-                case 0b00_0110: SRLV(); break;
-                case 0b00_0111: SRAV(); break;
-                case 0b00_1000: JR(); break;
-                case 0b00_1001: JALR(); break;
-                case 0b00_1100: SYSCALL(); break;
-                case 0b00_1101: BREAK(); break;
-                case 0b01_0000: MFHI(); break;
-                case 0b01_0001: MTHI(); break;
-                case 0b01_0010: MFLO(); break;
-                case 0b01_0011: MTLO(); break;
-                case 0b01_1000: MULT(); break;
-                case 0b01_1001: MULTU(); break;
-                case 0b01_1010: DIV(); break;
-                case 0b01_1011: DIVU(); break;
-                case 0b10_0000: ADD(); break;
-                case 0b10_0001: ADDU(); break;
-                case 0b10_0010: SUB(); break;
-                case 0b10_0011: SUBU(); break;
-                case 0b10_0100: AND(); break;
-                case 0b10_0101: OR(); break;
-                case 0b10_0110: XOR(); break;
-                case 0b10_0111: NOR(); break;
-                case 0b10_1010: SLT(); break;
-                case 0b10_1011: SLTU(); break;
-                default:
-                    EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-                    break;
-            }
-        }
+        //private void SPECIAL() {
+        //    switch (instr.function) {
+        //        case 0b00_0000: SLL(); break;
+        //        case 0b00_0010: SRL(); break;
+        //        case 0b00_0011: SRA(); break;
+        //        case 0b00_0100: SLLV(); break;
+        //        case 0b00_0110: SRLV(); break;
+        //        case 0b00_0111: SRAV(); break;
+        //        case 0b00_1000: JR(); break;
+        //        case 0b00_1001: JALR(); break;
+        //        case 0b00_1100: SYSCALL(); break;
+        //        case 0b00_1101: BREAK(); break;
+        //        case 0b01_0000: MFHI(); break;
+        //        case 0b01_0001: MTHI(); break;
+        //        case 0b01_0010: MFLO(); break;
+        //        case 0b01_0011: MTLO(); break;
+        //        case 0b01_1000: MULT(); break;
+        //        case 0b01_1001: MULTU(); break;
+        //        case 0b01_1010: DIV(); break;
+        //        case 0b01_1011: DIVU(); break;
+        //        case 0b10_0000: ADD(); break;
+        //        case 0b10_0001: ADDU(); break;
+        //        case 0b10_0010: SUB(); break;
+        //        case 0b10_0011: SUBU(); break;
+        //        case 0b10_0100: AND(); break;
+        //        case 0b10_0101: OR(); break;
+        //        case 0b10_0110: XOR(); break;
+        //        case 0b10_0111: NOR(); break;
+        //        case 0b10_1010: SLT(); break;
+        //        case 0b10_1011: SLTU(); break;
+        //        default:
+        //            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
+        //            break;
+        //    }
+        //}
 
         private void COP2() {
             if ((instr.rs & 0x10) == 0) {
@@ -457,23 +453,15 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void CTC2() {
-            gte.writeControl(instr.rd, GPR[instr.rt]);
-        }
+        private void CTC2() => gte.writeControl(instr.rd, GPR[instr.rt]);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MTC2() {
-            gte.writeData(instr.rd, GPR[instr.rt]);
-        }
+        private void MTC2() => gte.writeData(instr.rd, GPR[instr.rt]);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void CFC2() {
-            delayedLoad(instr.rt, gte.loadControl(instr.rd));
-        }
+        private void CFC2() => delayedLoad(instr.rt, gte.loadControl(instr.rd));
 
-        private void MFC2() {
-            delayedLoad(instr.rt, gte.loadData(instr.rd));
-        }
+        private void MFC2() => delayedLoad(instr.rt, gte.loadData(instr.rd));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
