@@ -86,10 +86,6 @@ namespace ProjectPSX {
         private uint MVMVA_T_Vector;        //MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
         private bool lm;                    //Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
         private uint opcode;                //GTE opcode
-        private CPU cpu;
-        public GTE(CPU cpu) {//this is only needed for temporary debug purposes till TGTE passes
-            this.cpu = cpu;
-        }
 
         private void decodeCommand(uint command) {
             sf = (int)(command & 0x80_000) >> 19;

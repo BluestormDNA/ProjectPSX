@@ -83,8 +83,9 @@ namespace ProjectPSX {
             this.bus = bus;
             bios = new BIOS_Disassembler(bus);
             mips = new MIPS_Disassembler(ref HI, ref LO, GPR, COP0_GPR);
+            gte = new GTE();
+
             COP0_GPR[15] = 0x2; //PRID Processor ID
-            gte = new GTE(this); //debug
 
             initOpCodeTable();
         }
