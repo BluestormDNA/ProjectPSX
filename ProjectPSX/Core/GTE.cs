@@ -81,27 +81,17 @@ namespace ProjectPSX {
 
         //Command decode
         private int sf;                     //Shift fraction (0 or 12)
-        private uint MVMVA_M_Matrix;        //MVMVA Multiply Matrix    (0=Rotation. 1=Light, 2=Color, 3=Reserved)
-        private uint MVMVA_M_Vector;        //MVMVA Multiply Vector    (0=V0, 1=V1, 2=V2, 3=IR/long)
-        private uint MVMVA_T_Vector;        //MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
         private bool lm;                    //Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
-        private uint opcode;                //GTE opcode
+        private uint currentCommand;        //GTE current command temporary stored for MVMVA decoding
 
-        private void decodeCommand(uint command) {
-            sf = (int)((command & 0x80_000) >> 19) * 12;
-            MVMVA_M_Matrix = (command >> 17) & 0x3;
-            MVMVA_M_Vector = (command >> 15) & 0x3;
-            MVMVA_T_Vector = (command >> 13) & 0x3;
-            lm = ((command >> 10) & 0x1) != 0;
-            opcode = command & 0x3F;
-        }
         internal void execute(uint command) {
             //Console.WriteLine($"GTE EXECUTE {(command & 0x3F):x2}");
 
-            decodeCommand(command);
+            sf = (int)((command & 0x80_000) >> 19) * 12;
+            lm = ((command >> 10) & 0x1) != 0;
             FLAG = 0;
 
-            switch (opcode) {
+            switch (command & 0x3F) {
                 case 0x01: RTPS(0, true); break;
                 case 0x06: NCLIP(); break;
                 case 0x0C: OP(); break;
@@ -124,7 +114,7 @@ namespace ProjectPSX {
                 case 0x3D: GPF(); break;
                 case 0x3E: GPL(); break;
                 case 0x3F: NCCT(); break;
-                default: Console.WriteLine($"UNIMPLEMENTED GTE COMMAND {opcode:x2}"); break;/* throw new NotImplementedException();*/
+                default: Console.WriteLine($"UNIMPLEMENTED GTE COMMAND {command & 0x3F:x2}"); break;/* throw new NotImplementedException();*/
             }
 
             if ((FLAG & 0x7F87_E000) != 0) {
@@ -360,14 +350,55 @@ namespace ProjectPSX {
 
         //int matrix;
         private void MVMVA() { //WIP
-            //Console.WriteLine("[GTE] MVMVA " + ++matrix);
             //Mx = matrix specified by mx; RT / LLM / LCM - Rotation, light or color matrix
             //Vx = vector specified by v; V0, V1, V2, or[IR1, IR2, IR3]
             //Tx = translation vector specified by cv; TR or BK or Bugged / FC, or None
 
-            Matrix mx = getMVMVA_Matrix();
-            Vector3 vx = getMVMVA_Vector();
-            (long tx, long ty, long tz) = getMVMVA_Translation();
+            uint mxIndex = (currentCommand >> 17) & 0x3; //MVMVA Multiply Matrix    (0=Rotation. 1=Light, 2=Color, 3=Reserved)
+            uint mvIndex = (currentCommand >> 15) & 0x3; //MVMVA Multiply Vector    (0=V0, 1=V1, 2=V2, 3=IR/long)
+            uint tvIndex = (currentCommand >> 13) & 0x3; //MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
+
+            Matrix mx;
+            Vector3 vx;
+            long tx;
+            long ty;
+            long tz;
+
+            if(mxIndex == 0) {
+                mx = RT;
+            } else if (mxIndex == 1) {
+                mx = LM;
+            } else if (mxIndex == 2) {
+                mx = RT;
+            } else {
+                mx = new Matrix();
+            }
+
+            if (mvIndex == 0) {
+                vx = V[0];
+            } else if (mvIndex == 1) {
+                vx = V[1];
+            } else if (mvIndex == 2) {
+                vx = V[2];
+            } else {
+                vx = new Vector3() { x = IR[1], y = IR[2], z = IR[3] };
+            }
+
+            if (tvIndex == 0) {
+                tx = TRX;
+                ty = TRY;
+                tz = TRZ;
+            } else if (tvIndex == 1) {
+                tx = RBK;
+                ty = GBK;
+                tz = BBK;
+            } else if (tvIndex == 2) {
+                tx = RFC;
+                ty = GFC;
+                tz = BFC;
+            } else {
+                tx = ty = tz = 0;
+            }
 
             //MAC1 = (Tx1 * 1000h + Mx11 * Vx1 + Mx12 * Vx2 + Mx13 * Vx3) SAR(sf * 12)
             //MAC2 = (Tx2 * 1000h + Mx21 * Vx1 + Mx22 * Vx2 + Mx23 * Vx3) SAR(sf * 12)
@@ -381,35 +412,8 @@ namespace ProjectPSX {
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
-        }
 
-        private (int trX, int trY, int trZ) getMVMVA_Translation() {
-            switch (MVMVA_T_Vector) {
-                case 0: return (TRX, TRY, TRZ);
-                case 1: return (RBK, GBK, BBK);
-                case 2: return (RFC, GFC, BFC);
-                case 3: return (0, 0, 0);
-                default: Console.WriteLine("[GTE] Unhandled MVMVA Translation Vector " + MVMVA_T_Vector); return (0, 0, 0);
-            }
-        }
-
-        private Vector3 getMVMVA_Vector() {
-            switch (MVMVA_M_Vector) {
-                case 0: return V[0];
-                case 1: return V[1];
-                case 2: return V[2];
-                case 3: return new Vector3() { x = IR[1], y = IR[2], z = IR[3] };
-                default: Console.WriteLine("[GTE] Unhandled M Vector " + MVMVA_M_Matrix); return new Vector3();
-            }
-        }
-
-        private Matrix getMVMVA_Matrix() {
-            switch (MVMVA_M_Matrix) {
-                case 0: return RT;
-                case 1: return LM;
-                case 2: return LRGB;
-                default: Console.WriteLine("[GTE] Unhandled MVMVA Matrix " + MVMVA_M_Matrix); return new Matrix();
-            }
+            //Console.WriteLine("[GTE] MVMVA " + ++matrix);
         }
 
         private void GPL() {
@@ -727,11 +731,11 @@ namespace ProjectPSX {
             } else if (value > 0x7FFF_FFFF) {
                 FLAG |= 0x1_0000;
             }
+
             return value;
         }
 
         private long setMAC(int i, long value) {
-
             if (value < -0x800_0000_0000) {
                 FLAG |= (uint)(0x800_0000 >> (i - 1));
             } else if (value > 0x7FF_FFFF_FFFF) {
@@ -750,11 +754,13 @@ namespace ProjectPSX {
         private static int leadingCount(uint v) {
             uint sign = (v >> 31);
             int leadingCount = 0;
+
             for (int i = 0; i < 32; i++) {
                 if (v >> 31 != sign) break;
                 leadingCount++;
                 v <<= 1;
             }
+
             return leadingCount;
         }
 
