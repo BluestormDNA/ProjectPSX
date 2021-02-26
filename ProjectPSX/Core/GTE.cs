@@ -88,7 +88,7 @@ namespace ProjectPSX {
         private uint opcode;                //GTE opcode
 
         private void decodeCommand(uint command) {
-            sf = (int)(command & 0x80_000) >> 19;
+            sf = (int)((command & 0x80_000) >> 19) * 12;
             MVMVA_M_Matrix = (command >> 17) & 0x3;
             MVMVA_M_Vector = (command >> 15) & 0x3;
             MVMVA_T_Vector = (command >> 13) & 0x3;
@@ -135,9 +135,9 @@ namespace ProjectPSX {
         private void CDP() {
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -163,9 +163,9 @@ namespace ProjectPSX {
         private void CC() {
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -177,9 +177,9 @@ namespace ProjectPSX {
             MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
 
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
-            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
-            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
-            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf);
 
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
@@ -221,9 +221,9 @@ namespace ProjectPSX {
 
         private void NCCS(int r) {
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -231,9 +231,9 @@ namespace ProjectPSX {
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -245,9 +245,9 @@ namespace ProjectPSX {
             MAC3 = (int)setMAC(3, (RGBC.b * IR[3]) << 4);
 
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
-            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
-            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
-            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+            MAC1 = (int)setMAC(1, MAC1 >> sf);
+            MAC2 = (int)setMAC(2, MAC2 >> sf);
+            MAC3 = (int)setMAC(3, MAC3 >> sf);
 
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
@@ -326,9 +326,9 @@ namespace ProjectPSX {
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -336,9 +336,9 @@ namespace ProjectPSX {
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -374,9 +374,9 @@ namespace ProjectPSX {
             //MAC3 = (Tx3 * 1000h + Mx31 * Vx1 + Mx32 * Vx2 + Mx33 * Vx3) SAR(sf * 12)
             //[IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
 
-            MAC1 = (int)setMAC(1, (long)(tx * 0x1000 + mx.v1.x * vx.x + mx.v1.y * vx.y + mx.v1.z * vx.z) >> sf * 12);
-            MAC2 = (int)setMAC(2, (long)(ty * 0x1000 + mx.v2.x * vx.x + mx.v2.y * vx.y + mx.v2.z * vx.z) >> sf * 12);
-            MAC3 = (int)setMAC(3, (long)(tz * 0x1000 + mx.v3.x * vx.x + mx.v3.y * vx.y + mx.v3.z * vx.z) >> sf * 12);
+            MAC1 = (int)setMAC(1, (long)(tx * 0x1000 + mx.v1.x * vx.x + mx.v1.y * vx.y + mx.v1.z * vx.z) >> sf);
+            MAC2 = (int)setMAC(2, (long)(ty * 0x1000 + mx.v2.x * vx.x + mx.v2.y * vx.y + mx.v2.z * vx.z) >> sf);
+            MAC3 = (int)setMAC(3, (long)(tz * 0x1000 + mx.v3.x * vx.x + mx.v3.y * vx.y + mx.v3.z * vx.z) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -418,13 +418,13 @@ namespace ProjectPSX {
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             //Note: Although the SHL in GPL is theoretically undone by the SAR, 44bit overflows can occur internally when sf=1.
 
-            long mac1 = (long)MAC1 << sf * 12;
-            long mac2 = (long)MAC2 << sf * 12;
-            long mac3 = (long)MAC3 << sf * 12;
+            long mac1 = (long)MAC1 << sf;
+            long mac2 = (long)MAC2 << sf;
+            long mac3 = (long)MAC3 << sf;
 
-            MAC1 = (int)(setMAC(1, IR[1] * IR[0] + mac1) >> sf * 12); //this is a good example of why setMac cant return int directly
-            MAC2 = (int)(setMAC(2, IR[2] * IR[0] + mac2) >> sf * 12); //as you cant >> before cause it dosnt triggers the flags and if
-            MAC3 = (int)(setMAC(3, IR[3] * IR[0] + mac3) >> sf * 12); //you do it after you get wrong values
+            MAC1 = (int)(setMAC(1, IR[1] * IR[0] + mac1) >> sf); //this is a good example of why setMac cant return int directly
+            MAC2 = (int)(setMAC(2, IR[2] * IR[0] + mac2) >> sf); //as you cant >> before cause it dosnt triggers the flags and if
+            MAC3 = (int)(setMAC(3, IR[3] * IR[0] + mac3) >> sf); //you do it after you get wrong values
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -444,9 +444,9 @@ namespace ProjectPSX {
             //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3]) SAR(sf*12)
             // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
 
-            MAC1 = (int)setMAC(1, IR[1] * IR[0]) >> sf * 12;
-            MAC2 = (int)setMAC(2, IR[2] * IR[0]) >> sf * 12;
-            MAC3 = (int)setMAC(3, IR[3] * IR[0]) >> sf * 12;
+            MAC1 = (int)setMAC(1, IR[1] * IR[0]) >> sf;
+            MAC2 = (int)setMAC(2, IR[2] * IR[0]) >> sf;
+            MAC3 = (int)setMAC(3, IR[3] * IR[0]) >> sf;
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -477,9 +477,9 @@ namespace ProjectPSX {
             short d2 = RT.v2.y;
             short d3 = RT.v3.z;
 
-            MAC1 = (int)setMAC(1, ((IR[3] * d2) - (IR[2] * d3)) >> sf * 12);
-            MAC2 = (int)setMAC(2, ((IR[1] * d3) - (IR[3] * d1)) >> sf * 12);
-            MAC3 = (int)setMAC(3, ((IR[2] * d1) - (IR[1] * d2)) >> sf * 12);
+            MAC1 = (int)setMAC(1, ((IR[3] * d2) - (IR[2] * d3)) >> sf);
+            MAC2 = (int)setMAC(2, ((IR[1] * d3) - (IR[3] * d1)) >> sf);
+            MAC3 = (int)setMAC(3, ((IR[2] * d1) - (IR[1] * d2)) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -487,9 +487,9 @@ namespace ProjectPSX {
         }
 
         private void SQR() {
-            MAC1 = (int)setMAC(1, (IR[1] * IR[1]) >> sf * 12);
-            MAC2 = (int)setMAC(2, (IR[2] * IR[2]) >> sf * 12);
-            MAC3 = (int)setMAC(3, (IR[3] * IR[3]) >> sf * 12);
+            MAC1 = (int)setMAC(1, (IR[1] * IR[1]) >> sf);
+            MAC2 = (int)setMAC(2, (IR[2] * IR[2]) >> sf);
+            MAC3 = (int)setMAC(3, (IR[3] * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -518,9 +518,9 @@ namespace ProjectPSX {
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
-            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf * 12);
-            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf);
+            MAC2 = (int)(setMAC(2, (long)LM.v2.x * V[r].x + LM.v2.y * V[r].y + LM.v2.z * V[r].z) >> sf);
+            MAC3 = (int)(setMAC(3, (long)LM.v3.x * V[r].x + LM.v3.y * V[r].y + LM.v3.z * V[r].z) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -528,9 +528,9 @@ namespace ProjectPSX {
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf * 12);
-            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)RBK * 0x1000 + LRGB.v1.x * IR[1]) + (long)LRGB.v1.y * IR[2]) + (long)LRGB.v1.z * IR[3]) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)GBK * 0x1000 + LRGB.v2.x * IR[1]) + (long)LRGB.v2.y * IR[2]) + (long)LRGB.v2.z * IR[3]) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, (long)BBK * 0x1000 + LRGB.v3.x * IR[1]) + (long)LRGB.v3.y * IR[2]) + (long)LRGB.v3.z * IR[3]) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -563,17 +563,17 @@ namespace ProjectPSX {
             // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
 
-            MAC1 = (int)(setMAC(1, ((long)RFC << 12) - mac1) >> sf * 12);
-            MAC2 = (int)(setMAC(2, ((long)GFC << 12) - mac2) >> sf * 12);
-            MAC3 = (int)(setMAC(3, ((long)BFC << 12) - mac3) >> sf * 12);
+            MAC1 = (int)(setMAC(1, ((long)RFC << 12) - mac1) >> sf);
+            MAC2 = (int)(setMAC(2, ((long)GFC << 12) - mac2) >> sf);
+            MAC3 = (int)(setMAC(3, ((long)BFC << 12) - mac3) >> sf);
 
             IR[1] = setIR(1, MAC1, false);
             IR[2] = setIR(2, MAC2, false);
             IR[3] = setIR(3, MAC3, false);
 
-            MAC1 = (int)(setMAC(1, ((long)IR[1] * IR[0]) + mac1) >> sf * 12);
-            MAC2 = (int)(setMAC(2, ((long)IR[2] * IR[0]) + mac2) >> sf * 12);
-            MAC3 = (int)(setMAC(3, ((long)IR[3] * IR[0]) + mac3) >> sf * 12);
+            MAC1 = (int)(setMAC(1, ((long)IR[1] * IR[0]) + mac1) >> sf);
+            MAC2 = (int)(setMAC(2, ((long)IR[2] * IR[0]) + mac2) >> sf);
+            MAC3 = (int)(setMAC(3, ((long)IR[3] * IR[0]) + mac3) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -595,10 +595,10 @@ namespace ProjectPSX {
             //IR1 = MAC1 = (TRX*1000h + RT11*VX0 + RT12*VY0 + RT13*VZ0) SAR (sf*12)
             //IR2 = MAC2 = (TRY*1000h + RT21*VX0 + RT22*VY0 + RT23*VZ0) SAR (sf*12)
             //IR3 = MAC3 = (TRZ*1000h + RT31*VX0 + RT32*VY0 + RT33*VZ0) SAR (sf*12)
-            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)TRX * 0x1000 + RT.v1.x * V[r].x) + (long)RT.v1.y * V[r].y) + (long)RT.v1.z * V[r].z) >> sf * 12);
-            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)TRY * 0x1000 + RT.v2.x * V[r].x) + (long)RT.v2.y * V[r].y) + (long)RT.v2.z * V[r].z) >> sf * 12);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, (long)TRX * 0x1000 + RT.v1.x * V[r].x) + (long)RT.v1.y * V[r].y) + (long)RT.v1.z * V[r].z) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, (long)TRY * 0x1000 + RT.v2.x * V[r].x) + (long)RT.v2.y * V[r].y) + (long)RT.v2.z * V[r].z) >> sf);
             long mac3 = setMAC(3, setMAC(3, setMAC(3, (long)TRZ * 0x1000 + RT.v3.x * V[r].x) + (long)RT.v3.y * V[r].y) + (long)RT.v3.z * V[r].z);
-            MAC3 = (int)(mac3 >> (sf * 12));
+            MAC3 = (int)(mac3 >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
