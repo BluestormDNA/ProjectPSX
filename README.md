@@ -67,8 +67,11 @@ Once power on, Input is mapped as:
 * R2: **2**
 
 ## Screenshots
-![cpu](https://user-images.githubusercontent.com/28767885/60985112-304a0280-a33d-11e9-83b3-49a15fb1c117.PNG)
-![gte](https://user-images.githubusercontent.com/28767885/60985120-30e29900-a33d-11e9-8cfa-1753b878e023.PNG)
+<p align="center" width="100%">
+    <img width="45%" src="https://user-images.githubusercontent.com/28767885/109383794-2cd80600-78e9-11eb-9093-d88d79751698.PNG"> 
+    <img width="45%" src="https://user-images.githubusercontent.com/28767885/109383797-2fd2f680-78e9-11eb-931e-de2d328175ee.PNG"> 
+</p>
+
 ![crash](https://user-images.githubusercontent.com/28767885/60985114-304a0280-a33d-11e9-80e2-08cd1c5abfbe.PNG)
 ![rr](https://user-images.githubusercontent.com/28767885/60985123-30e29900-a33d-11e9-9188-f942e44bcc3a.PNG)
 ![ff7](https://user-images.githubusercontent.com/28767885/60985116-304a0280-a33d-11e9-9944-f0dfc4f085c3.PNG)
@@ -90,10 +93,6 @@ Probably due to not implemented hardware or incorrect implemented one, mainly cd
 - How can i get console TTY or BIOS output?
 
 Uncomment the bios.verbose() or TTY() functions on the CPU main loop. You can also dissasemble() the MIPS CPU instructions and printRegs() on the current opcode.
-
-- Why both RTPS and RTPT Geometry Transformation Engine Coprocessor commands give wrong values on tests?
-
-At the moment i just use common division where the original PSX uses a fastest, but less accurate division mechanism (based on Unsigned Newton-Raphson (UNR) algorithm.
 
 - Why you did this?
 
