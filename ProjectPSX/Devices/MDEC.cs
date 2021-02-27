@@ -100,7 +100,8 @@ namespace ProjectPSX.Devices {
                     byte[] qt = currentBlock >= 4 ? colorQuantTable : luminanceQuantTable;
                     //todo check if was success and idct and currentblock++ there so we can return here
                     //and recover state when handling resumable macroblock decoding...
-                    rl_decode_block(block[currentBlock], qt);
+                    if (!rl_decode_block(block[currentBlock], qt)) return;
+
                     idct_core(block[currentBlock]);
 
                     currentBlock++;
@@ -154,16 +155,16 @@ namespace ProjectPSX.Devices {
         private int q_scale;
         private int val;
         private ushort n;
-        public void rl_decode_block(short[] blk, byte[] qt) {
+        public bool rl_decode_block(short[] blk, byte[] qt) {
             if (blockPointer >= 64) { //Start of new block
                 for (int i = 0; i < blk.Length; i++) {
                     blk[i] = 0;
                 }
 
-                if (inBuffer.Count == 0) return;
+                if (inBuffer.Count == 0) return false;
                 n = inBuffer.Dequeue();
                 while (n == 0xFE00) {
-                    if (inBuffer.Count == 0) return;
+                    if (inBuffer.Count == 0) return false;
                     n = inBuffer.Dequeue();
                 }
 
@@ -189,13 +190,15 @@ namespace ProjectPSX.Devices {
                     blk[blockPointer] = (short)val;
                 }
 
-                if (inBuffer.Count == 0) return;
+                if (inBuffer.Count == 0) return false;
                 n = inBuffer.Dequeue();
 
                 blockPointer += ((n >> 10) & 0x3F) + 1;
 
                 val = (signed10bit(n & 0x3FF) * qt[blockPointer & 0x3F] * q_scale + 4) / 8;
             }
+
+            return true;
         }
 
         private void idct_core(short[] src) {
