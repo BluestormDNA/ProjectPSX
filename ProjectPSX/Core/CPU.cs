@@ -288,14 +288,6 @@ namespace ProjectPSX {
                 load = bus.LoadFromBios(maskedPC);
             }
 
-            //if (PC == 0x8002cdf4) {
-            //    if (GPR[3] != GPR[2]) {
-            //        Console.ForegroundColor = ConsoleColor.Yellow;
-            //        Console.WriteLine($"Got {GPR[3]:x8} expected {GPR[2]:x8}");
-            //        Console.ResetColor();
-            //    }
-            //}
-
             PC_Now = PC;
             PC = PC_Predictor;
             PC_Predictor += 4;

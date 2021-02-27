@@ -87,6 +87,7 @@ namespace ProjectPSX {
         internal void execute(uint command) {
             //Console.WriteLine($"GTE EXECUTE {(command & 0x3F):x2}");
 
+            currentCommand = command;
             sf = (int)((command & 0x80_000) >> 19) * 12;
             lm = ((command >> 10) & 0x1) != 0;
             FLAG = 0;
@@ -348,7 +349,6 @@ namespace ProjectPSX {
             IR[3] = setIR(3, MAC3, lm);
         }
 
-        //int matrix;
         private void MVMVA() { //WIP
             //Mx = matrix specified by mx; RT / LLM / LCM - Rotation, light or color matrix
             //Vx = vector specified by v; V0, V1, V2, or[IR1, IR2, IR3]
@@ -369,9 +369,14 @@ namespace ProjectPSX {
             } else if (mxIndex == 1) {
                 mx = LM;
             } else if (mxIndex == 2) {
-                mx = RT;
-            } else {
+                mx = LRGB;
+            } else { 
                 mx = new Matrix();
+                mx.v1.x = (short)-(RGBC.r << 4);
+                mx.v1.y = (short)(RGBC.r << 4);
+                mx.v1.z = IR[0];
+                mx.v2.x = mx.v2.y = mx.v2.z = RT.v1.z;
+                mx.v3.x = mx.v3.y = mx.v3.z = RT.v2.y;
             }
 
             if (mvIndex == 0) {
@@ -393,9 +398,32 @@ namespace ProjectPSX {
                 ty = GBK;
                 tz = BBK;
             } else if (tvIndex == 2) {
+                //This vector is not added correctly by the hardware
                 tx = RFC;
                 ty = GFC;
                 tz = BFC;
+
+                long mac1 = setMAC(1, tx * 0x1000 + mx.v1.x * vx.x);
+                long mac2 = setMAC(2, ty * 0x1000 + mx.v2.x * vx.x);
+                long mac3 = setMAC(3, tz * 0x1000 + mx.v3.x * vx.x);
+
+                setIR(1, (int)(mac1 >> sf), false);
+                setIR(2, (int)(mac2 >> sf), false);
+                setIR(3, (int)(mac3 >> sf), false);
+
+                mac1 = setMAC(1, setMAC(1, (long)mx.v1.y * vx.y) + (long)mx.v1.z * vx.z);
+                mac2 = setMAC(2, setMAC(2, (long)mx.v2.y * vx.y) + (long)mx.v2.z * vx.z);
+                mac3 = setMAC(3, setMAC(3, (long)mx.v3.y * vx.y) + (long)mx.v3.z * vx.z);
+
+                MAC1 = (int)(mac1 >> sf);
+                MAC2 = (int)(mac2 >> sf);
+                MAC3 = (int)(mac3 >> sf);
+
+                IR[1] = setIR(1, MAC1, lm);
+                IR[2] = setIR(2, MAC2, lm);
+                IR[3] = setIR(3, MAC3, lm);
+
+                return;
             } else {
                 tx = ty = tz = 0;
             }
@@ -405,15 +433,13 @@ namespace ProjectPSX {
             //MAC3 = (Tx3 * 1000h + Mx31 * Vx1 + Mx32 * Vx2 + Mx33 * Vx3) SAR(sf * 12)
             //[IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
 
-            MAC1 = (int)setMAC(1, (long)(tx * 0x1000 + mx.v1.x * vx.x + mx.v1.y * vx.y + mx.v1.z * vx.z) >> sf);
-            MAC2 = (int)setMAC(2, (long)(ty * 0x1000 + mx.v2.x * vx.x + mx.v2.y * vx.y + mx.v2.z * vx.z) >> sf);
-            MAC3 = (int)setMAC(3, (long)(tz * 0x1000 + mx.v3.x * vx.x + mx.v3.y * vx.y + mx.v3.z * vx.z) >> sf);
+            MAC1 = (int)(setMAC(1, setMAC(1, setMAC(1, tx * 0x1000 + mx.v1.x * vx.x) + (long)mx.v1.y * vx.y) + (long)mx.v1.z * vx.z) >> sf);
+            MAC2 = (int)(setMAC(2, setMAC(2, setMAC(2, ty * 0x1000 + mx.v2.x * vx.x) + (long)mx.v2.y * vx.y) + (long)mx.v2.z * vx.z) >> sf);
+            MAC3 = (int)(setMAC(3, setMAC(3, setMAC(3, tz * 0x1000 + mx.v3.x * vx.x) + (long)mx.v3.y * vx.y) + (long)mx.v3.z * vx.z) >> sf);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
-
-            //Console.WriteLine("[GTE] MVMVA " + ++matrix);
         }
 
         private void GPL() {
