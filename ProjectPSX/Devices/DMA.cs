@@ -67,6 +67,11 @@ namespace ProjectPSX.Devices {
                 masterFlag = updateMasterFlag();
             }
 
+            public bool isDMAControlMasterEnabled(int channelNumber) {
+                return (((control >> 3) >> 4 * channelNumber) & 0x1) != 0;
+            }
+
+
             public void handleInterrupt(int channel) {
                 //IRQ flags in Bit(24 + n) are set upon DMAn completion - but caution - they are set ONLY if enabled in Bit(16 + n).
                 if ((irqEnable & (1 << channel)) != 0) {
@@ -112,9 +117,14 @@ namespace ProjectPSX.Devices {
             private bool enable;
             private bool trigger;
 
+            private uint unknow29; //b29 Unknown (R/W) Pause?  (0=No, 1=Pause?)     (For SyncMode=0 only?)
+            private uint unknow30; //b30      Unknown(R/W)
+
             private BUS bus;
             private InterruptChannel interrupt;
             private int channelNumber;
+
+            private uint pendingBlocks;
 
             public Channel(int channelNumber, InterruptChannel interrupt, BUS bus) {
                 this.channelNumber = channelNumber;
@@ -142,6 +152,8 @@ namespace ProjectPSX.Devices {
                 channelControl |= choppingCPUWindowSize << 20;
                 channelControl |= (enable ? 1u : 0) << 24;
                 channelControl |= (trigger ? 1u : 0) << 28;
+                channelControl |= unknow29 << 29;
+                channelControl |= unknow30 << 30;
 
                 return channelControl;
             }
@@ -164,16 +176,24 @@ namespace ProjectPSX.Devices {
                 choppingCPUWindowSize = (value >> 20) & 0x7;
                 enable = ((value >> 24) & 0x1) != 0;
                 trigger = ((value >> 28) & 0x1) != 0;
+                unknow29 = (value >> 29) & 0x1;
+                unknow30 = (value >> 30) & 0x1;
+
+                if (!enable) pendingBlocks = 0;
 
                 handleDMA();
             }
 
             private void handleDMA() {
-                if (!isActive()) return;
+                if (!isActive() || !interrupt.isDMAControlMasterEnabled(channelNumber) || pendingBlocks > 0) return;
+
                 if (syncMode == 0) {
                     blockCopy(blockSize);
                 } else if (syncMode == 1) {
-                    blockCopy(blockSize * blockCount);
+                    //blockCopy(blockSize * blockCount);
+                    pendingBlocks = blockCount;
+                    tick();
+                    return;
                 } else if (syncMode == 2) {
                     linkedList();
                 }
@@ -241,6 +261,38 @@ namespace ProjectPSX.Devices {
             //0  Start immediately and transfer all at once (used for CDROM, OTC) needs TRIGGER
             private bool isActive() => syncMode == 0 ? enable && trigger : enable;
 
+            internal void tick() {
+                bool triger = pendingBlocks == 1;
+                if (pendingBlocks > 0) {
+                    if(channelNumber == 0) {
+                        Console.WriteLine($"[DMA] MDEC OUT Tick trigger {trigger} pendingBlocks {pendingBlocks}");
+                    }
+
+                    if( channelNumber == 1) {
+                        Console.WriteLine($"[DMA] MDEC IN  Tick trigger {trigger} pendingBlocks {pendingBlocks}");
+                    }
+
+                    pendingBlocks--;
+                    blockCopy(blockSize);
+                }
+
+                if (pendingBlocks == 0 & triger) {
+                    if (channelNumber == 0) {
+                        Console.WriteLine("[DMA] MDEC OUT Triggering Interrupt");
+                    }
+
+                    if (channelNumber == 1) {
+                        Console.WriteLine("[DMA] MDEC IN  Triggering Interrupt");
+                    }
+
+                    //disable channel
+                    enable = false;
+                    trigger = false;
+
+                    interrupt.handleInterrupt(channelNumber);
+                }
+            }
+
         }
 
         AChannel[] channels = new AChannel[8];
@@ -272,7 +324,12 @@ namespace ProjectPSX.Devices {
             channels[channel].write(register, value);
         }
 
-        public bool tick() => ((InterruptChannel)channels[7]).tick();
+        public bool tick() {
+            for (int i = 0; i < 7; i++) {
+                ((Channel)channels[i]).tick();
+            }
+            return ((InterruptChannel)channels[7]).tick();
+        }
 
     }
 }
