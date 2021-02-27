@@ -36,6 +36,10 @@ namespace ProjectPSX.Devices {
             public bool isTextured;
             public bool isSemiTransparent;
             public bool isRawTextured;//if not: blended
+            public int depth;
+            public int semiTransparencyMode;
+            public Point2D clut;
+            public Point2D textureBase;
         }
 
         private struct VRAM_Coord {
@@ -446,8 +450,7 @@ namespace ProjectPSX.Devices {
                 c[1] = color; //triangle 2 opaque color
             }
 
-            uint palette = 0;
-            uint texpage = (uint)transparencyMode << 5;
+            primitive.semiTransparencyMode = transparencyMode;
 
             for (int i = 0; i < vertexN; i++) {
                 if (isShaded) c[i] = buffer[pointer++];
@@ -460,30 +463,38 @@ namespace ProjectPSX.Devices {
                     uint textureData = buffer[pointer++];
                     t[i].val = (ushort)textureData;
                     if (i == 0) {
-                        palette = textureData >> 16;
+                        uint palette = textureData >> 16;
+
+                        primitive.clut.x = (short)((palette & 0x3f) << 4);
+                        primitive.clut.y = (short)((palette >> 6) & 0x1FF);
                     } else if (i == 1) {
-                        texpage = textureData >> 16;
+                        uint texpage = textureData >> 16;
+
+                        primitive.depth = (int)(texpage >> 7) & 0x3;
+                        primitive.textureBase.x = (short)((texpage & 0xF) << 6);
+                        primitive.textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
+                        primitive.semiTransparencyMode = (int)((texpage >> 5) & 0x3);
+
+                        forceSetE1(texpage);
                     }
                 }
             }
 
-            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], palette, texpage, primitive);
-            if (isQuad) rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], palette, texpage, primitive);
+            rasterizeTri(v[0], v[1], v[2], t[0], t[1], t[2], c[0], c[1], c[2], primitive);
+            if (isQuad) rasterizeTri(v[1], v[2], v[3], t[1], t[2], t[3], c[1], c[2], c[3], primitive);
         }
 
-        private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Primitive primitive) {
+        private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, Primitive primitive) {
 
             int area = orient2d(v0, v1, v2);
 
-            if (area == 0) {
-                return;
-            }
+            if (area == 0) return;
 
             if (area < 0) {
                 (v1, v2) = (v2, v1);
                 (t1, t2) = (t2, t1);
                 (c1, c2) = (c2, c1);
-                area *= -1;
+                area = -area;
             }
 
             /*boundingBox*/
@@ -511,23 +522,6 @@ namespace ProjectPSX.Devices {
             int w0_row = orient2d(v1, v2, min);
             int w1_row = orient2d(v2, v0, min);
             int w2_row = orient2d(v0, v1, min);
-
-            int depth = 0;
-            int semiTransparencyMode = (int)((texpage >> 5) & 0x3);
-            Point2D clut = new Point2D();
-            Point2D textureBase = new Point2D();
-
-            if (primitive.isTextured) {
-                depth = (int)(texpage >> 7) & 0x3;
-
-                clut.x = (short)((palette & 0x3f) << 4);
-                clut.y = (short)((palette >> 6) & 0x1FF);
-
-                textureBase.x = (short)((texpage & 0xF) << 6);
-                textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
-
-                forceSetE1(texpage);
-            }
 
             int baseColor = GetRgbColor(c0);
 
@@ -564,7 +558,7 @@ namespace ProjectPSX.Devices {
                         if (primitive.isTextured) {
                             int texelX = interpolateCoords(w0, w1, w2, t0.x, t1.x, t2.x, area);
                             int texelY = interpolateCoords(w0, w1, w2, t0.y, t1.y, t2.y, area);
-                            int texel = getTexel(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), clut, textureBase, depth);
+                            int texel = getTexel(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), primitive.clut, primitive.textureBase, primitive.depth);
                             if (texel == 0) {
                                 w0 += A12;
                                 w1 += A20;
@@ -586,7 +580,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                            color = handleSemiTransp(x, y, color, semiTransparencyMode);
+                            color = handleSemiTransp(x, y, color, primitive.semiTransparencyMode);
                         }
 
                         color |= maskWhileDrawing << 24;
