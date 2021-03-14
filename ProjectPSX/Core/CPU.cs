@@ -5,8 +5,6 @@ using ProjectPSX.Disassembler;
 namespace ProjectPSX {
     internal unsafe class CPU {  //MIPS R3000A-compatible 32-bit RISC CPU MIPS R3051 with 5 KB L1 cache, running at 33.8688 MHz // 33868800
 
-        private BUS bus;
-
         private uint PC_Now; // PC on current execution as PC and PC Predictor go ahead after fetch. This is handy on Branch Delay so it dosn't give erronious PC-4
         private uint PC = 0xbfc0_0000; // Bios Entry Point
         private uint PC_Predictor = 0xbfc0_0004; //next op for branch delay slot emulation
@@ -31,8 +29,8 @@ namespace ProjectPSX {
         private const int BADA = 8;
         private const int JUMPDEST = 6;
 
-        //GTE
         private GTE gte;
+        private BUS bus;
 
         //Debug
         private long cycle; //current CPU cycle counter for debug
@@ -188,8 +186,7 @@ namespace ProjectPSX {
         internal void Run() {
             fetchDecode();
             if(instr.value != 0) { //Skip Nops
-                //Execute();
-                opcodeMainTable[instr.opcode](this);
+                opcodeMainTable[instr.opcode](this); //Execute
             }
             MemAccess();
             WriteBack();
@@ -293,8 +290,8 @@ namespace ProjectPSX {
             opcodeIsBranch = false;
             opcodeTookBranch = false;
 
-            if ((PC_Now & 0x3) != 0) { // faster than PC_Now % 4 != 0
-                COP0_GPR[BADA] = PC_Now; //TODO check this
+            if ((PC_Now & 0x3) != 0) {
+                COP0_GPR[BADA] = PC_Now;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 return;
             }
@@ -318,95 +315,6 @@ namespace ProjectPSX {
             writeBack.register = 0;
             GPR[0] = 0;
         }
-
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //private void Execute() {
-        //    switch (instr.opcode) {
-        //        case 0b00_0000: SPECIAL(); break;//R-Type opcodes
-        //        case 0b10_1011: SW(); break;
-        //        case 0b10_0011: LW(); break;
-        //        case 0b00_0100: BEQ(); break;
-        //        case 0b00_0101: BNE(); break;
-        //        case 0b00_0001: BCOND(); break;
-        //        case 0b00_0010: J(); break;
-        //        case 0b00_0011: JAL(); break;
-        //        case 0b01_0010: COP2(); break;
-        //
-        //        case 0b00_0110: BLEZ(); break;
-        //        case 0b00_0111: BGTZ(); break;
-        //        case 0b00_1000: ADDI(); break;
-        //        case 0b00_1001: ADDIU(); break;
-        //        case 0b00_1010: SLTI(); break;
-        //        case 0b00_1011: SLTIU(); break;
-        //        case 0b00_1100: ANDI(); break;
-        //        case 0b00_1101: ORI(); break;
-        //        case 0b00_1110: XORI(); break;
-        //        case 0b00_1111: LUI(); break;
-        //        case 0b01_0000: COP0(); break;
-        //        case 0b01_0001: /*COP1()*/ break;
-        //
-        //        case 0b01_0011: /*COP3()*/ break;
-        //        case 0b10_0000: LB(); break;
-        //        case 0b10_0001: LH(); break;
-        //        case 0b10_0010: LWL(); break;
-        //
-        //        case 0b10_0100: LBU(); break;
-        //        case 0b10_0101: LHU(); break;
-        //        case 0b10_0110: LWR(); break;
-        //        case 0b10_1000: SB(); break;
-        //        case 0b10_1001: SH(); break;
-        //        case 0b10_1010: SWL(); break;
-        //
-        //        case 0b10_1110: SWR(); break;
-        //        case 0b11_0000: //LWC0
-        //        case 0b11_0001: //LWC1
-        //        case 0b11_0011: //LWC3
-        //        case 0b11_1000: //SWC0
-        //        case 0b11_1001: //SWC1
-        //        case 0b11_1011: /*SWC3*/break; //All copro and lw sw instr dont trigger exception.
-        //        case 0b11_0010: LWC2(); break;
-        //        case 0b11_1010: SWC2(); break;
-        //        default:
-        //            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-        //            break;
-        //    }
-        //}
-
-        //private void SPECIAL() {
-        //    switch (instr.function) {
-        //        case 0b00_0000: SLL(); break;
-        //        case 0b00_0010: SRL(); break;
-        //        case 0b00_0011: SRA(); break;
-        //        case 0b00_0100: SLLV(); break;
-        //        case 0b00_0110: SRLV(); break;
-        //        case 0b00_0111: SRAV(); break;
-        //        case 0b00_1000: JR(); break;
-        //        case 0b00_1001: JALR(); break;
-        //        case 0b00_1100: SYSCALL(); break;
-        //        case 0b00_1101: BREAK(); break;
-        //        case 0b01_0000: MFHI(); break;
-        //        case 0b01_0001: MTHI(); break;
-        //        case 0b01_0010: MFLO(); break;
-        //        case 0b01_0011: MTLO(); break;
-        //        case 0b01_1000: MULT(); break;
-        //        case 0b01_1001: MULTU(); break;
-        //        case 0b01_1010: DIV(); break;
-        //        case 0b01_1011: DIVU(); break;
-        //        case 0b10_0000: ADD(); break;
-        //        case 0b10_0001: ADDU(); break;
-        //        case 0b10_0010: SUB(); break;
-        //        case 0b10_0011: SUBU(); break;
-        //        case 0b10_0100: AND(); break;
-        //        case 0b10_0101: OR(); break;
-        //        case 0b10_0110: XOR(); break;
-        //        case 0b10_0111: NOR(); break;
-        //        case 0b10_1010: SLT(); break;
-        //        case 0b10_1011: SLTU(); break;
-        //        default:
-        //            EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-        //            break;
-        //    }
-        //}
 
         private void COP2() {
             if ((instr.rs & 0x10) == 0) {
@@ -454,7 +362,6 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
-            //Console.WriteLine("Store Data FROM GTE");
             uint addr = GPR[instr.rs] + instr.imm_s;
 
             if ((addr & 0x3) == 0) {
@@ -463,12 +370,10 @@ namespace ProjectPSX {
                 COP0_GPR[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
             }
-            //Console.ReadLine();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
-            //Console.WriteLine("Load Data TO GTE");
             uint addr = GPR[instr.rs] + instr.imm_s;
 
             if ((addr & 0x3) == 0) {
@@ -478,7 +383,6 @@ namespace ProjectPSX {
                 COP0_GPR[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
             }
-            //Console.ReadLine();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -557,7 +461,7 @@ namespace ProjectPSX {
                 case 2: value = (LRValue & 0x0000_00FF) | (aligned_load << 8); break;
                 case 3: value = aligned_load; break;
             }
-            //Console.WriteLine("case " + (addr & 0b11) + " LWL Value " + value.ToString("x8"));
+
             delayedLoad(instr.rt, value);
         }
 
@@ -658,14 +562,9 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RFE() {
-            //Console.ForegroundColor = ConsoleColor.Yellow;
-            //Console.WriteLine("[RFE] PRE SR" + SR.ToString("x8"));
             uint mode = COP0_GPR[SR] & 0x3F;
             COP0_GPR[SR] &= ~(uint)0xF;
             COP0_GPR[SR] |= mode >> 2;
-            //Console.WriteLine("[RFE] POST SR" + SR.ToString("x8"));
-            //Console.ResetColor();
-            //Console.ReadLine();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
