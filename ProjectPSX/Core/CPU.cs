@@ -48,7 +48,7 @@ namespace ProjectPSX {
         private MEM delayedMemoryLoad;
 
         public struct Instr {
-            public uint value;                     //debug
+            public uint value;                     //raw
             public uint opcode => value >> 26;     //Instr opcode
 
             //I-Type
@@ -67,10 +67,6 @@ namespace ProjectPSX {
 
             //id / Cop
             public uint id => opcode & 0x3; //This is used mainly for coprocesor opcode id but its also used on opcodes that trigger exception
-
-            public void Decode(uint instr) {
-                value = instr;
-            }
         }
         private Instr instr;
 
@@ -199,7 +195,7 @@ namespace ProjectPSX {
             WriteBack();
 
             /*debug*/
-            //if (exe) forceTest(tgte); //tcpu tcpx tgte tgpu demo <---------------------
+            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
             //if (isEX1) forceEX1();
 
             //if (debug) {
@@ -254,7 +250,7 @@ namespace ProjectPSX {
             }
 
             //This is actually the "next" opcode if it's a GTE one
-            //just postpone the interrupt so it doesn't glith out
+            //just postpone the interrupt so it doesn't glitch out
             //Crash Bandicoot intro is a good example for this
             uint instr = load >> 26;
             if (instr == 0x12) { //COP2 MTC2
@@ -303,7 +299,7 @@ namespace ProjectPSX {
                 return;
             }
 
-            instr.Decode(load);
+            instr.value = load;
             //cycle++;
         }
 
