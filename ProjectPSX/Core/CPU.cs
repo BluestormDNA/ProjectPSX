@@ -84,11 +84,11 @@ namespace ProjectPSX {
             initOpCodeTable();
         }
 
-        public static delegate*<CPU, void>[] opcodeMainTable;
-        public static delegate*<CPU, void>[] opcodeSpecialTable;
+        private static delegate*<CPU, void>[] opcodeMainTable;
+        private static delegate*<CPU, void>[] opcodeSpecialTable;
 
-        public void initOpCodeTable() {
-            static void SPECIAL2(CPU cpu) => cpu.SPECIAL();
+        private void initOpCodeTable() {
+            static void SPECIAL(CPU cpu) => cpu.SPECIAL();
             static void BCOND(CPU cpu) => cpu.BCOND();
             static void J(CPU cpu) => cpu.J();
             static void JAL(CPU cpu) => cpu.JAL();
@@ -124,7 +124,7 @@ namespace ProjectPSX {
             static void SWC2(CPU cpu) => cpu.SWC2();
 
             opcodeMainTable = new delegate*<CPU, void>[] {
-                &SPECIAL2, &BCOND,  &J,      &JAL,    &BEQ,    &BNE,    &BLEZ,   &BGTZ,
+                &SPECIAL,  &BCOND,  &J,      &JAL,    &BEQ,    &BNE,    &BLEZ,   &BGTZ,
                 &ADDI,     &ADDIU,  &SLTI,   &SLTIU,  &ANDI,   &ORI,    &XORI,   &LUI,
                 &COP0,     &NOP,    &COP2,   &NOP,    &NA,     &NA,     &NA,     &NA,
                 &NA,       &NA,     &NA,     &NA,     &NA,     &NA,     &NA,     &NA,
@@ -175,15 +175,8 @@ namespace ProjectPSX {
             };
         }
 
-        private void SPECIAL() => opcodeSpecialTable[instr.function](this);
-
-        private void NOP() { /*nop*/ }
-
-        private void NA() => EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void Run() {
+        public void Run() {
             fetchDecode();
             if(instr.value != 0) { //Skip Nops
                 opcodeMainTable[instr.opcode](this); //Execute
@@ -316,28 +309,15 @@ namespace ProjectPSX {
             GPR[0] = 0;
         }
 
-        private void COP2() {
-            if ((instr.rs & 0x10) == 0) {
-                switch (instr.rs) {
-                    case 0b0_0000: MFC2(); break;
-                    case 0b0_0010: CFC2(); break;
-                    case 0b0_0100: MTC2(); break;
-                    case 0b0_0110: CTC2(); break;
-                    default: EXCEPTION(EX.ILLEGAL_INSTR, instr.id); break;
-                }
-            } else {
-                gte.execute(instr.value);
-            }
-        }
+        // Non Implemented by the CPU Opcodes
+        private void NOP() { /*nop*/ }
 
-        private void COP0() {
-            if (instr.rs == 0b0_0000) MFC0();
-            else if (instr.rs == 0b0_0100) MTC0();
-            else if (instr.rs == 0b1_0000) RFE();
-            else EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
-        }
+        private void NA() => EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+        // Main Table Opcodes
+        private void SPECIAL() => opcodeSpecialTable[instr.function](this);
+
         private void BCOND() {
             opcodeIsBranch = true;
             uint op = instr.rt;
@@ -350,214 +330,116 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void CTC2() => gte.writeControl(instr.rd, GPR[instr.rt]);
+        private void J() {
+            opcodeIsBranch = true;
+            opcodeTookBranch = true;
+            PC_Predictor = (PC_Predictor & 0xF000_0000) | (instr.addr << 2);
+        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MTC2() => gte.writeData(instr.rd, GPR[instr.rt]);
+        private void JAL() {
+            setGPR(31, PC_Predictor);
+            J();
+        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void CFC2() => delayedLoad(instr.rt, gte.loadControl(instr.rd));
-
-        private void MFC2() => delayedLoad(instr.rt, gte.loadData(instr.rd));
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
-            uint addr = GPR[instr.rs] + instr.imm_s;
-
-            if ((addr & 0x3) == 0) {
-                bus.write32(addr, gte.loadData(instr.rt));
-            } else {
-                COP0_GPR[BADA] = addr;
-                EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+        private void BEQ() {
+            opcodeIsBranch = true;
+            if (GPR[instr.rs] == GPR[instr.rt]) {
+                BRANCH();
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
-            uint addr = GPR[instr.rs] + instr.imm_s;
-
-            if ((addr & 0x3) == 0) {
-                uint value = bus.load32(addr);
-                gte.writeData(instr.rt, value);
-            } else {
-                COP0_GPR[BADA] = addr;
-                EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+        private void BNE() {
+            opcodeIsBranch = true;
+            if (GPR[instr.rs] != GPR[instr.rt]) {
+                BRANCH();
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SWR() {
-            uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = addr & 0xFFFF_FFFC;
-            uint aligned_load = bus.load32(aligned_addr);
-
-            uint value = 0;
-            switch (addr & 0b11) {
-                case 0: value = GPR[instr.rt]; break;
-                case 1: value = (aligned_load & 0x0000_00FF) | (GPR[instr.rt] << 8); break;
-                case 2: value = (aligned_load & 0x0000_FFFF) | (GPR[instr.rt] << 16); break;
-                case 3: value = (aligned_load & 0x00FF_FFFF) | (GPR[instr.rt] << 24); break;
+        private void BLEZ() {
+            opcodeIsBranch = true;
+            if (((int)GPR[instr.rs]) <= 0) {
+                BRANCH();
             }
-
-            bus.write32(aligned_addr, value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SWL() {
-            uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = addr & 0xFFFF_FFFC;
-            uint aligned_load = bus.load32(aligned_addr);
-
-            uint value = 0;
-            switch (addr & 0b11) {
-                case 0: value = (aligned_load & 0xFFFF_FF00) | (GPR[instr.rt] >> 24); break;
-                case 1: value = (aligned_load & 0xFFFF_0000) | (GPR[instr.rt] >> 16); break;
-                case 2: value = (aligned_load & 0xFF00_0000) | (GPR[instr.rt] >> 8); break;
-                case 3: value = GPR[instr.rt]; break;
+        private void BGTZ() {
+            opcodeIsBranch = true;
+            if (((int)GPR[instr.rs]) > 0) {
+                BRANCH();
             }
-
-            bus.write32(aligned_addr, value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LWR() {
-            uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = addr & 0xFFFF_FFFC;
-            uint aligned_load = bus.load32(aligned_addr);
-
-            uint value = 0;
-            uint LRValue = GPR[instr.rt];
-
-            if (instr.rt == memoryLoad.register) {
-                LRValue = memoryLoad.value;
-            }
-
-            switch (addr & 0b11) {
-                case 0: value = aligned_load; break;
-                case 1: value = (LRValue & 0xFF00_0000) | (aligned_load >> 8); break;
-                case 2: value = (LRValue & 0xFFFF_0000) | (aligned_load >> 16); break;
-                case 3: value = (LRValue & 0xFFFF_FF00) | (aligned_load >> 24); break;
-            }
-
-            delayedLoad(instr.rt, value);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LWL() {
-            uint addr = GPR[instr.rs] + instr.imm_s;
-            uint aligned_addr = addr & 0xFFFF_FFFC;
-            uint aligned_load = bus.load32(aligned_addr);
-
-            uint value = 0;
-            uint LRValue = GPR[instr.rt];
-
-            if (instr.rt == memoryLoad.register) {
-                LRValue = memoryLoad.value;
-            }
-
-            switch (addr & 0b11) {
-                case 0: value = (LRValue & 0x00FF_FFFF) | (aligned_load << 24); break;
-                case 1: value = (LRValue & 0x0000_FFFF) | (aligned_load << 16); break;
-                case 2: value = (LRValue & 0x0000_00FF) | (aligned_load << 8); break;
-                case 3: value = aligned_load; break;
-            }
-
-            delayedLoad(instr.rt, value);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void XORI() {
-            setGPR(instr.rt, GPR[instr.rs] ^ instr.imm);
-        }
-
-        private void SUB() {
+        private void ADDI() {
             int rs = (int)GPR[instr.rs];
-            int rt = (int)GPR[instr.rt];
+            int imm_s = (int)instr.imm_s;
             try {
-                uint sub = (uint)checked(rs - rt);
-                setGPR(instr.rd, sub);
-            } catch (OverflowException) {
+                uint addi = (uint)checked(rs + imm_s);
+                setGPR(instr.rt, addi);
+            }
+            catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MULT() {
-            long value = (long)(int)GPR[instr.rs] * (long)(int)GPR[instr.rt]; //sign extend to pass amidog cpu test
+        private void ADDIU() => setGPR(instr.rt, GPR[instr.rs] + instr.imm_s);
 
-            HI = (uint)(value >> 32);
-            LO = (uint)value;
+        private void SLTI() {
+            bool condition = (int)GPR[instr.rs] < (int)instr.imm_s;
+            setGPR(instr.rt, Unsafe.As<bool, uint>(ref condition));
+        }
+
+        private void SLTIU() {
+            bool condition = GPR[instr.rs] < instr.imm_s;
+            setGPR(instr.rt, Unsafe.As<bool, uint>(ref condition));
+        }
+
+        private void ANDI() => setGPR(instr.rt, GPR[instr.rs] & instr.imm);
+
+        private void ORI() => setGPR(instr.rt, GPR[instr.rs] | instr.imm);
+
+        private void XORI() => setGPR(instr.rt, GPR[instr.rs] ^ instr.imm);
+
+        private void LUI() => setGPR(instr.rt, instr.imm << 16);
+
+        private void COP0() {
+            if (instr.rs == 0b0_0000) MFC0();
+            else if (instr.rs == 0b0_0100) MTC0();
+            else if (instr.rs == 0b1_0000) RFE();
+            else EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BREAK() {
-            EXCEPTION(EX.BREAK);
+        private void MFC0() {
+            uint mfc = instr.rd;
+            if (mfc == 3 || mfc >= 5 && mfc <= 9 || mfc >= 11 && mfc <= 15) {
+                delayedLoad(instr.rt, COP0_GPR[mfc]);
+            } else {
+                EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void XOR() {
-            setGPR(instr.rd, GPR[instr.rs] ^ GPR[instr.rt]);
-        }
+        private void MTC0() {
+            uint value = GPR[instr.rt];
+            uint register = instr.rd;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MULTU() {
-            ulong value = (ulong)GPR[instr.rs] * (ulong)GPR[instr.rt]; //sign extend to pass amidog cpu test
+            //MTC0 can trigger soft interrupts
+            bool prevIEC = (COP0_GPR[SR] & 0x1) == 1;
 
-            HI = (uint)(value >> 32);
-            LO = (uint)value;
-        }
+            if (register == CAUSE) { //only bits 8 and 9 are writable
+                COP0_GPR[CAUSE] &= ~(uint)0x300;
+                COP0_GPR[CAUSE] |= value & 0x300;
+            } else {
+                COP0_GPR[register] = value; //There are some zeros on SR that shouldnt be writtable also todo: GPR > 16?
+            }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SRLV() {
-            setGPR(instr.rd, GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F));
-        }
+            uint IM = (COP0_GPR[SR] >> 8) & 0x3;
+            uint IP = (COP0_GPR[CAUSE] >> 8) & 0x3;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SRAV() {
-            setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F)));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void NOR() {
-            setGPR(instr.rd, ~(GPR[instr.rs] | GPR[instr.rt]));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LH() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint addr = GPR[instr.rs] + instr.imm_s;
-
-                if ((addr & 0x1) == 0) {
-                    uint value = (uint)(short)bus.load32(addr);
-                    delayedLoad(instr.rt, value);
-                } else {
-                    COP0_GPR[BADA] = addr;
-                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
-                }
-
-            } //else Console.WriteLine("Ignoring Load");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SLLV() {
-            setGPR(instr.rd, GPR[instr.rt] << (int)(GPR[instr.rs] & 0x1F));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LHU() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint addr = GPR[instr.rs] + instr.imm_s;
-
-                if ((addr & 0x1) == 0) {
-                    uint value = (ushort)bus.load32(addr);
-                    //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
-                    delayedLoad(instr.rt, value);
-                } else {
-                    COP0_GPR[BADA] = addr;
-                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
-                }
-
-            } //else Console.WriteLine("Ignoring Load");
+            if (!prevIEC && (COP0_GPR[SR] & 0x1) == 1 && (IM & IP) > 0) {
+                PC = PC_Predictor;
+                EXCEPTION(EX.INTERRUPT, instr.id);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -565,16 +447,6 @@ namespace ProjectPSX {
             uint mode = COP0_GPR[SR] & 0x3F;
             COP0_GPR[SR] &= ~(uint)0xF;
             COP0_GPR[SR] |= mode >> 2;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MTHI() {
-            HI = GPR[instr.rs];
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MTLO() {
-            LO = GPR[instr.rs];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -611,53 +483,283 @@ namespace ProjectPSX {
             PC_Predictor = PC + 4;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SYSCALL() {
-            EXCEPTION(EX.SYSCALL, instr.id);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SLT() {
-            bool condition = (int)GPR[instr.rs] < (int)GPR[instr.rt];
-            setGPR(instr.rd, condition ? 1u : 0u);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MFHI() {
-            setGPR(instr.rd, HI);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DIVU() {
-            uint n = GPR[instr.rs];
-            uint d = GPR[instr.rt];
-
-            if (d == 0) {
-                HI = n;
-                LO = 0xFFFF_FFFF;
+        private void COP2() {
+            if ((instr.rs & 0x10) == 0) {
+                switch (instr.rs) {
+                    case 0b0_0000: MFC2(); break;
+                    case 0b0_0010: CFC2(); break;
+                    case 0b0_0100: MTC2(); break;
+                    case 0b0_0110: CTC2(); break;
+                    default: EXCEPTION(EX.ILLEGAL_INSTR, instr.id); break;
+                }
             } else {
-                HI = n % d;
-                LO = n / d;
+                gte.execute(instr.value);
             }
         }
 
+        private void MFC2() => delayedLoad(instr.rt, gte.loadData(instr.rd));
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SLTIU() {
-            bool condition = GPR[instr.rs] < instr.imm_s;
-            setGPR(instr.rt, condition ? 1u : 0u);
+        private void CFC2() => delayedLoad(instr.rt, gte.loadControl(instr.rd));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void MTC2() => gte.writeData(instr.rd, GPR[instr.rt]);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void CTC2() => gte.writeControl(instr.rd, GPR[instr.rt]);
+
+        private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
+            uint addr = GPR[instr.rs] + instr.imm_s;
+
+            if ((addr & 0x3) == 0) {
+                uint value = bus.load32(addr);
+                gte.writeData(instr.rt, value);
+            } else {
+                COP0_GPR[BADA] = addr;
+                EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+            }
+        }
+
+        private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
+            uint addr = GPR[instr.rs] + instr.imm_s;
+
+            if ((addr & 0x3) == 0) {
+                bus.write32(addr, gte.loadData(instr.rt));
+            } else {
+                COP0_GPR[BADA] = addr;
+                EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+            }
+        }
+
+        private void LB() { //todo redo this as it unnecesary load32
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint value = (uint)(sbyte)bus.load32(GPR[instr.rs] + instr.imm_s);
+                delayedLoad(instr.rt, value);
+            } //else Console.WriteLine("Ignoring Write");
+        }
+
+        private void LBU() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint value = (byte)bus.load32(GPR[instr.rs] + instr.imm_s);
+                delayedLoad(instr.rt, value);
+            } //else Console.WriteLine("Ignoring Load");
+        }
+
+        private void LH() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint addr = GPR[instr.rs] + instr.imm_s;
+
+                if ((addr & 0x1) == 0) {
+                    uint value = (uint)(short)bus.load32(addr);
+                    delayedLoad(instr.rt, value);
+                } else {
+                    COP0_GPR[BADA] = addr;
+                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+                }
+
+            } //else Console.WriteLine("Ignoring Load");
+        }
+
+        private void LHU() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint addr = GPR[instr.rs] + instr.imm_s;
+
+                if ((addr & 0x1) == 0) {
+                    uint value = (ushort)bus.load32(addr);
+                    //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
+                    delayedLoad(instr.rt, value);
+                } else {
+                    COP0_GPR[BADA] = addr;
+                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+                }
+
+            } //else Console.WriteLine("Ignoring Load");
+        }
+
+        private void LW() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint addr = GPR[instr.rs] + instr.imm_s;
+
+                if ((addr & 0x3) == 0) {
+                    uint value = bus.load32(addr);
+                    delayedLoad(instr.rt, value);
+                } else {
+                    COP0_GPR[BADA] = addr;
+                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
+                }
+
+            } //else Console.WriteLine("Ignoring Load");
+        }
+
+        private void LWL() {
+            uint addr = GPR[instr.rs] + instr.imm_s;
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
+
+            uint value = 0;
+            uint LRValue = GPR[instr.rt];
+
+            if (instr.rt == memoryLoad.register) {
+                LRValue = memoryLoad.value;
+            }
+
+            switch (addr & 0b11) {
+                case 0: value = (LRValue & 0x00FF_FFFF) | (aligned_load << 24); break;
+                case 1: value = (LRValue & 0x0000_FFFF) | (aligned_load << 16); break;
+                case 2: value = (LRValue & 0x0000_00FF) | (aligned_load << 8); break;
+                case 3: value = aligned_load; break;
+            }
+
+            delayedLoad(instr.rt, value);
+        }
+
+        private void LWR() {
+            uint addr = GPR[instr.rs] + instr.imm_s;
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
+
+            uint value = 0;
+            uint LRValue = GPR[instr.rt];
+
+            if (instr.rt == memoryLoad.register) {
+                LRValue = memoryLoad.value;
+            }
+
+            switch (addr & 0b11) {
+                case 0: value = aligned_load; break;
+                case 1: value = (LRValue & 0xFF00_0000) | (aligned_load >> 8); break;
+                case 2: value = (LRValue & 0xFFFF_0000) | (aligned_load >> 16); break;
+                case 3: value = (LRValue & 0xFFFF_FF00) | (aligned_load >> 24); break;
+            }
+
+            delayedLoad(instr.rt, value);
+        }
+
+        private void SB() {
+            if ((COP0_GPR[SR] & 0x10000) == 0)
+                bus.write8(GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
+            //else Console.WriteLine("Ignoring Write");
+        }
+
+        private void SH() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint addr = GPR[instr.rs] + instr.imm_s;
+
+                if ((addr & 0x1) == 0) {
+                    bus.write16(addr, (ushort)GPR[instr.rt]);
+                } else {
+                    COP0_GPR[BADA] = addr;
+                    EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
+                }
+            }
+            //else Console.WriteLine("Ignoring Write");
+        }
+
+        private void SW() {
+            if ((COP0_GPR[SR] & 0x10000) == 0) {
+                uint addr = GPR[instr.rs] + instr.imm_s;
+
+                if ((addr & 0x3) == 0) {
+                    bus.write32(addr, GPR[instr.rt]);
+                } else {
+                    COP0_GPR[BADA] = addr;
+                    EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
+                }
+            }
+            //else Console.WriteLine("Ignoring Write");
+        }
+
+        private void SWR() {
+            uint addr = GPR[instr.rs] + instr.imm_s;
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
+
+            uint value = 0;
+            switch (addr & 0b11) {
+                case 0: value = GPR[instr.rt]; break;
+                case 1: value = (aligned_load & 0x0000_00FF) | (GPR[instr.rt] << 8); break;
+                case 2: value = (aligned_load & 0x0000_FFFF) | (GPR[instr.rt] << 16); break;
+                case 3: value = (aligned_load & 0x00FF_FFFF) | (GPR[instr.rt] << 24); break;
+            }
+
+            bus.write32(aligned_addr, value);
+        }
+
+        private void SWL() {
+            uint addr = GPR[instr.rs] + instr.imm_s;
+            uint aligned_addr = addr & 0xFFFF_FFFC;
+            uint aligned_load = bus.load32(aligned_addr);
+
+            uint value = 0;
+            switch (addr & 0b11) {
+                case 0: value = (aligned_load & 0xFFFF_FF00) | (GPR[instr.rt] >> 24); break;
+                case 1: value = (aligned_load & 0xFFFF_0000) | (GPR[instr.rt] >> 16); break;
+                case 2: value = (aligned_load & 0xFF00_0000) | (GPR[instr.rt] >> 8); break;
+                case 3: value = GPR[instr.rt]; break;
+            }
+
+            bus.write32(aligned_addr, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SRL() {
-            setGPR(instr.rd, GPR[instr.rt] >> (int)instr.sa);
+        private void BRANCH() {
+            opcodeTookBranch = true;
+            PC_Predictor = PC + (instr.imm_s << 2);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MFLO() {
-            setGPR(instr.rd, LO);
-        }
+
+        // Special Table Opcodes (Nested on Opcode 0x00 with additional function param)
+
+        private void SLL() => setGPR(instr.rd, GPR[instr.rt] << (int)instr.sa);
+
+        private void SRL() => setGPR(instr.rd, GPR[instr.rt] >> (int)instr.sa);
+
+        private void SRA() => setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)instr.sa));
+
+        private void SLLV() => setGPR(instr.rd, GPR[instr.rt] << (int)(GPR[instr.rs] & 0x1F));
+
+        private void SRLV() => setGPR(instr.rd, GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F));
+
+        private void SRAV() => setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)(GPR[instr.rs] & 0x1F)));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void JR() {
+            opcodeIsBranch = true;
+            opcodeTookBranch = true;
+            PC_Predictor = GPR[instr.rs];
+        }
+
+        private void SYSCALL() => EXCEPTION(EX.SYSCALL, instr.id);
+
+        private void BREAK() => EXCEPTION(EX.BREAK);
+
+        private void JALR() {
+            setGPR(instr.rd, PC_Predictor);
+            JR();
+        }
+
+        private void MFHI() => setGPR(instr.rd, HI);
+
+        private void MTHI() => HI = GPR[instr.rs];
+
+        private void MFLO() => setGPR(instr.rd, LO);
+
+        private void MTLO() => LO = GPR[instr.rs];
+
+        private void MULT() {
+            long value = (long)(int)GPR[instr.rs] * (long)(int)GPR[instr.rt]; //sign extend to pass amidog cpu test
+
+            HI = (uint)(value >> 32);
+            LO = (uint)value;
+        }
+
+        private void MULTU() {
+            ulong value = (ulong)GPR[instr.rs] * (ulong)GPR[instr.rt]; //sign extend to pass amidog cpu test
+
+            HI = (uint)(value >> 32);
+            LO = (uint)value;
+        }
+
         private void DIV() {
             int n = (int)GPR[instr.rs];
             int d = (int)GPR[instr.rt];
@@ -678,55 +780,16 @@ namespace ProjectPSX {
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SRA() {
-            setGPR(instr.rd, (uint)((int)GPR[instr.rt] >> (int)instr.sa));
-        }
+        private void DIVU() {
+            uint n = GPR[instr.rs];
+            uint d = GPR[instr.rt];
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SUBU() {
-            setGPR(instr.rd, GPR[instr.rs] - GPR[instr.rt]);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SLTI() {
-            bool condition = (int)GPR[instr.rs] < (int)instr.imm_s;
-            setGPR(instr.rt, condition ? 1u : 0u);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BRANCH() {
-            opcodeTookBranch = true;
-            PC_Predictor = PC + (instr.imm_s << 2);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void JALR() {
-            setGPR(instr.rd, PC_Predictor);
-            JR();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LBU() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint value = (byte)bus.load32(GPR[instr.rs] + instr.imm_s);
-                delayedLoad(instr.rt, value);
-            } //else Console.WriteLine("Ignoring Load");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BLEZ() {
-            opcodeIsBranch = true;
-            if (((int)GPR[instr.rs]) <= 0) {
-                BRANCH();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BGTZ() {
-            opcodeIsBranch = true;
-            if (((int)GPR[instr.rs]) > 0) {
-                BRANCH();
+            if (d == 0) {
+                HI = n;
+                LO = 0xFFFF_FFFF;
+            } else {
+                HI = n % d;
+                LO = n / d;
             }
         }
 
@@ -736,198 +799,48 @@ namespace ProjectPSX {
             try {
                 uint add = (uint)checked(rs + rt);
                 setGPR(instr.rd, add);
-            } catch (OverflowException) {
+            }
+            catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void AND() {
-            setGPR(instr.rd, GPR[instr.rs] & GPR[instr.rt]);
-        }
+        private void ADDU() => setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MFC0() {
-            uint mfc = instr.rd;
-            if (mfc == 3 || mfc >= 5 && mfc <= 9 || mfc >= 11 && mfc <= 15) {
-                delayedLoad(instr.rt, COP0_GPR[mfc]);
-            } else {
-                EXCEPTION(EX.ILLEGAL_INSTR, instr.id);
+        private void SUB() {
+            int rs = (int)GPR[instr.rs];
+            int rt = (int)GPR[instr.rt];
+            try {
+                uint sub = (uint)checked(rs - rt);
+                setGPR(instr.rd, sub);
+            }
+            catch (OverflowException) {
+                EXCEPTION(EX.OVERFLOW, instr.id);
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BEQ() {
-            opcodeIsBranch = true;
-            if (GPR[instr.rs] == GPR[instr.rt]) {
-                BRANCH();
-            }
+        private void SUBU() => setGPR(instr.rd, GPR[instr.rs] - GPR[instr.rt]);
+
+        private void AND() => setGPR(instr.rd, GPR[instr.rs] & GPR[instr.rt]);
+
+        private void OR() => setGPR(instr.rd, GPR[instr.rs] | GPR[instr.rt]);
+
+        private void XOR() => setGPR(instr.rd, GPR[instr.rs] ^ GPR[instr.rt]);
+
+        private void NOR() => setGPR(instr.rd, ~(GPR[instr.rs] | GPR[instr.rt]));
+
+        private void SLT() {
+            bool condition = (int)GPR[instr.rs] < (int)GPR[instr.rt];
+            setGPR(instr.rd, Unsafe.As<bool, uint>(ref condition));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LB() { //todo redo this as it unnecesary load32
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint value = (uint)(sbyte)bus.load32(GPR[instr.rs] + instr.imm_s);
-                delayedLoad(instr.rt, value);
-            } //else Console.WriteLine("Ignoring Write");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void JR() {
-            opcodeIsBranch = true;
-            opcodeTookBranch = true;
-            PC_Predictor = GPR[instr.rs];
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SB() {
-            if ((COP0_GPR[SR] & 0x10000) == 0)
-                bus.write8(GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
-            //else Console.WriteLine("Ignoring Write");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ANDI() {
-            setGPR(instr.rt, GPR[instr.rs] & instr.imm);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void JAL() {
-            setGPR(31, PC_Predictor);
-            J();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SH() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint addr = GPR[instr.rs] + instr.imm_s;
-
-                if ((addr & 0x1) == 0) {
-                    bus.write16(addr, (ushort)GPR[instr.rt]);
-                } else {
-                    COP0_GPR[BADA] = addr;
-                    EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
-                }
-            }
-            //else Console.WriteLine("Ignoring Write");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ADDU() {
-            setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SLTU() {
             bool condition = GPR[instr.rs] < GPR[instr.rt];
-            setGPR(instr.rd, condition ? 1u : 0u);
+            setGPR(instr.rd, Unsafe.As<bool, uint>(ref condition));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LW() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint addr = GPR[instr.rs] + instr.imm_s;
 
-                if ((addr & 0x3) == 0) {
-                    uint value = bus.load32(addr);
-                    delayedLoad(instr.rt, value);
-                } else {
-                    COP0_GPR[BADA] = addr;
-                    EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
-                }
-
-            } //else Console.WriteLine("Ignoring Load");
-        }
-
-        private void ADDI() {
-            int rs = (int)GPR[instr.rs];
-            int imm_s = (int)instr.imm_s;
-            try {
-                uint addi = (uint)checked(rs + imm_s);
-                setGPR(instr.rt, addi);
-            } catch (OverflowException) {
-                EXCEPTION(EX.OVERFLOW, instr.id);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void BNE() {
-            opcodeIsBranch = true;
-            if (GPR[instr.rs] != GPR[instr.rt]) {
-                BRANCH();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MTC0() {
-            uint value = GPR[instr.rt];
-            uint register = instr.rd;
-
-            //MTC0 can trigger soft interrupts
-            bool prevIEC = (COP0_GPR[SR] & 0x1) == 1;
-
-            if (register == CAUSE) { //only bits 8 and 9 are writable
-                COP0_GPR[CAUSE] &= ~(uint)0x300;
-                COP0_GPR[CAUSE] |= value & 0x300;
-            } else {
-                COP0_GPR[register] = value; //There are some zeros on SR that shouldnt be writtable also todo: GPR > 16?
-            }
-
-            uint IM = (COP0_GPR[SR] >> 8) & 0x3;
-            uint IP = (COP0_GPR[CAUSE] >> 8) & 0x3;
-
-            if (!prevIEC && (COP0_GPR[SR] & 0x1) == 1 && (IM & IP) > 0) {
-                PC = PC_Predictor;
-                EXCEPTION(EX.INTERRUPT, instr.id);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void OR() {
-            setGPR(instr.rd, GPR[instr.rs] | GPR[instr.rt]);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void J() {
-            opcodeIsBranch = true;
-            opcodeTookBranch = true;
-            PC_Predictor = (PC_Predictor & 0xF000_0000) | (instr.addr << 2);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ADDIU() {
-            setGPR(instr.rt, GPR[instr.rs] + instr.imm_s);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SLL() {
-            setGPR(instr.rd, GPR[instr.rt] << (int)instr.sa);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SW() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
-                uint addr = GPR[instr.rs] + instr.imm_s;
-
-                if ((addr & 0x3) == 0) {
-                    bus.write32(addr, GPR[instr.rt]);
-                } else {
-                    COP0_GPR[BADA] = addr;
-                    EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
-                }
-            }
-            //else Console.WriteLine("Ignoring Write");
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LUI() {
-            setGPR(instr.rt, instr.imm << 16);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ORI() {
-            setGPR(instr.rt, GPR[instr.rs] | instr.imm);
-        }
+        // Accesory methods
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void setGPR(uint regN, uint value) {
@@ -948,7 +861,6 @@ namespace ProjectPSX {
                 Console.ResetColor();
             }
         }
-
 
     }
 }
