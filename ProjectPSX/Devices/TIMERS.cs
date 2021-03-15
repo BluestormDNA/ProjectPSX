@@ -13,13 +13,21 @@ namespace ProjectPSX.Devices {
 
         public void write(uint addr, uint value) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
+            if (timerNumber > 2) {
+                Console.WriteLine($"[TIMER] WRITE WARNING: Access to unavailable hardware timer {timerNumber}");
+                return;
+            }
             timer[timerNumber].write(addr, value);
-            //Console.WriteLine("[TIMER] Write on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + value.ToString("x8"));
+            //Console.WriteLine($"[TIMER] WRITE Timer {timerNumber}:{value}");
         }
 
         public uint load(uint addr) {
             int timerNumber = (int)(addr & 0xF0) >> 4;
-            //Console.WriteLine("[TIMER] load on" + ((addr & 0xF0) >> 4).ToString("x8") + " Value " + timer[timerNumber].load(w, addr).ToString("x4"));
+            if(timerNumber > 2) {
+                Console.WriteLine($"[TIMER] LOAD WARNING: Access to unavailable hardware timer {timerNumber}");
+                return 0xFFFF_FFFF;
+            }
+            //Console.WriteLine($"[TIMER] LOAD Timer {timerNumber}");
             return timer[timerNumber].load(addr);
         }
 
@@ -82,7 +90,6 @@ namespace ProjectPSX.Devices {
                 }
             }
 
-            //infact only timer 0 and 1 todo
             public void syncGPU((int dotDiv, bool hblank, bool vblank) sync) {
                 prevHblank = hblank;
                 prevVblank = vblank;
