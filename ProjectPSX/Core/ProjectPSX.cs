@@ -40,6 +40,9 @@ namespace ProjectPSX {
             cpu = new CPU(bus);
 
             bus.loadBios();
+            if (diskFilename.EndsWith(".exe")) {
+                bus.loadEXE(diskFilename);
+            }
         }
 
         public void RunFrame() {

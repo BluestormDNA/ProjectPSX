@@ -19,6 +19,10 @@ namespace ProjectPSX.Devices.CdRom {
                 tracks = TrackBuilder.fromBin(diskFilename);
             } else if (ext == ".cue") {
                 tracks = TrackBuilder.fromCue(diskFilename);
+            } else if (ext == ".exe") {
+                // TODO: THERES NOT ONLY NO CD BUT ANY ACCESS TO THE CDROM WILL THROW.
+                // EXES THAT ACCES THE CDROM WILL CURRENTLY CRASH.
+                return;
             }
 
             for (int i = 0; i < tracks.Count; i++) {
