@@ -247,8 +247,8 @@ namespace ProjectPSX {
         // xxxh-7FFh Zerofilled
         // 800h...   Code/Data(loaded to entry[018h] and up)
 
-        internal unsafe (uint, uint, uint, uint) loadEXE(String test) {
-            byte[] exe = File.ReadAllBytes(test);
+        public unsafe void loadEXE(String fileName) {
+            byte[] exe = File.ReadAllBytes(fileName);
             uint PC = Unsafe.As<byte, uint>(ref exe[0x10]);
             uint R28 = Unsafe.As<byte, uint>(ref exe[0x14]);
             uint R29 = Unsafe.As<byte, uint>(ref exe[0x30]);
@@ -257,14 +257,39 @@ namespace ProjectPSX {
 
             uint DestAdress = Unsafe.As<byte, uint>(ref exe[0x18]);
 
+            Console.WriteLine($"SideLoading PSX EXE: PC {PC:x8} R28 {R28:x8} R29 {R29:x8} R30 {R30:x8}");
+
             Marshal.Copy(exe, 0x800, (IntPtr)(ramPtr + (DestAdress & 0x1F_FFFF)), exe.Length - 0x800);
 
-            return (PC, R28, R29, R30);
+            // Patch Bios LoadRunShell() at 0xBFC06FF0 before the jump to 0x80030000 so we don't poll the address every cycle
+            // Instructions are LUI and ORI duos that load to the specified register but PC that loads to R8/Temp0
+            // The last 2 instr are a JR to R8 and a NOP.
+            write(0x6FF0 +  0, 0x3C080000 | PC >> 16, biosPtr);
+            write(0x6FF0 +  4, 0x35080000 | PC & 0xFFFF, biosPtr);
+
+            write(0x6FF0 +  8, 0x3C1C0000 | R28 >> 16, biosPtr);
+            write(0x6FF0 + 12, 0x379C0000 | R28 & 0xFFFF, biosPtr);
+
+            if(R29 != 0) {
+                write(0x6FF0 + 16, 0x3C1D0000 | R29 >> 16, biosPtr);
+                write(0x6FF0 + 20, 0x37BD0000 | R29 & 0xFFFF, biosPtr);
+
+                write(0x6FF0 + 24, 0x3C1E0000 | R30 >> 16, biosPtr);
+                write(0x6FF0 + 28, 0x37DE0000 | R30 & 0xFFFF, biosPtr);
+
+                write(0x6FF0 + 32, 0x01000008, biosPtr);
+                write(0x6FF0 + 36, 0x00000000, biosPtr);
+            } else {
+                write(0x6FF0 + 16, 0x01000008, biosPtr);
+                write(0x6FF0 + 20, 0x00000000, biosPtr);
+            }
         }
 
-        internal unsafe void loadEXP() {
+        public unsafe void loadEXP() {
             byte[] exe = File.ReadAllBytes(ex1);
             Marshal.Copy(exe, 0, (IntPtr)ex1Ptr, exe.Length);
+
+            write32(0x1F02_0018, 0x1); //Enable exp flag
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
