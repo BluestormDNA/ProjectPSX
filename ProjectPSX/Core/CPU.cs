@@ -32,8 +32,6 @@ namespace ProjectPSX {
         private GTE gte;
         private BUS bus;
 
-        //Debug
-        private long cycle; //current CPU cycle counter for debug
         private BIOS_Disassembler bios;
         private MIPS_Disassembler mips;
 
@@ -68,10 +66,9 @@ namespace ProjectPSX {
         }
         private Instr instr;
 
-        //debug expansion and exe
+        //Debug
+        private long cycle; //current CPU cycle counter for debug
         public bool debug = false;
-        private bool isEX1 = true;
-        private bool exe = true;
 
         public CPU(BUS bus) {
             this.bus = bus;
@@ -184,47 +181,13 @@ namespace ProjectPSX {
             MemAccess();
             WriteBack();
 
-            /*debug*/
-            //if (exe) forceTest(demo); //tcpu tcpx tgte tgpu demo <---------------------
-            //if (isEX1) forceEX1();
-
             //if (debug) {
-            //mips.PrintRegs();
-            //mips.disassemble(instr, PC_Now, PC_Predictor);
+            //  mips.PrintRegs();
+            //  mips.disassemble(instr, PC_Now, PC_Predictor);
             //}
 
             //TTY();
             //bios.verbose(PC_Now, GPR);
-        }
-
-        string tcpu = "./psxtest_cpu.exe";
-        string tcpx = "./psxtest_cpx.exe";
-        string tgte = "./psxtest_gte.exe";
-        string tgpu = "./psxtest_gpu.exe";
-        string demo = "./bench.exe";
-        private void forceTest(string test) {
-            if (PC == 0x8003_0000 && exe == true) {
-                (uint _PC, uint R28, uint R29, uint R30) = bus.loadEXE(test);
-                Console.WriteLine($"SideLoading PSX EXE: PC {PC:x8} R28 {R28:x8} R29 {R29:x8} R30 {R30:x8}");
-                GPR[28] = R28;
-
-                if(R29 != 0) {
-                    GPR[29] = R29;
-                    GPR[30] = R30;
-                }
-
-                PC = _PC;
-                PC_Predictor = PC + 4;
-
-                //debug = true;
-                exe = false;
-            }
-        }
-
-        private void forceEX1() {
-            bus.loadEXP();
-            bus.write32(0x1F02_0018, 0x1);
-            isEX1 = false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
