@@ -8,33 +8,33 @@ namespace ProjectPSX {
         private bool fifoFull;
 
         //1F801044 JOY_STAT(R)
-        bool TXreadyFlag1 = true;
-        bool TXreadyFlag2 = true;
-        bool RXparityError;
-        bool ackInputLevel;
-        bool interruptRequest;
-        int baudrateTimer;
+        private bool TXreadyFlag1 = true;
+        private bool TXreadyFlag2 = true;
+        private bool RXparityError;
+        private bool ackInputLevel;
+        private bool interruptRequest;
+        private int baudrateTimer;
 
         //1F801048 JOY_MODE(R/W)
-        uint baudrateReloadFactor;
-        uint characterLength;
-        bool parityEnable;
-        bool parityTypeOdd;
-        bool clkOutputPolarity;
+        private uint baudrateReloadFactor;
+        private uint characterLength;
+        private bool parityEnable;
+        private bool parityTypeOdd;
+        private bool clkOutputPolarity;
 
         //1F80104Ah JOY_CTRL (R/W) (usually 1003h,3003h,0000h)
-        bool TXenable;
-        bool JoyOutput;
-        bool RXenable;
-        bool joyControl_unknow_bit3;
-        bool controlAck;
-        bool joyControl_unknow_bit5;
-        bool controlReset;
-        uint RXinterruptMode;
-        bool TXinterruptEnable;
-        bool RXinterruptEnable;
-        bool ACKinterruptEnable;
-        uint desiredSlotNumber;
+        private bool TXenable;
+        private bool JoyOutput;
+        private bool RXenable;
+        private bool joyControl_unknow_bit3;
+        private bool controlAck;
+        private bool joyControl_unknow_bit5;
+        private bool controlReset;
+        private uint RXinterruptMode;
+        private bool TXinterruptEnable;
+        private bool RXinterruptEnable;
+        private bool ACKinterruptEnable;
+        private uint desiredSlotNumber;
 
         private ushort JOY_BAUD;    //1F80104Eh JOY_BAUD(R/W) (usually 0088h, ie.circa 250kHz, when Factor = MUL1)
 

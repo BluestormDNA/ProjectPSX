@@ -5,19 +5,19 @@ namespace ProjectPSX {
     public class MemoryCard {
         //emulating a 3rd party one as it seems easier to and 0x3FF bad address than to handle the
         //original memcard badAddress 0xFFFF error and the IdCommand
-        byte MEMORY_CARD_ID_1 = 0x5A;
-        byte MEMORY_CARD_ID_2 = 0x5D;
-        byte MEMORY_CARD_COMMAND_ACK_1 = 0x5C;
-        byte MEMORY_CARD_COMMAND_ACK_2 = 0x5D;
+        private const byte MEMORY_CARD_ID_1 = 0x5A;
+        private const byte MEMORY_CARD_ID_2 = 0x5D;
+        private const byte MEMORY_CARD_COMMAND_ACK_1 = 0x5C;
+        private const byte MEMORY_CARD_COMMAND_ACK_2 = 0x5D;
         private byte[] memory = new byte[128 * 1024]; //Standard memcard 128KB
-        internal bool ack = false;
+        public bool ack = false;
 
         //FLAG
         //only bit 2 (isError) and 3 (isNotReaded) seems documented
         //bit 5 is useless for non sony memcards, default value is 0x80
+        private const byte FLAG_ERROR = 0x4;
+        private const byte FLAG_NOT_READED = 0x8;
         private byte flag = 0x8;
-        private byte FLAG_ERROR = 0x4;
-        private byte FLAG_NOT_READED = 0x8;
 
         private byte addressMSB;
         private byte addressLSB;
@@ -26,7 +26,6 @@ namespace ProjectPSX {
         private byte checksum;
         private int readPointer;
         private byte endTransfer;
-
 
         private string memCardFilePath = "./memcard.mcr";
 
@@ -47,15 +46,17 @@ namespace ProjectPSX {
         public MemoryCard() {
             try {
                 memory = File.ReadAllBytes(memCardFilePath);
-                Console.WriteLine("[MemCard] File found. Loaded Contents.");
+
+                Console.ForegroundColor = ConsoleColor.DarkGreen;
+                Console.WriteLine("[MemCard] File found. Contents Loaded.");
+                Console.ResetColor();
             } catch (Exception e) {
-                Console.WriteLine("[MemCard] No Card found will try to generate one on save");
+                Console.WriteLine("[MemCard] No Card found. Will try to generate a new one on save.");
             }
         }
 
         //This should be handled with some early response and post address queues but atm its easier to handle as a state machine
         internal byte process(byte value) {
-            //return 0xFF;
             //Console.WriteLine($"[MemCard] rawProcess {value:x2} previous ack {ack}");
             switch (transferMode) {
                 case TransferMode.Read: return readMemory(value);
@@ -99,7 +100,7 @@ namespace ProjectPSX {
                     }
                     byte prevFlag = flag;
                     ack = true;
-                    flag &= (byte)~FLAG_ERROR;
+                    flag &= unchecked((byte)~FLAG_ERROR);
                     return prevFlag;
 
                 default:
@@ -234,7 +235,7 @@ namespace ProjectPSX {
                     mode = Mode.Idle;
                     readPointer = 0;
                     ack = false;
-                    flag &= (byte)~FLAG_NOT_READED;
+                    flag &= unchecked((byte)~FLAG_NOT_READED);
                     handleSave();
                     return endTransfer;
 

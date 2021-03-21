@@ -1,7 +1,7 @@
 ﻿namespace ProjectPSX {
-    internal class DigitalController : Controller {
+    public class DigitalController : Controller {
 
-        private ushort CONTROLLER_TYPE = 0x5A41; //digital
+        private const ushort CONTROLLER_TYPE = 0x5A41; //digital
 
         private enum Mode {
             Idle,
@@ -58,8 +58,8 @@
         }
 
         public void generateResponse() {
-            byte b0 = (byte)(CONTROLLER_TYPE & 0xFF);
-            byte b1 = (byte)((CONTROLLER_TYPE >> 8) & 0xFF);
+            byte b0 = CONTROLLER_TYPE & 0xFF;
+            byte b1 = (CONTROLLER_TYPE >> 8) & 0xFF;
 
             byte b2 = (byte)(buttons & 0xFF);
             byte b3 = (byte)((buttons >> 8) & 0xFF);
