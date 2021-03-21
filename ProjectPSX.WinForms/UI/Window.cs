@@ -106,13 +106,13 @@ namespace ProjectPSX {
 
         private string GetDiskFilename() {
             var cla = Environment.GetCommandLineArgs();
-            if (cla.Any(s => s.EndsWith(".bin") || s.EndsWith(".cue"))) {
-                String filename = cla.First(s => s.EndsWith(".bin") || s.EndsWith(".cue"));
+            if (cla.Any(s => s.EndsWith(".bin") || s.EndsWith(".cue") || s.EndsWith(".exe"))) {
+                string filename = cla.First(s => s.EndsWith(".bin") || s.EndsWith(".cue") || s.EndsWith(".exe"));
                 return filename;
             } else {
                 //Show the user a dialog so they can pick the bin they want to load.
                 var fileDialog = new OpenFileDialog();
-                fileDialog.Filter = "BIN/CUE files (*.bin, *.cue)|*.bin;*.cue";
+                fileDialog.Filter = "BIN/CUE files or PSXEXEs(*.bin, *.cue, *.exe)|*.bin;*.cue;*.exe";
                 fileDialog.ShowDialog();
 
                 string file = fileDialog.FileName;
