@@ -26,7 +26,7 @@ namespace ProjectPSX.OpenTK {
         private void Window_FileDrop(FileDropEventArgs fileDrop) {
             string[] files = fileDrop.FileNames;
             string file = files[0];
-            if(file.EndsWith(".bin") || file.EndsWith(".cue")) {
+            if(file.EndsWith(".bin") || file.EndsWith(".cue") || file.EndsWith(".exe")) {
                 psx = new ProjectPSX(this, file);
             }
         }
