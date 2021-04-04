@@ -608,13 +608,12 @@ namespace ProjectPSX.Devices {
             uint sampleIndex = voice.counter.currentSampleIndex;
 
             //Interpolate latest samples
-            //this is why the latest 3 samples from the last block are saved because if index is 0
-            //any substracion is gonna be oob of the current voice adpcm array
+            //this is why the latest 3 samples from the last block are saved
             int interpolated;
-            interpolated = gaussTable[0x0FF - interpolationIndex] * voice.getSample((int)sampleIndex - 3);
-            interpolated += gaussTable[0x1FF - interpolationIndex] * voice.getSample((int)sampleIndex - 2);
-            interpolated += gaussTable[0x100 + interpolationIndex] * voice.getSample((int)sampleIndex - 1);
-            interpolated += gaussTable[0x000 + interpolationIndex] * voice.getSample((int)sampleIndex - 0);
+            interpolated  = gaussTable[0x0FF - interpolationIndex] * voice.decodedSamples[sampleIndex + 0];
+            interpolated += gaussTable[0x1FF - interpolationIndex] * voice.decodedSamples[sampleIndex + 1];
+            interpolated += gaussTable[0x100 + interpolationIndex] * voice.decodedSamples[sampleIndex + 2];
+            interpolated += gaussTable[0x000 + interpolationIndex] * voice.decodedSamples[sampleIndex + 3];
             interpolated >>= 15;
 
             //Todo adsr

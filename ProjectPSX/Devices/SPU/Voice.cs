@@ -63,10 +63,6 @@ namespace ProjectPSX.Devices.Spu {
         public short old;
         public short older;
 
-        public short lastBlockSample26;
-        public short lastBlockSample27;
-        public short lastBlockSample28;
-
         public short latest;
 
         public bool hasSamples;
@@ -101,13 +97,13 @@ namespace ProjectPSX.Devices.Spu {
         }
 
         public byte[] spuAdpcm = new byte[16];
-        public short[] decodedSamples = new short[28];
+        public short[] decodedSamples = new short[31]; //28 samples from current block + 3 to make room for interpolation
         internal void decodeSamples(byte[] ram, ushort ramIrqAddress) {
             //save the last 3 samples from the last decoded block
-            //this are needed for interpolation in case the index is 0 1 or 2
-            lastBlockSample28 = decodedSamples[decodedSamples.Length - 1];
-            lastBlockSample27 = decodedSamples[decodedSamples.Length - 2];
-            lastBlockSample26 = decodedSamples[decodedSamples.Length - 3];
+            //this are needed for interpolation in case the voice.counter.currentSampleIndex is 0 1 or 2
+            decodedSamples[2] = decodedSamples[decodedSamples.Length - 1];
+            decodedSamples[1] = decodedSamples[decodedSamples.Length - 2];
+            decodedSamples[0] = decodedSamples[decodedSamples.Length - 3];
 
             Array.Copy(ram, currentAddress * 8, spuAdpcm, 0, 16);
 
@@ -131,7 +127,7 @@ namespace ProjectPSX.Devices.Spu {
                 int s = (t << shift) + ((old * f0 + older * f1 + 32) / 64);
                 short sample = (short)Math.Clamp(s, -0x8000, 0x7FFF);
 
-                decodedSamples[i] = sample;
+                decodedSamples[3 + i] = sample;
 
                 older = old;
                 old = sample;
@@ -149,18 +145,6 @@ namespace ProjectPSX.Devices.Spu {
                 return volume.fixedVolume;
             } else {
                 return 0; //todo handle sweep mode volume envelope
-            }
-        }
-
-        public short getSample(int i) {
-            if(i == -3) {
-                return lastBlockSample26;
-            } else if(i == -2) {
-                return lastBlockSample27;
-            } else if(i == -1) {
-                return lastBlockSample28;
-            } else {
-                return decodedSamples[i];
             }
         }
 
