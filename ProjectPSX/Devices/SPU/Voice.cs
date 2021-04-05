@@ -3,8 +3,8 @@
 namespace ProjectPSX.Devices.Spu {
     public class Voice {
 
-        private static int[] positiveXaAdpcmTable = new int[] { 0, 60, 115, 98, 122 };
-        private static int[] negativeXaAdpcmTable = new int[] { 0, 0, -52, -55, -60 };
+        private static ReadOnlySpan<sbyte> positiveXaAdpcmTable => new sbyte[] { 0, 60, 115, 98, 122 };
+        private static ReadOnlySpan<sbyte> negativeXaAdpcmTable => new sbyte[] { 0, 0, -52, -55, -60 };
 
         public struct Volume {
             public ushort register;
