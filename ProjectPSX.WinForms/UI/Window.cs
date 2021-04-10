@@ -20,7 +20,7 @@ namespace ProjectPSX {
 
         private const int PSX_MHZ = 33868800;
         private const int SYNC_CYCLES = 100;
-        private const int MIPS_UNDERCLOCK = 2;
+        private const int MIPS_UNDERCLOCK = 3;
 
         private const int cyclesPerFrame = PSX_MHZ / 60;
         private const int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
