@@ -15,8 +15,8 @@ namespace ProjectPSX.Devices.CdRom {
         private static int resamplePointer;
         private static short[][] resampleRingBuffer = { new short[32], new short[32] };
 
-        private static int[] positiveXaAdpcmTable = new int[] { 0, 60, 115, 98, 122 };
-        private static int[] negativeXaAdpcmTable = new int[] { 0, 0, -52, -55, -60 };
+        private static ReadOnlySpan<sbyte> positiveXaAdpcmTable => new sbyte[] { 0, 60, 115, 98, 122 };
+        private static ReadOnlySpan<sbyte> negativeXaAdpcmTable => new sbyte[] { 0, 0, -52, -55, -60 };
 
         private static short[][] zigZagTable = new short[][] {
                      new short[]{       0,       0,       0,       0,       0, -0x0002,  0x000A, -0x0022,
