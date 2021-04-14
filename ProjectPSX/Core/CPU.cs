@@ -29,6 +29,8 @@ namespace ProjectPSX {
         private const int BADA = 8;
         private const int JUMPDEST = 6;
 
+        private bool dontIsolateCache;
+
         private GTE gte;
         private BUS bus;
 
@@ -175,7 +177,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Run() {
             fetchDecode();
-            if(instr.value != 0) { //Skip Nops
+            if (instr.value != 0) { //Skip Nops
                 opcodeMainTable[instr.opcode](this); //Execute
             }
             MemAccess();
@@ -197,8 +199,7 @@ namespace ProjectPSX {
             uint load;
             if (maskedPC < 0x1F00_0000) {
                 load = bus.LoadFromRam(maskedPC);
-            }
-            else {
+            } else {
                 load = bus.LoadFromBios(maskedPC);
             }
 
@@ -386,23 +387,29 @@ namespace ProjectPSX {
             uint value = GPR[instr.rt];
             uint register = instr.rd;
 
-            //MTC0 can trigger soft interrupts
-            bool prevIEC = (COP0_GPR[SR] & 0x1) == 1;
-
             if (register == CAUSE) { //only bits 8 and 9 are writable
                 COP0_GPR[CAUSE] &= ~(uint)0x300;
                 COP0_GPR[CAUSE] |= value & 0x300;
+            } else if (register == SR) {
+                //This can trigger soft interrupts
+                dontIsolateCache = (value & 0x10000) == 0;
+                bool prevIEC = (COP0_GPR[SR] & 0x1) == 1;
+                bool currentIEC = (value & 0x1) == 1;
+
+                COP0_GPR[SR] = value;
+
+                uint IM = (value >> 8) & 0x3;
+                uint IP = (COP0_GPR[CAUSE] >> 8) & 0x3;
+
+                if (!prevIEC && currentIEC && (IM & IP) > 0) {
+                    PC = PC_Predictor;
+                    EXCEPTION(EX.INTERRUPT, instr.id);
+                }
+
             } else {
-                COP0_GPR[register] = value; //There are some zeros on SR that shouldnt be writtable also todo: GPR > 16?
+                COP0_GPR[register] = value;
             }
 
-            uint IM = (COP0_GPR[SR] >> 8) & 0x3;
-            uint IP = (COP0_GPR[CAUSE] >> 8) & 0x3;
-
-            if (!prevIEC && (COP0_GPR[SR] & 0x1) == 1 && (IM & IP) > 0) {
-                PC = PC_Predictor;
-                EXCEPTION(EX.INTERRUPT, instr.id);
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -495,21 +502,21 @@ namespace ProjectPSX {
         }
 
         private void LB() { //todo redo this as it unnecesary load32
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint value = (uint)(sbyte)bus.load32(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
-            } //else Console.WriteLine("Ignoring Write");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
 
         private void LBU() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint value = (byte)bus.load32(GPR[instr.rs] + instr.imm_s);
                 delayedLoad(instr.rt, value);
-            } //else Console.WriteLine("Ignoring Load");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
 
         private void LH() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x1) == 0) {
@@ -520,27 +527,26 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
 
-            } //else Console.WriteLine("Ignoring Load");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
 
         private void LHU() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x1) == 0) {
                     uint value = (ushort)bus.load32(addr);
-                    //Console.WriteLine("LHU: " + addr.ToString("x8") + " value: " + value.ToString("x8"));
                     delayedLoad(instr.rt, value);
                 } else {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
 
-            } //else Console.WriteLine("Ignoring Load");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
 
         private void LW() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x3) == 0) {
@@ -551,7 +557,7 @@ namespace ProjectPSX {
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
 
-            } //else Console.WriteLine("Ignoring Load");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
 
         private void LWL() {
@@ -599,13 +605,13 @@ namespace ProjectPSX {
         }
 
         private void SB() {
-            if ((COP0_GPR[SR] & 0x10000) == 0)
+            if (dontIsolateCache)
                 bus.write8(GPR[instr.rs] + instr.imm_s, (byte)GPR[instr.rt]);
-            //else Console.WriteLine("Ignoring Write");
+            //else Console.WriteLine("IsolatedCache: Ignoring Write");
         }
 
         private void SH() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x1) == 0) {
@@ -614,12 +620,11 @@ namespace ProjectPSX {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
                 }
-            }
-            //else Console.WriteLine("Ignoring Write");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Write");
         }
 
         private void SW() {
-            if ((COP0_GPR[SR] & 0x10000) == 0) {
+            if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
                 if ((addr & 0x3) == 0) {
@@ -628,8 +633,7 @@ namespace ProjectPSX {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
                 }
-            }
-            //else Console.WriteLine("Ignoring Write");
+            } //else Console.WriteLine("IsolatedCache: Ignoring Write");
         }
 
         private void SWR() {
@@ -762,8 +766,7 @@ namespace ProjectPSX {
             try {
                 uint add = (uint)checked(rs + rt);
                 setGPR(instr.rd, add);
-            }
-            catch (OverflowException) {
+            } catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             }
         }
@@ -776,8 +779,7 @@ namespace ProjectPSX {
             try {
                 uint sub = (uint)checked(rs - rt);
                 setGPR(instr.rd, sub);
-            }
-            catch (OverflowException) {
+            } catch (OverflowException) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             }
         }
