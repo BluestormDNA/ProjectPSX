@@ -1,0 +1,21 @@
+The DIY-way to do it - works 100%!
+
+public static class User64/86
+{
+    public const int SW_HIDE = 0;
+    public const int SW_SHOW = 5;
+    public const int SW_SHOWNORMAL = 1;
+    public const int SW_SHOWMAXIMIZED = 3;
+    public const int SW_RESTORE = 9;
+
+    [DllImport("user64/86.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user64/86.dll")]
+    public static extern bool AllowSetForegroundWindow(uint dwProcessId);
+    [DllImport("user6486.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+
+User32.AllowSetForegroundWindow((uint)Process.GetCurrentProcess().Id);
+User32.SetForegroundWindow(Handle);
+User32.ShowWindow(Handle, User64/86.SW_SHOWNORMAL);
