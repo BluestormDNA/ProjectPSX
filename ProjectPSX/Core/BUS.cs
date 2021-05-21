@@ -57,14 +57,14 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_0000) {
                 return load<uint>(addr & 0x7_FFFF, ex1Ptr);
             } else if (addr < 0x1f80_0400) {
-                return load<uint>(addr & 0xFFF, scrathpadPtr);
+                return load<uint>(addr & 0x3FF, scrathpadPtr);
             } else if (addr < 0x1F80_1040) {
-                return load<uint>(addr & 0x3F, memoryControl1);
+                return load<uint>(addr & 0xF, memoryControl1);
             } else if (addr < 0x1F80_1050) {
                 return joypad.load(addr);
             } else if (addr < 0x1F80_1060) {
                 Console.WriteLine($"[BUS] Read Unsupported to SIO address: {addr:x8}");
-                return load<uint>(addr & 0x3F, sio);
+                return load<uint>(addr & 0xF, sio);
             } else if (addr < 0x1F80_1070) {
                 return load<uint>(addr & 0xF, memoryControl2);
             } else if (addr < 0x1F801080) {
@@ -122,7 +122,6 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_1810) {
                 cdrom.write(addr, value);
             } else if (addr < 0x1F80_1820) {
-                //Task.Run(() => gpu.write(addr, value));
                 gpu.write(addr, value);
             } else if (addr < 0x1F80_1830) {
                 mdec.write(addr, value);
@@ -354,8 +353,6 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DmaToGpu(Span<uint> buffer) {
-            var array = buffer.ToArray();
-            //Task.Run(() => gpu.processDma(array));
             gpu.processDma(buffer);
         }
 
