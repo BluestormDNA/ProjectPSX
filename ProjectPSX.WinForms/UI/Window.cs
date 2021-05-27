@@ -1,19 +1,19 @@
-﻿using ProjectPSX.Devices.Input;
-using ProjectPSX.Util;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
 using System.Windows.Forms;
 using NAudio.Wave;
-using System.Timers;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using System.Threading;
+using ProjectPSX.Devices.Input;
 using ProjectPSX.Interop.Gdi32;
+using ProjectPSX.Util;
 using Gdi32 = ProjectPSX.Interop.Gdi32.NativeMethods;
-using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
     public class Window : Form, IHostWindow {
@@ -53,8 +53,8 @@ namespace ProjectPSX {
 
         Dictionary<Keys, GamepadInputsEnum> _gamepadKeyMap;
 
-        private WaveOut waveout = new WaveOut();
-        private BufferedWaveProvider buffer = new BufferedWaveProvider(new WaveFormat());
+        private WaveOutEvent waveOutEvent = new WaveOutEvent();
+        private BufferedWaveProvider bufferedWaveProvider = new BufferedWaveProvider(new WaveFormat());
 
         public Window() {
             Text = "ProjectPSX";
@@ -91,8 +91,9 @@ namespace ProjectPSX {
                 { Keys.A , GamepadInputsEnum.A },
             };
 
-            buffer.DiscardOnBufferOverflow = true;
-            buffer.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
+            bufferedWaveProvider.DiscardOnBufferOverflow = true;
+            bufferedWaveProvider.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
+            waveOutEvent.Init(bufferedWaveProvider);
 
             string diskFilename = GetDiskFilename();
             psx = new ProjectPSX(this, diskFilename);
@@ -289,11 +290,10 @@ namespace ProjectPSX {
         }
 
         public void Play(byte[] samples) {
-            buffer.AddSamples(samples, 0, samples.Length);
+            bufferedWaveProvider.AddSamples(samples, 0, samples.Length);
 
-            if (waveout.PlaybackState != PlaybackState.Playing) {
-                waveout.Init(buffer);
-                waveout.Play();
+            if (waveOutEvent.PlaybackState != PlaybackState.Playing) {
+                waveOutEvent.Play();
             }
         }
 
