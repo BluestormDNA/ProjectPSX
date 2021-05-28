@@ -10,6 +10,8 @@ namespace ProjectPSX.Devices.CdRom {
 
         private byte[] rawSectorBuffer = new byte[BYTES_PER_SECTOR_RAW];
 
+        private FileStream[] streams;
+
         public List<Track> tracks;
 
         public CD(string diskFilename) {
@@ -25,7 +27,10 @@ namespace ProjectPSX.Devices.CdRom {
                 return;
             }
 
+            streams = new FileStream[tracks.Count];
+
             for (int i = 0; i < tracks.Count; i++) {
+                streams[i] = new FileStream(tracks[i].file, FileMode.Open, FileAccess.Read);
                 Console.WriteLine($"Track {i} size: {tracks[i].size} lbaStart: {tracks[i].lbaStart} lbaEnd: {tracks[i].lbaEnd}");
             }
         }
@@ -40,9 +45,9 @@ namespace ProjectPSX.Devices.CdRom {
             int position = (loc - currentTrack.lbaStart);
             if (position < 0) position = 0;
 
-            using FileStream stream = new FileStream(currentTrack.file, FileMode.Open, FileAccess.Read);
-            stream.Seek(position * BYTES_PER_SECTOR_RAW, SeekOrigin.Begin);
-            stream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
+            FileStream currentStream = streams[currentTrack.number - 1];
+            currentStream.Seek(position * BYTES_PER_SECTOR_RAW, SeekOrigin.Begin);
+            currentStream.Read(rawSectorBuffer, 0, rawSectorBuffer.Length);
             return rawSectorBuffer;
         }
 
