@@ -11,8 +11,8 @@ namespace ProjectPSX.Devices {
 
         private Queue<uint> parameterBuffer = new Queue<uint>(16);
         private Queue<uint> responseBuffer = new Queue<uint>(16);
-        private Queue<byte> dataBuffer = new Queue<byte>();
-        private Queue<byte> cdBuffer = new Queue<byte>();
+        private Sector currentSector = new Sector();
+        private Sector lastReadSector = new Sector();
 
         private bool isBusy;
 
@@ -156,30 +156,30 @@ namespace ProjectPSX.Devices {
                     }
                     counter = 0;
 
-                    byte[] rawSector = cd.Read(readLoc++);
+                    byte[] readSector = cd.Read(readLoc++);
 
                     if (cdDebug) {
                         Console.ForegroundColor = ConsoleColor.DarkGreen;
-                        Console.WriteLine($"Reading readLoc: {readLoc - 1} seekLoc: {seekLoc} size: {rawSector.Length}");
+                        Console.WriteLine($"Reading readLoc: {readLoc - 1} seekLoc: {seekLoc} size: {readSector.Length}");
                         Console.ResetColor();
                     }
 
                     if (mode == Mode.Play && !mutedAudio) {
-                        applyVolume(rawSector);
-                        spu.pushCdBufferSamples(rawSector);
+                        applyVolume(readSector);
+                        spu.pushCdBufferSamples(readSector);
                         return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
                     }
 
                     //first 12 are the sync header
-                    sectorHeader.mm = rawSector[12];
-                    sectorHeader.ss = rawSector[13];
-                    sectorHeader.ff = rawSector[14];
-                    sectorHeader.mode = rawSector[15];
+                    sectorHeader.mm = readSector[12];
+                    sectorHeader.ss = readSector[13];
+                    sectorHeader.ff = readSector[14];
+                    sectorHeader.mode = readSector[15];
 
-                    sectorSubHeader.file = rawSector[16];
-                    sectorSubHeader.channel = rawSector[17];
-                    sectorSubHeader.subMode = rawSector[18];
-                    sectorSubHeader.codingInfo = rawSector[19];
+                    sectorSubHeader.file = readSector[16];
+                    sectorSubHeader.channel = readSector[17];
+                    sectorSubHeader.subMode = readSector[18];
+                    sectorSubHeader.codingInfo = readSector[19];
 
                     //if (sectorSubHeader.isVideo) Console.WriteLine("is video");
                     //if (sectorSubHeader.isData) Console.WriteLine("is data");
@@ -202,7 +202,7 @@ namespace ProjectPSX.Devices {
                             if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio"); //todo flag to pass to SPU?
 
                             if(!mutedAudio && !mutedXAADPCM) {
-                                byte[] decodedXaAdpcm = XaAdpcm.Decode(rawSector, sectorSubHeader.codingInfo);
+                                byte[] decodedXaAdpcm = XaAdpcm.Decode(readSector, sectorSubHeader.codingInfo);
                                 applyVolume(decodedXaAdpcm);
                                 spu.pushCdBufferSamples(decodedXaAdpcm);
                             }
@@ -213,12 +213,12 @@ namespace ProjectPSX.Devices {
 
                     //If we arived here sector is supposed to be delivered to CPU so slice out sync and header based on flag
                     if (!isSectorSizeRAW) {
-                        rawSector = rawSector.AsSpan().Slice(24, 0x800).ToArray();
+                        var dataSector = readSector.AsSpan().Slice(24, 0x800);
+                        lastReadSector.fillWith(dataSector);
                     } else {
-                        rawSector = rawSector.AsSpan().Slice(12).ToArray();
+                        var rawSector = readSector.AsSpan().Slice(12);
+                        lastReadSector.fillWith(rawSector);
                     }
-
-                    cdBuffer = new Queue<byte>(rawSector);
 
                     responseBuffer.Enqueue(STAT);
                     interruptQueue.Enqueue(0x1);
@@ -259,7 +259,7 @@ namespace ProjectPSX.Devices {
                     if (cdDebug) Console.WriteLine("[CDROM] [L02] DATA");
                     //Console.WriteLine(dataBuffer.Count);
                     //Console.ReadLine();
-                    return dataBuffer.Dequeue();
+                    return currentSector.readByte();
 
                 case 0x1F801803:
                     switch (INDEX) {
@@ -337,15 +337,15 @@ namespace ProjectPSX.Devices {
                             //7   BFRD Want Data(0 = No / Reset Data Fifo, 1 = Yes / Load Data Fifo)
                             if ((value & 0x80) != 0) {
                                 //Console.WriteLine("[CDROM] [W03.0]  Want Data (Copy from cd buffer to databuffer)");
-                                if (dataBuffer.Count > 0) { /*Console.WriteLine(">>>>>>> CDROM BUFFER WAS NOT EMPTY <<<<<<<<<");*/ return; }
-                                dataBuffer = cdBuffer;
+                                if (currentSector.hasData()) { /*Console.WriteLine(">>>>>>> CDROM BUFFER WAS NOT EMPTY <<<<<<<<<");*/ return; }
+                                currentSector.fillWith(lastReadSector.read());
                             } else {
                                 if (cdDebug) {
                                     Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine("[CDROM] [W03.0] Data Clear");
                                     Console.ResetColor();
                                 }
-                                dataBuffer.Clear();
+                                currentSector.clear();
                             }
                             break;
                         case 1:
@@ -658,16 +658,6 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x3);
         }
 
-        internal uint getData() {
-            //Console.WriteLine(dataBuffer.Count);
-            byte b0 = dataBuffer.Dequeue();
-            byte b1 = dataBuffer.Dequeue();
-            byte b2 = dataBuffer.Dequeue();
-            byte b3 = dataBuffer.Dequeue();
-
-            return (uint)(b3 << 24 | b2 << 16 | b1 << 8 | b0);
-        }
-
         private void seekL() {
             readLoc = seekLoc;
             STAT = 0x42; // seek
@@ -797,7 +787,7 @@ namespace ProjectPSX.Devices {
         }
 
         private int dataBuffer_hasData() {
-            return (dataBuffer.Count > 0) ? 1 : 0;
+            return (currentSector.hasData()) ? 1 : 0;
         }
 
         private int parametterBuffer_isEmpty() {
@@ -848,6 +838,9 @@ namespace ProjectPSX.Devices {
                 samples[i + 1] = (short)Math.Clamp(volumeR, -0x8000, 0x7FFF);
             }
 
+        }
+        public Span<uint> processDmaLoad(int size) {
+            return currentSector.read(size);
         }
     }
 }

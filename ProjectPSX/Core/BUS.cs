@@ -357,12 +357,10 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DmaFromCD(uint address, int size) { //todo handle the whole array/span
-            for(int i = 0; i < size; i++) {
-                var word = cdrom.getData();
-                DmaToRam(address, word);
-                address += 4;
-            }
+        public unsafe void DmaFromCD(uint address, int size) { //todo handle the whole array/span
+            var dma = cdrom.processDmaLoad(size);
+            var dest = new Span<uint>(ramPtr + (address & 0x1F_FFFC), size);
+            dma.CopyTo(dest);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
