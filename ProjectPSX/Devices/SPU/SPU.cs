@@ -597,7 +597,7 @@ namespace ProjectPSX.Devices {
                 voice.decodeSamples(ram, ramIrqAddress);
                 voice.hasSamples = true;
 
-                byte flags = voices[v].spuAdpcm[1];
+                byte flags = voice.spuAdpcm[1];
                 bool loopStart = (flags & 0x4) != 0;
 
                 if (loopStart) voice.adpcmRepeatAddress = voice.currentAddress;
@@ -615,9 +615,6 @@ namespace ProjectPSX.Devices {
             interpolated += gaussTable[0x100 + interpolationIndex] * voice.decodedSamples[sampleIndex + 2];
             interpolated += gaussTable[0x000 + interpolationIndex] * voice.decodedSamples[sampleIndex + 3];
             interpolated >>= 15;
-
-            //Todo adsr
-            //interpolated = (interpolated * voice.adsrVolume) >> 15;
 
             //Pitch modulation: Starts at voice 1 as it needs the last voice
             int step = voice.pitch;
@@ -638,13 +635,19 @@ namespace ProjectPSX.Devices {
                 voice.hasSamples = false;
 
                 //LoopEnd and LoopRepeat flags are set after the "current block" set them as it's finished
-                byte flags = voices[v].spuAdpcm[1];
+                byte flags = voice.spuAdpcm[1];
                 bool loopEnd = (flags & 0x1) != 0;
                 bool loopRepeat = (flags & 0x2) != 0;
 
-                if (loopEnd) endx |= (uint)(0x1 << v);
-                if (loopEnd && !loopRepeat) { voice.adsrPhase = Voice.Phase.Off; voice.adsrVolume = 0; }
-                if (loopEnd && loopRepeat) voice.currentAddress = voice.adpcmRepeatAddress;
+                if (loopEnd) {
+                    endx |= (uint)(0x1 << v);
+                    if(loopRepeat) {
+                        voice.currentAddress = voice.adpcmRepeatAddress;
+                    } else {
+                        voice.adsrPhase = Voice.Phase.Off;
+                        voice.adsrVolume = 0;
+                    }
+                }
             }
 
             return (short)interpolated;
