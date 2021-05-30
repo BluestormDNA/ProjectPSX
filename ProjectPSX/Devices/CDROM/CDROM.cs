@@ -150,7 +150,7 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case Mode.Read:
-                case Mode.Play:
+                case Mode.Play:  
                     if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) || interruptQueue.Count != 0) {
                         return false;
                     }
@@ -164,11 +164,17 @@ namespace ProjectPSX.Devices {
                         Console.ResetColor();
                     }
 
-                    if (mode == Mode.Play && !mutedAudio) {
-                        applyVolume(readSector);
-                        spu.pushCdBufferSamples(readSector);
+                    //Handle Mode.Play:
+                    if (mode == Mode.Play) {
+                        if (!mutedAudio) {
+                            applyVolume(readSector);
+                            spu.pushCdBufferSamples(readSector);
+                        }
+
                         return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
                     }
+
+                    //Handle Mode.Read:
 
                     //first 12 are the sync header
                     sectorHeader.mm = readSector[12];
@@ -203,6 +209,7 @@ namespace ProjectPSX.Devices {
 
                             if(!mutedAudio && !mutedXAADPCM) {
                                 byte[] decodedXaAdpcm = XaAdpcm.Decode(readSector, sectorSubHeader.codingInfo);
+                                Console.WriteLine("decoded Xa size " + decodedXaAdpcm.Length);
                                 applyVolume(decodedXaAdpcm);
                                 spu.pushCdBufferSamples(decodedXaAdpcm);
                             }
@@ -823,8 +830,6 @@ namespace ProjectPSX.Devices {
         }
 
         private void applyVolume(byte[] rawSector) {
-            if (mutedAudio) return;
-
             var samples = MemoryMarshal.Cast<byte, short>(rawSector);
 
             for(int i = 0; i < samples.Length; i+=2) {
@@ -839,8 +844,10 @@ namespace ProjectPSX.Devices {
             }
 
         }
+
         public Span<uint> processDmaLoad(int size) {
             return currentSector.read(size);
         }
+
     }
 }
