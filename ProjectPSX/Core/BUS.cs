@@ -218,8 +218,17 @@ namespace ProjectPSX {
         }
 
         internal unsafe void loadBios() {
-            byte[] rom = File.ReadAllBytes(bios);
-            Marshal.Copy(rom, 0, (IntPtr)biosPtr, rom.Length);
+            try {
+                byte[] rom = File.ReadAllBytes(bios);
+                Marshal.Copy(rom, 0, (IntPtr)biosPtr, rom.Length);
+
+                Console.ForegroundColor = ConsoleColor.DarkGreen;
+                Console.WriteLine("[BUS] BIOS File found. Contents Loaded.");
+                Console.ResetColor();
+            } catch (Exception e) {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("[BUS] No BIOS file found.\n" + e.Message);
+            }
         }
 
         //PSX executables are having an 800h-byte header, followed by the code/data.
