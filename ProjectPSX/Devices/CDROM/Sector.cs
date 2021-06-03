@@ -5,11 +5,21 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX.Devices.CdRom {
     class Sector {
 
-        private const int BYTES_PER_SECTOR_RAW = 2352;
-        private byte[] sectorBuffer = new byte[BYTES_PER_SECTOR_RAW];
+        // Standard size for a raw sector / CDDA
+        public const int RAW_BUFFER = 2352;
+
+        // This sector data is already pre decoded and resampled so we need a bigger buffer (RAW_BUFFER * 4)
+        // and on the case of mono even a bigger one, as samples are mirrored to L/R as our output is allways stereo
+        public const int XA_BUFFER = RAW_BUFFER * 8;
+
+        private byte[] sectorBuffer;
 
         private int pointer;
         private int size;
+
+        public Sector(int size) {
+            sectorBuffer = new byte[size];
+        }
 
         public void fillWith(Span<byte> data) {
             pointer = 0;
@@ -23,6 +33,14 @@ namespace ProjectPSX.Devices.CdRom {
             return ref Unsafe.Add(ref data, pointer++);
         }
 
+        public ref short readShort() {
+            ref var data = ref MemoryMarshal.GetArrayDataReference(sectorBuffer);
+            ref var valueB = ref Unsafe.Add(ref data, pointer);
+            ref var valueS = ref Unsafe.As<byte, short>(ref valueB);
+            pointer += 2;
+            return ref valueS;
+        }
+
         public Span<uint> read(int size) { //size from dma comes as u32
             var dma = sectorBuffer.AsSpan().Slice(pointer, size * 4);
             pointer += size * 4;
@@ -32,6 +50,8 @@ namespace ProjectPSX.Devices.CdRom {
         public Span<byte> read() => sectorBuffer.AsSpan().Slice(0, size);
 
         public bool hasData() => pointer < size;
+
+        public bool hasSamples() => size - pointer > 3;
 
         public void clear() {
             pointer = 0;
