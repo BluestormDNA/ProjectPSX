@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace ProjectPSX.Devices.CdRom {
     public class XaAdpcm {
@@ -14,6 +13,7 @@ namespace ProjectPSX.Devices.CdRom {
         private static int sixStep = 6;
         private static int resamplePointer;
         private static short[][] resampleRingBuffer = { new short[32], new short[32] };
+        private static short[] nibbleBuffer = new short[28];
 
         private static ReadOnlySpan<sbyte> positiveXaAdpcmTable => new sbyte[] { 0, 60, 115, 98, 122 };
         private static ReadOnlySpan<sbyte> negativeXaAdpcmTable => new sbyte[] { 0, 0, -52, -55, -60 };
@@ -55,11 +55,16 @@ namespace ProjectPSX.Devices.CdRom {
                                         0,       0,       0,       0,      0}
         };
 
-        public static byte[] Decode(byte[] xaadpcm, byte codingInfo) {
-            List<byte> decoded = new List<byte>();
+        private static List<short> l = new List<short>(2016); //18 portions * 4 blocks * 28 nibbles
+        private static List<short> r = new List<short>(2016);
+        private static List<short> mono = new List<short>(4032);
+        private static List<byte> decoded = new List<byte>(18816*2);
 
-            List<short> l = new List<short>();
-            List<short> r = new List<short>();
+        public static byte[] Decode(byte[] xaadpcm, byte codingInfo) {
+            l.Clear();
+            r.Clear();
+            mono.Clear();
+            decoded.Clear();
 
             bool isStereo = (codingInfo & 0x1) == 0x1;
             bool is18900hz = ((codingInfo >> 2) & 0x1) == 0x1;
@@ -75,8 +80,8 @@ namespace ProjectPSX.Devices.CdRom {
                         l.AddRange(decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL));
                         r.AddRange(decodeNibbles(xaadpcm, position, blk, 1, ref oldR, ref olderR));
                     } else {
-                        l.AddRange(decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL));
-                        l.AddRange(decodeNibbles(xaadpcm, position, blk, 1, ref oldL, ref olderL));
+                        mono.AddRange(decodeNibbles(xaadpcm, position, blk, 0, ref oldL, ref olderL));
+                        mono.AddRange(decodeNibbles(xaadpcm, position, blk, 1, ref oldL, ref olderL));
                     }
                     //Console.WriteLine("nextblock " + blk);
                 }
@@ -85,8 +90,8 @@ namespace ProjectPSX.Devices.CdRom {
             }
 
             if (isStereo) {
-                List<short> resampledL = resampleTo44100Hz(l, is18900hz, 0);
-                List<short> resampledR = resampleTo44100Hz(r, is18900hz, 1);
+                List<short> resampledL = resampleTo44100Hz(l, isStereo, is18900hz, 0);
+                List<short> resampledR = resampleTo44100Hz(r, isStereo, is18900hz, 1);
                 //Console.WriteLine("Sizes" + resampledL.Count + " " + resampledR.Count);
 
                 for (int sample = 0; sample < resampledL.Count; sample++) {
@@ -96,7 +101,7 @@ namespace ProjectPSX.Devices.CdRom {
                     decoded.Add((byte)(resampledR[sample] >> 8));
                 }
             } else {
-                List<short> resampledMono = resampleTo44100Hz(l, is18900hz, 0);
+                List<short> resampledMono = resampleTo44100Hz(mono, isStereo, is18900hz, 0);
 
                 for (int sample = 0; sample < resampledMono.Count; sample++) {
                     //duplicating because out output expects 44100 Stereo
@@ -107,12 +112,16 @@ namespace ProjectPSX.Devices.CdRom {
                 }
             }
 
+            //Console.WriteLine("decoded size " + decoded.Count); //9408 stereo //18816 mono
             return decoded.ToArray();
         }
 
-        private static List<short> resampleTo44100Hz(List<short> samples, bool is18900hz, int channel) {
-            List<short> resamples = new List<short>();
+        private static List<short> stereoResamples = new List<short>(2352);
+        private static List<short> monoResamples = new List<short>(4704);
+        private static List<short> resampleTo44100Hz(List<short> samples, bool isStereo, bool is18900hz, int channel) {
+            List<short> resamples = isStereo ? stereoResamples : monoResamples;
 
+            resamples.Clear();
             //todo handle 18900hz
 
             for (int i = 0; i < samples.Count; i++) {
@@ -126,7 +135,7 @@ namespace ProjectPSX.Devices.CdRom {
                     }
                 }
             }
-
+            //Console.WriteLine("resamples Length" + resamples.Count); //2352 stereo ? 4704 mono
             return resamples;
         }
 
@@ -139,9 +148,7 @@ namespace ProjectPSX.Devices.CdRom {
             return (short)Math.Clamp(sum, -0x8000, 0x7FFF);
         }
 
-        public static List<short> decodeNibbles(byte[] xaapdcm, int position, int blk, int nibble, ref short old, ref short older) {
-            List<short> list = new List<short>();
-
+        public static short[] decodeNibbles(byte[] xaapdcm, int position, int blk, int nibble, ref short old, ref short older) {
             int shift = 12 - (xaapdcm[position + 4 + blk * 2 + nibble] & 0x0F);
             int filter = (xaapdcm[position + 4 + blk * 2 + nibble] & 0x30) >> 4;
 
@@ -153,12 +160,11 @@ namespace ProjectPSX.Devices.CdRom {
                 int s = (t << shift) + ((old * f0 + older * f1 + 32) / 64);
                 short sample = (short)Math.Clamp(s, -0x8000, 0x7FFF);
 
-                list.Add(sample);
+                nibbleBuffer[i] = sample;
                 older = old;
                 old = sample;
             }
-
-            return list;
+            return nibbleBuffer;
         }
 
         public static int signed4bit(byte value) {
