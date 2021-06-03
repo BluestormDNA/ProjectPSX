@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using ProjectPSX.Devices.CdRom;
 using ProjectPSX.Devices.Spu;
 
 namespace ProjectPSX.Devices {
@@ -81,7 +82,7 @@ namespace ProjectPSX.Devices {
         };
 
         List<byte> spuOutput = new List<byte>();
-        Queue<byte> cdbuffer = new Queue<byte>();
+        Sector cdBuffer = new Sector(Sector.XA_BUFFER);
 
         private byte[] ram = new byte[512 * 1024];
         private Voice[] voices = new Voice[24];
@@ -443,7 +444,7 @@ namespace ProjectPSX.Devices {
         }
 
         internal void pushCdBufferSamples(byte[] decodedXaAdpcm) {
-            cdbuffer = new Queue<byte>(decodedXaAdpcm);
+            cdBuffer.fillWith(decodedXaAdpcm);
         }
 
         private int counter = 0;
@@ -517,15 +518,10 @@ namespace ProjectPSX.Devices {
             //Merge in CD audio (CDDA or XA)
             short cdL = 0;
             short cdR = 0;
-            if(control.cdAudioEnabled && cdbuffer.Count > 3) { //Be sure theres something on the queue...
+            if(control.cdAudioEnabled && cdBuffer.hasSamples()) { //Be sure theres something on the queue...
                 //todo refactor the byte/short queues and casts
-                byte cdLLo = cdbuffer.Dequeue();
-                byte cdLHi = cdbuffer.Dequeue();
-                byte cdRLo = cdbuffer.Dequeue();
-                byte cdRHi = cdbuffer.Dequeue();
-
-                cdL = (short)(cdLHi << 8 | cdLLo);
-                cdR = (short)(cdRHi << 8 | cdRLo);
+                cdL = cdBuffer.readShort();
+                cdR = cdBuffer.readShort();
 
                 //Apply Spu Cd In (CDDA/XA) Volume
                 cdL = (short)((cdL * cdVolumeLeft) >> 15);
