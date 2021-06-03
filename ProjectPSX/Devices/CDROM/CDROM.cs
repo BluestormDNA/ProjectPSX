@@ -11,8 +11,8 @@ namespace ProjectPSX.Devices {
 
         private Queue<uint> parameterBuffer = new Queue<uint>(16);
         private Queue<uint> responseBuffer = new Queue<uint>(16);
-        private Sector currentSector = new Sector();
-        private Sector lastReadSector = new Sector();
+        private Sector currentSector = new Sector(Sector.RAW_BUFFER);
+        private Sector lastReadSector = new Sector(Sector.RAW_BUFFER);
 
         private bool isBusy;
 
@@ -209,7 +209,6 @@ namespace ProjectPSX.Devices {
 
                             if(!mutedAudio && !mutedXAADPCM) {
                                 byte[] decodedXaAdpcm = XaAdpcm.Decode(readSector, sectorSubHeader.codingInfo);
-                                Console.WriteLine("decoded Xa size " + decodedXaAdpcm.Length);
                                 applyVolume(decodedXaAdpcm);
                                 spu.pushCdBufferSamples(decodedXaAdpcm);
                             }
