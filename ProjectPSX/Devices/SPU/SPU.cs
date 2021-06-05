@@ -81,8 +81,10 @@ namespace ProjectPSX.Devices {
                 0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3,
         };
 
-        List<byte> spuOutput = new List<byte>();
-        Sector cdBuffer = new Sector(Sector.XA_BUFFER);
+        private byte[] spuOutput = new byte[2048];
+        private int spuOutputPointer;
+
+        private Sector cdBuffer = new Sector(Sector.XA_BUFFER);
 
         private byte[] ram = new byte[512 * 1024];
         private Voice[] voices = new Voice[24];
@@ -542,15 +544,15 @@ namespace ProjectPSX.Devices {
             sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
             sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
 
-            //Add to samples bytes to output list //Todo check if is possible to cast directly with Unsafe or memmarshal
-            spuOutput.Add((byte)sumLeft);
-            spuOutput.Add((byte)(sumLeft >> 8));
-            spuOutput.Add((byte)sumRight);
-            spuOutput.Add((byte)(sumRight >> 8));
+            //Add to samples bytes to output array
+            spuOutput[spuOutputPointer++] = (byte)sumLeft;
+            spuOutput[spuOutputPointer++] = (byte)(sumLeft >> 8);
+            spuOutput[spuOutputPointer++] = (byte)sumRight;
+            spuOutput[spuOutputPointer++] = (byte)(sumRight >> 8);
 
-            if (spuOutput.Count > 2048) {
-                window.Play(spuOutput.ToArray());
-                spuOutput.Clear();
+            if (spuOutputPointer >= 2048) {
+                window.Play(spuOutput);
+                spuOutputPointer = 0;
             }
 
             if (control.spuEnabled && control.irq9Enabled && edgeTrigger) {
