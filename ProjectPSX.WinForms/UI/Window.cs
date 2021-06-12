@@ -290,11 +290,11 @@ namespace ProjectPSX {
         }
 
         public void Play(byte[] samples) {
-            bufferedWaveProvider.AddSamples(samples, 0, samples.Length);
-
-            if (waveOutEvent.PlaybackState != PlaybackState.Playing) {
-                waveOutEvent.Play();
-            }
+            //bufferedWaveProvider.AddSamples(samples, 0, samples.Length);
+            //
+            //if (waveOutEvent.PlaybackState != PlaybackState.Playing) {
+            //    waveOutEvent.Play();
+            //}
         }
 
         private void OnTimedEvent(object sender, ElapsedEventArgs e) {
