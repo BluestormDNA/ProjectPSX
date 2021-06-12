@@ -124,6 +124,7 @@ namespace ProjectPSX.Devices {
 
         int yuvToRgbBlockPos = 0;
         private void yuv_to_rgb(short[] Yblk, int xx, int yy) {
+            Span<byte> rgb = stackalloc byte[3];
             for (int y = 0; y < 8; y++) {
                 for (int x = 0; x < 8; x++) {
                     int R = block[4][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CR Block
@@ -142,8 +143,11 @@ namespace ProjectPSX.Devices {
                     G ^= 0x80;
                     B ^= 0x80;
 
+                    rgb[0] = (byte)R;
+                    rgb[1] = (byte)G;
+                    rgb[2] = (byte)B;
+
                     int position = ((x + xx + ((y + yy) * 16)) * 3) + yuvToRgbBlockPos;
-                    Span<byte> rgb = stackalloc byte[3] { (byte)R, (byte)G, (byte)B };
                     var dest = outBuffer.Memory.Span.Slice(position, 3);
                     rgb.CopyTo(dest);
                 }
