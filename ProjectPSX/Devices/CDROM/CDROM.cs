@@ -10,7 +10,7 @@ namespace ProjectPSX.Devices {
     public class CDROM {
 
         private Queue<uint> parameterBuffer = new Queue<uint>(16);
-        private Queue<uint> responseBuffer = new Queue<uint>(16);
+        private Queue<byte> responseBuffer = new Queue<byte>(16);
         private Sector currentSector = new Sector(Sector.RAW_BUFFER);
         private Sector lastReadSector = new Sector(Sector.RAW_BUFFER);
 
@@ -459,9 +459,18 @@ namespace ProjectPSX.Devices {
                     $" file: {sectorSubHeader.file} channel: {sectorSubHeader.channel} subMode: {sectorSubHeader.subMode} codingInfo: {sectorSubHeader.codingInfo}");
             }
 
-            responseBuffer.EnqueueRange(
-                sectorHeader.mm, sectorHeader.ss, sectorHeader.ff, sectorHeader.mode, sectorSubHeader.file,
-                sectorSubHeader.channel, sectorSubHeader.subMode, sectorSubHeader.codingInfo);
+            Span<byte> response = stackalloc byte[] {
+                sectorHeader.mm,
+                sectorHeader.ss,
+                sectorHeader.ff,
+                sectorHeader.mode,
+                sectorSubHeader.file,
+                sectorSubHeader.channel,
+                sectorSubHeader.subMode,
+                sectorSubHeader.codingInfo
+            };
+
+            responseBuffer.EnqueueRange(response);
 
             interruptQueue.Enqueue(0x3);
         }
@@ -481,7 +490,8 @@ namespace ProjectPSX.Devices {
                 Console.ResetColor();
             }
 
-            responseBuffer.EnqueueRange<uint>((uint)track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff));
+            Span<byte> response = stackalloc byte[] { track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff) };
+            responseBuffer.EnqueueRange(response);
 
             interruptQueue.Enqueue(0x3);
         }
@@ -491,7 +501,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void videoCD() { //INT5(11h,40h)  ;-Unused/invalid
-            responseBuffer.EnqueueRange<uint>(0x11, 0x40);
+            responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x40 });
 
             interruptQueue.Enqueue(0x5);
         }
@@ -576,12 +586,12 @@ namespace ProjectPSX.Devices {
 
             if (track == 0) { //returns CD LBA / End of last track
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
-                responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
+                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
                 //if (cdDebug)
                 Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             } else { //returns Track Start
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
-                responseBuffer.EnqueueRange<uint>(STAT, DecToBcd(mm), DecToBcd(ss));
+                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
                 //if (cdDebug)
                 Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             }
@@ -594,7 +604,7 @@ namespace ProjectPSX.Devices {
             //if (cdDebug)
             Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
             //Console.ReadLine();
-            responseBuffer.EnqueueRange<uint>(STAT, 1, DecToBcd((byte)cd.tracks.Count));
+            responseBuffer.EnqueueRange(stackalloc byte[] { STAT, 1, DecToBcd((byte)cd.tracks.Count) });
             interruptQueue.Enqueue(0x3);
         }
 
@@ -710,12 +720,12 @@ namespace ProjectPSX.Devices {
             //responseBuffer.Enqueue(STAT);
             //interruptQueue.Enqueue(0x3);
             //
-            //responseBuffer.EnqueueRange<uint>(0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+            //responseBuffer.EnqueueRange(stackalloc byte[] { 0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
             //interruptQueue.Enqueue(0x5);
 
             //Door Open              INT5(11h,80h)  N/A
             //STAT = 0x10; //Shell Open
-            //responseBuffer.EnqueueRange<uint>(0x11, 0x80, 0x00, 0x00);
+            //responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80, 0x00, 0x00 });
             //interruptQueue.Enqueue(0x5);
 
             //Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
@@ -724,7 +734,8 @@ namespace ProjectPSX.Devices {
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
-            responseBuffer.EnqueueRange<uint>(0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41); //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
+            Span<byte> response = stackalloc byte[] { 0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41 }; //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
+            responseBuffer.EnqueueRange(response);
             interruptQueue.Enqueue(0x2);
         }
 
@@ -750,15 +761,15 @@ namespace ProjectPSX.Devices {
                     break;
                 case 0x05:// 05h      -   INT3(total,success);Stop SCEx reading and get counters
                     Console.WriteLine("[CDROM] Command 19 05 GetSCExInfo Hack 0 0 Bypass Response");
-                    responseBuffer.EnqueueRange<uint>(0, 0);
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0, 0 });
                     interruptQueue.Enqueue(0x3);
                     break;
                 case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
-                    responseBuffer.EnqueueRange<uint>(0x94, 0x09, 0x19, 0xC0);
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x94, 0x09, 0x19, 0xC0 });
                     interruptQueue.Enqueue(0x3);
                     break;
                 case 0x22: //INT3("for US/AEP") --> Region-free debug version --> accepts unlicensed CDRs
-                    responseBuffer.EnqueueRange<uint>(0x66, 0x6F, 0x72, 0x20, 0x55, 0x53, 0x2F, 0x41, 0x45, 0x50);
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x66, 0x6F, 0x72, 0x20, 0x55, 0x53, 0x2F, 0x41, 0x45, 0x50 });
                     interruptQueue.Enqueue(0x3);
                     break;
                 case 0x60://  60h      lo,hi     INT3(databyte)   ;HC05 SUB-CPU read RAM and I/O ports
