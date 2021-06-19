@@ -9,7 +9,7 @@ namespace ProjectPSX.Devices {
     //Need to rework timmings. An edge trigger should be implemented for interrupts
     public class CDROM {
 
-        private Queue<uint> parameterBuffer = new Queue<uint>(16);
+        private Queue<byte> parameterBuffer = new Queue<byte>(16);
         private Queue<byte> responseBuffer = new Queue<byte>(16);
         private Sector currentSector = new Sector(Sector.RAW_BUFFER);
         private Sector lastReadSector = new Sector(Sector.RAW_BUFFER);
@@ -311,7 +311,7 @@ namespace ProjectPSX.Devices {
                     switch (INDEX) {
                         case 0:
                             if (cdDebug) Console.WriteLine($"[CDROM] [W02.0] Parameter: {value:x8}");
-                            parameterBuffer.Enqueue(value);
+                            parameterBuffer.Enqueue((byte)value);
                             break;
                         case 1:
                             if (cdDebug) Console.WriteLine($"[CDROM] [W02.1] Set IE: {value:x8}");
@@ -519,8 +519,8 @@ namespace ProjectPSX.Devices {
         }
 
         private void setFilter() {
-            filterFile = (byte)parameterBuffer.Dequeue();
-            filterChannel = (byte)parameterBuffer.Dequeue();
+            filterFile = parameterBuffer.Dequeue();
+            filterChannel = parameterBuffer.Dequeue();
 
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
@@ -553,7 +553,7 @@ namespace ProjectPSX.Devices {
             //If theres a trackN param it seeks and plays from the start location of it
             int track = 0;
             if (parameterBuffer.Count > 0) {
-                track = BcdToDec((byte)parameterBuffer.Dequeue());
+                track = BcdToDec(parameterBuffer.Dequeue());
                 readLoc = seekLoc = cd.tracks[track].lbaStart;
                 //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
             } else {
@@ -582,7 +582,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void getTD() {
-            int track = BcdToDec((byte)parameterBuffer.Dequeue());
+            int track = BcdToDec(parameterBuffer.Dequeue());
 
             if (track == 0) { //returns CD LBA / End of last track
                 (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
@@ -685,9 +685,9 @@ namespace ProjectPSX.Devices {
         }
 
         private void setLoc() {
-            byte mm = (byte)parameterBuffer.Dequeue();
-            byte ss = (byte)parameterBuffer.Dequeue();
-            byte ff = (byte)parameterBuffer.Dequeue();
+            byte mm = parameterBuffer.Dequeue();
+            byte ss = parameterBuffer.Dequeue();
+            byte ff = parameterBuffer.Dequeue();
 
             //Console.WriteLine($"[CDROM] setLoc BCD {mm:x2}:{ss:x2}:{ff:x2}");
 
