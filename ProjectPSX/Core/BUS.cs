@@ -343,7 +343,6 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void DmaToRam(uint addr, uint value) {
             *(uint*)(ramPtr + (addr & 0x1F_FFFF)) = value;
-
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -366,7 +365,7 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void DmaFromCD(uint address, int size) { //todo handle the whole array/span
+        public unsafe void DmaFromCD(uint address, int size) {
             var dma = cdrom.processDmaLoad(size);
             var dest = new Span<uint>(ramPtr + (address & 0x1F_FFFC), size);
             dma.CopyTo(dest);
