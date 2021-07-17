@@ -10,7 +10,6 @@ namespace ProjectPSX.Devices {
         private const int NUM_BLOCKS = 6;
         //For some reason even tho it iterates all blocks it starts at 4
         //going 4 (Cr), 5 (Cb), 0, 1, 2, 3 (Y) 
-        private const int INITIAL_BLOCK = 4;
         private const int MACRO_BLOCK_DECODED_BYTES = 256 * 3;
 
         //Status Register
@@ -22,7 +21,7 @@ namespace ProjectPSX.Devices {
         private uint dataOutputDepth;
         private bool isSigned;
         private uint bit15;
-        private uint currentBlock = INITIAL_BLOCK;
+        private uint currentBlock;
         private uint remainingDataWords;
 
         private bool isColored;
@@ -56,7 +55,6 @@ namespace ProjectPSX.Devices {
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
             //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
             if (remainingDataWords == 0) {
-                //Console.WriteLine("decoding " + value.ToString("x8"));
                 decodeCommand(value);
             } else {
                 inBuffer.Enqueue((ushort)value);
@@ -64,13 +62,18 @@ namespace ProjectPSX.Devices {
 
                 remainingDataWords--;
                 //Console.WriteLine("[MDEC] remaining " + remainingDataWords);
+                if (command == decodeMacroBlocks) {
+                    command();
+                }
             }
 
             if (remainingDataWords == 0) {
                 isCommandBusy = true;
                 yuvToRgbBlockPos = 0;
                 outBufferPos = 0;
-                command();
+                if (command != decodeMacroBlocks) {
+                    command();
+                }
             }
 
         }
@@ -92,34 +95,30 @@ namespace ProjectPSX.Devices {
         }
 
         private void decodeMacroBlocks() {
-
             while (inBuffer.Count != 0) {
-
-                for (int i = 0; i < NUM_BLOCKS; i++) { //Try to decode a macro block (6 blocks)
-                    //But actually iterate from the current block
-                    byte[] qt = currentBlock >= 4 ? colorQuantTable : luminanceQuantTable;
-                    //todo check if was success and idct and currentblock++ there so we can return here
-                    //and recover state when handling resumable macroblock decoding...
-                    rl_decode_block(block[currentBlock], qt);
+                // Iterating this from initial currentBlock 4 caused problems on a per word aproach decoding
+                // The first macroblock was being decoded without yuv data and was generating desinc on
+                // color vs luminance so pretend CR 4 and CB 5 are 0 and 1 and move Y data up to blocks 2 3 4 5
+                for (; currentBlock < NUM_BLOCKS; currentBlock++) {
+                    byte[] qt = currentBlock >= 2 ? luminanceQuantTable : colorQuantTable;
+                    if (!rl_decode_block(block[currentBlock], qt)) return;
                     idct_core(block[currentBlock]);
-
-                    currentBlock++;
-                    currentBlock %= NUM_BLOCKS;
                 }
 
-                yuv_to_rgb(block[0], 0, 0);
-                yuv_to_rgb(block[1], 8, 0);
-                yuv_to_rgb(block[2], 0, 8);
-                yuv_to_rgb(block[3], 8, 8);
+                currentBlock = 0;
+
+                yuv_to_rgb(block[2], 0, 0);
+                yuv_to_rgb(block[3], 8, 0);
+                yuv_to_rgb(block[4], 0, 8);
+                yuv_to_rgb(block[5], 8, 8);
 
                 yuvToRgbBlockPos += MACRO_BLOCK_DECODED_BYTES;
 
-                //for (int i = 0; i < output.Length; i++) {
-                //    Console.WriteLine(i + " " + output[i].ToString("x8"));
-                //}
-                //Console.WriteLine("MacroBlock decoded " + ++block + " srcPointer " + srcPointer + " bufferPtr " + ptr);
+                blockPointer = 64;
+                q_scale = 0;
+                val = 0;
+                n = 0;
             }
-            //Console.WriteLine("Finalized decode" + srcPointer + " " + ptr);
         }
 
         int yuvToRgbBlockPos = 0;
@@ -127,8 +126,8 @@ namespace ProjectPSX.Devices {
             Span<byte> rgb = stackalloc byte[3];
             for (int y = 0; y < 8; y++) {
                 for (int x = 0; x < 8; x++) {
-                    int R = block[4][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CR Block
-                    int B = block[5][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CB Block
+                    int R = block[0][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CR Block
+                    int B = block[1][((x + xx) / 2) + ((y + yy) / 2) * 8]; //CB Block
                     int G = (int)((-0.3437 * B) + (-0.7143 * R));
 
                     R = (int)(1.402 * R);
@@ -154,20 +153,20 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private int blockPointer;
+        private int blockPointer = 64;
         private int q_scale;
         private int val;
         private ushort n;
-        public void rl_decode_block(short[] blk, byte[] qt) {
+        public bool rl_decode_block(short[] blk, byte[] qt) {
             if (blockPointer >= 64) { //Start of new block
                 for (int i = 0; i < blk.Length; i++) {
                     blk[i] = 0;
                 }
 
-                if (inBuffer.Count == 0) return;
+                if (inBuffer.Count == 0) return false;
                 n = inBuffer.Dequeue();
                 while (n == 0xFE00) {
-                    if (inBuffer.Count == 0) return;
+                    if (inBuffer.Count == 0) return false;
                     n = inBuffer.Dequeue();
                 }
 
@@ -193,13 +192,15 @@ namespace ProjectPSX.Devices {
                     blk[blockPointer] = (short)val;
                 }
 
-                if (inBuffer.Count == 0) return;
+                if (inBuffer.Count == 0) return false;
                 n = inBuffer.Dequeue();
 
                 blockPointer += ((n >> 10) & 0x3F) + 1;
 
                 val = (signed10bit(n & 0x3FF) * qt[blockPointer & 0x3F] * q_scale + 4) / 8;
             }
+
+            return true;
         }
 
         private void idct_core(short[] src) {
@@ -250,8 +251,14 @@ namespace ProjectPSX.Devices {
             bool abortCommand = ((value >> 31) & 0x1) == 1;
             if (abortCommand) { //Set status to 80040000h
                 outBufferPos = 0;
-                currentBlock = 4;
+                currentBlock = 0;
                 remainingDataWords = 0;
+
+                blockPointer = 64;
+                q_scale = 0;
+                val = 0;
+                n = 0;
+
                 command = null;
             }
 
@@ -331,7 +338,7 @@ namespace ProjectPSX.Devices {
             status |= dataOutputDepth << 25;
             status |= (isSigned ? 1u : 0) << 24;
             status |= bit15 << 23;
-            status |= currentBlock << 16;
+            status |= (currentBlock + 4) % NUM_BLOCKS << 16;
             status |= (ushort)(remainingDataWords - 1);
             //Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
             //Console.ReadLine();
