@@ -671,7 +671,7 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void BRANCH() {
             opcodeTookBranch = true;
-            PC_Predictor = PC + (instr.imm_s << 2);
+            PC_Predictor = (uint)(PC + (short)(instr.imm_s << 2));
         }
 
 
