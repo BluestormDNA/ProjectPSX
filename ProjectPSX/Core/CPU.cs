@@ -334,14 +334,13 @@ namespace ProjectPSX {
         }
 
         private void ADDI() {
-            int rs = (int)GPR[instr.rs];
-            int imm_s = (int)instr.imm_s;
-            try {
-                uint addi = (uint)checked(rs + imm_s);
-                setGPR(instr.rt, addi);
-            }
-            catch (OverflowException) {
+            uint rs = GPR[instr.rs];
+            uint imm_s = instr.imm_s;
+            uint result = rs + imm_s;
+            if(checkOverflow(rs, imm_s, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
+            } else {
+                setGPR(instr.rt, result);
             }
         }
 
@@ -761,26 +760,26 @@ namespace ProjectPSX {
         }
 
         private void ADD() {
-            int rs = (int)GPR[instr.rs];
-            int rt = (int)GPR[instr.rt];
-            try {
-                uint add = (uint)checked(rs + rt);
-                setGPR(instr.rd, add);
-            } catch (OverflowException) {
+            uint rs = GPR[instr.rs];
+            uint rt = GPR[instr.rt];
+            uint result = rs + rt;
+            if (checkOverflow(rs, rt, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
+            } else {
+                setGPR(instr.rd, result);
             }
         }
 
         private void ADDU() => setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
 
         private void SUB() {
-            int rs = (int)GPR[instr.rs];
-            int rt = (int)GPR[instr.rt];
-            try {
-                uint sub = (uint)checked(rs - rt);
-                setGPR(instr.rd, sub);
-            } catch (OverflowException) {
+            uint rs = GPR[instr.rs];
+            uint rt = GPR[instr.rt];
+            uint result = rs - rt;
+            if (checkUnderflow(rs, rt, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
+            } else {
+                setGPR(instr.rd, result);
             }
         }
 
@@ -806,6 +805,12 @@ namespace ProjectPSX {
 
 
         // Accesory methods
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool checkOverflow(uint a, uint b, uint r) => ((r ^ a) & (r ^ b) & 0x8000_0000) != 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool checkUnderflow(uint a, uint b, uint r) => ((r ^ a) & (a ^ b) & 0x8000_0000) != 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void setGPR(uint regN, uint value) {
