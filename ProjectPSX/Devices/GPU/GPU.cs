@@ -42,14 +42,14 @@ namespace ProjectPSX.Devices {
             public Point2D textureBase;
         }
 
-        private struct VRAM_Coord {
+        private struct VramTransfer {
             public int x, y;
+            public ushort w, h;
             public int origin_x;
             public int origin_y;
-            public ushort w, h;
-            public int size;
+            public int halfWords;
         }
-        private VRAM_Coord vram_coord;
+        private VramTransfer vramTransfer;
 
 
         [StructLayout(LayoutKind.Explicit)]
@@ -220,7 +220,7 @@ namespace ProjectPSX.Devices {
         public uint loadGPUREAD() {
             //TODO check if correct and refact
             uint value;
-            if (vram_coord.size > 0) {
+            if (vramTransfer.halfWords > 0) {
                 value = readFromVRAM();
             } else {
                 value = GPUREAD;
@@ -252,20 +252,18 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void processDma(Span<uint> buffer) {
+        internal void processDma(Span<uint> dma) {
             if (mode == Mode.COMMAND) {
-                DecodeGP0Command(buffer);
+                DecodeGP0Command(dma);
             } else {
-                for (int i = 0; i < buffer.Length; i++) {
-                    WriteToVRAM(buffer[i]);
+                for (int i = 0; i < dma.Length; i++) {
+                    WriteToVRAM(dma[i]);
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteToVRAM(uint value) { //todo rewrite this mess
-            vram_coord.size--;
-
+        private void WriteToVRAM(uint value) {
             ushort pixel1 = (ushort)(value >> 16);
             ushort pixel0 = (ushort)(value & 0xFFFF);
 
@@ -275,49 +273,49 @@ namespace ProjectPSX.Devices {
             drawVRAMPixel(pixel0);
 
             //Force exit if we arrived to the end pixel (fixes weird artifacts on textures on Metal Gear Solid)
-            if (vram_coord.size == 0 && vram_coord.x == vram_coord.origin_x && vram_coord.y == vram_coord.origin_y + vram_coord.h) {
+            if (--vramTransfer.halfWords == 0) {
                 mode = Mode.COMMAND;
                 return;
             }
 
             drawVRAMPixel(pixel1);
 
-            if (vram_coord.size == 0) {
+            if (--vramTransfer.halfWords == 0) {
                 mode = Mode.COMMAND;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private uint readFromVRAM() {
-            ushort pixel0 = vram.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
-            ushort pixel1 = vram.GetPixelBGR555(vram_coord.x++ & 0x3FF, vram_coord.y & 0x1FF);
-            if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
-                vram_coord.x -= vram_coord.w;
-                vram_coord.y++;
+            ushort pixel0 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
+            ushort pixel1 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
+            if (vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
+                vramTransfer.x -= vramTransfer.w;
+                vramTransfer.y++;
             }
-            vram_coord.size -= 2;
+            vramTransfer.halfWords -= 2;
             return (uint)(pixel1 << 16 | pixel0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void drawVRAMPixel(ushort val) {
             if (checkMaskBeforeDraw) {
-                int bg = vram.GetPixelRGB888(vram_coord.x, vram_coord.y);
+                int bg = vram.GetPixelRGB888(vramTransfer.x, vramTransfer.y);
 
                 if (bg >> 24 == 0) {
-                    vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, color1555to8888(val));
-                    vram1555.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, val);
+                    vram.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555to8888(val));
+                    vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, val);
                 }
             } else {
-                vram.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, color1555to8888(val));
-                vram1555.SetPixel(vram_coord.x & 0x3FF, vram_coord.y & 0x1FF, val);
+                vram.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555to8888(val));
+                vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, val);
             }
 
-            vram_coord.x++;
+            vramTransfer.x++;
 
-            if (vram_coord.x == vram_coord.origin_x + vram_coord.w) {
-                vram_coord.x -= vram_coord.w;
-                vram_coord.y++;
+            if (vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
+                vramTransfer.x -= vramTransfer.w;
+                vramTransfer.y++;
             }
         }
 
@@ -889,13 +887,13 @@ namespace ProjectPSX.Devices {
             ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
             ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
 
-            vram_coord.x = x;
-            vram_coord.origin_x = x;
-            vram_coord.y = y;
-            vram_coord.origin_y = y;
-            vram_coord.w = w;
-            vram_coord.h = h;
-            vram_coord.size = ((h * w) + 1) >> 1;
+            vramTransfer.x = x;
+            vramTransfer.y = y;
+            vramTransfer.w = w;
+            vramTransfer.h = h;
+            vramTransfer.origin_x = x;
+            vramTransfer.origin_y = y;
+            vramTransfer.halfWords = w * h;
 
             mode = Mode.VRAM;
         }
@@ -911,13 +909,13 @@ namespace ProjectPSX.Devices {
             ushort w = (ushort)((((wh & 0xFFFF) - 1) & 0x3FF) + 1);
             ushort h = (ushort)((((wh >> 16) - 1) & 0x1FF) + 1);
 
-            vram_coord.x = x;
-            vram_coord.origin_x = x;
-            vram_coord.y = y;
-            vram_coord.origin_y = y;
-            vram_coord.w = w;
-            vram_coord.h = h;
-            vram_coord.size = h * w;
+            vramTransfer.x = x;
+            vramTransfer.y = y;
+            vramTransfer.w = w;
+            vramTransfer.h = h;
+            vramTransfer.origin_x = x;
+            vramTransfer.origin_y = y;
+            vramTransfer.halfWords = w * h;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
