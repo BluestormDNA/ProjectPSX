@@ -3,7 +3,6 @@ using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
     public abstract class Controller {
-        protected IHostWindow window;
 
         protected Queue<byte> transferDataFifo = new Queue<byte>();
         protected ushort buttons = 0xFFFF;
