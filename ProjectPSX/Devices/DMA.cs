@@ -10,7 +10,7 @@ namespace ProjectPSX.Devices {
             public abstract uint load(uint regiter);
         }
 
-        private class InterruptChannel : AChannel {
+        private sealed class InterruptChannel : AChannel {
 
             private uint control;
 
@@ -97,7 +97,7 @@ namespace ProjectPSX.Devices {
             }
         }
 
-        private class Channel : AChannel {
+        private sealed class Channel : AChannel {
 
             private uint baseAddress;
             private uint blockSize;

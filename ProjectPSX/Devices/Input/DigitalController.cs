@@ -1,5 +1,5 @@
 ﻿namespace ProjectPSX {
-    public class DigitalController : Controller {
+    public sealed class DigitalController : Controller {
 
         private const ushort CONTROLLER_TYPE = 0x5A41; //digital
 
