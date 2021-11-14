@@ -551,11 +551,19 @@ namespace ProjectPSX.Devices {
                         // reset default color of the triangle calculated outside the for as it gets overwriten as follows...
                         int color = baseColor;
 
-                        if (primitive.isShaded) color = getShadedColor(w0, w1, w2, c0, c1, c2, area);
+                        if (primitive.isShaded) {
+                            color0.val = c0;
+                            color1.val = c1;
+                            color2.val = c2;
+                            int r = interpolate(w0, w1, w2, color0.r, color1.r, color2.r, area);
+                            int g = interpolate(w0, w1, w2, color0.g, color1.g, color2.g, area);
+                            int b = interpolate(w0, w1, w2, color0.b, color1.b, color2.b, area);
+                            color = r << 16 | g << 8 | b;
+                        }
 
                         if (primitive.isTextured) {
-                            int texelX = interpolateCoords(w0, w1, w2, t0.x, t1.x, t2.x, area);
-                            int texelY = interpolateCoords(w0, w1, w2, t0.y, t1.y, t2.y, area);
+                            int texelX = interpolate(w0, w1, w2, t0.x, t1.x, t2.x, area);
+                            int texelY = interpolate(w0, w1, w2, t0.y, t1.y, t2.y, area);
                             int texel = getTexel(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), primitive.clut, primitive.textureBase, primitive.depth);
                             if (texel == 0) {
                                 w0 += A12;
@@ -908,25 +916,6 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int getShadedColor(int w0, int w1, int w2, uint c0, uint c1, uint c2, int area) {
-            color0.val = c0;
-            color1.val = c1;
-            color2.val = c2;
-
-            int r = (color0.r * w0 + color1.r * w1 + color2.r * w2) / area;
-            int g = (color0.g * w0 + color1.g * w1 + color2.g * w2) / area;
-            int b = (color0.b * w0 + color1.b * w1 + color2.b * w2) / area;
-
-            return (r << 16 | g << 8 | b);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int interpolateCoords(int w0, int w1, int w2, int t0, int t1, int t2, int area) {
-            //https://codeplea.com/triangular-interpolation
-            return (t0 * w0 + t1 * w1 + t2 * w2) / area;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int maskTexelAxis(int axis, int preMaskAxis, int postMaskAxis) {
             return axis & 0xFF & preMaskAxis | postMaskAxis;
         }
@@ -1205,6 +1194,12 @@ namespace ProjectPSX.Devices {
             byte b = (byte)(color2.b * ratio + color1.b * (1 - ratio));
 
             return (r << 16 | g << 8 | b);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int interpolate(int w0, int w1, int w2, int t0, int t1, int t2, int area) {
+            //https://codeplea.com/triangular-interpolation
+            return (t0 * w0 + t1 * w1 + t2 * w2) / area;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
