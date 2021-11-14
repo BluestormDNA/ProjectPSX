@@ -734,15 +734,20 @@ namespace ProjectPSX.Devices {
             short xo = (short)(vertex & 0xFFFF);
             short yo = (short)(vertex >> 16);
 
-            ushort palette = 0;
-            byte textureX = 0;
-            byte textureY = 0;
             if (isTextured) {
                 uint texture = buffer[pointer++];
-                palette = (ushort)((texture >> 16) & 0xFFFF);
-                textureX = (byte)(texture & 0xFF);
-                textureY = (byte)((texture >> 8) & 0xFF);
+                t[0].x = (byte)(texture & 0xFF);
+                t[0].y = (byte)((texture >> 8) & 0xFF);
+
+                ushort palette = (ushort)((texture >> 16) & 0xFFFF);
+                primitive.clut.x = (short)((palette & 0x3f) << 4);
+                primitive.clut.y = (short)((palette >> 6) & 0x1FF);
             }
+
+            primitive.depth = textureDepth;
+            primitive.textureBase.x = (short)(textureXBase << 6);
+            primitive.textureBase.y = (short)(textureYBase << 8);
+            primitive.semiTransparencyMode = transparencyMode;
 
             short width = 0;
             short heigth = 0;
@@ -764,44 +769,28 @@ namespace ProjectPSX.Devices {
                     break;
             }
 
-            int y = signed11bit((uint)(yo + drawingYOffset));
-            int x = signed11bit((uint)(xo + drawingXOffset));
+            short y = signed11bit((uint)(yo + drawingYOffset));
+            short x = signed11bit((uint)(xo + drawingXOffset));
 
-            v[0].x = (short)x;
-            v[0].y = (short)y;
+            v[0].x = x;
+            v[0].y = y;
 
             v[3].x = (short)(x + width);
             v[3].y = (short)(y + heigth);
 
-            t[0].x = textureX;
-            t[0].y = textureY;
-
-            uint texpage = getTexpageFromGPU();
-
-            rasterizeRect(v, t[0], color, palette, texpage, primitive);
+            rasterizeRect(v[0], v[3], t[0], color, primitive);
         }
 
-        private void rasterizeRect(Point2D[] vec, TextureData t, uint c, ushort palette, uint texpage, Primitive primitive) {
-            int xOrigin = Math.Max(vec[0].x, drawingAreaLeft);
-            int yOrigin = Math.Max(vec[0].y, drawingAreaTop);
-            int width = Math.Min(vec[3].x, drawingAreaRight);
-            int height = Math.Min(vec[3].y, drawingAreaBottom);
+        private void rasterizeRect(Point2D origin, Point2D size, TextureData texture, uint bgrColor, Primitive primitive) {
+            int xOrigin = Math.Max(origin.x, drawingAreaLeft);
+            int yOrigin = Math.Max(origin.y, drawingAreaTop);
+            int width = Math.Min(size.x, drawingAreaRight);
+            int height = Math.Min(size.y, drawingAreaBottom);
 
-            int depth = (int)(texpage >> 7) & 0x3;
-            int semiTransparencyMode = (int)((texpage >> 5) & 0x3);
+            int uOrigin = texture.x + (xOrigin - origin.x);
+            int vOrigin = texture.y + (yOrigin - origin.y);
 
-            Point2D clut = new Point2D();
-            clut.x = (short)((palette & 0x3f) << 4);
-            clut.y = (short)((palette >> 6) & 0x1FF);
-
-            Point2D textureBase = new Point2D();
-            textureBase.x = (short)((texpage & 0xF) << 6);
-            textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
-
-            int uOrigin = t.x + (xOrigin - vec[0].x);
-            int vOrigin = t.y + (yOrigin - vec[0].y);
-
-            int baseColor = GetRgbColor(c);
+            int baseColor = GetRgbColor(bgrColor);
 
             for (int y = yOrigin, v = vOrigin; y < height; y++, v++) {
                 for (int x = xOrigin, u = uOrigin; x < width; x++, u++) {
@@ -815,7 +804,7 @@ namespace ProjectPSX.Devices {
 
                     if (primitive.isTextured) {
                         //int texel = getTexel(u, v, clut, textureBase, depth);
-                        int texel = getTexel(maskTexelAxis(u, preMaskX, postMaskX), maskTexelAxis(v, preMaskY, postMaskY), clut, textureBase, depth);
+                        int texel = getTexel(maskTexelAxis(u, preMaskX, postMaskX),maskTexelAxis(v, preMaskY, postMaskY),primitive.clut, primitive.textureBase, primitive.depth);
                         if (texel == 0) {
                             continue;
                         }
@@ -834,7 +823,7 @@ namespace ProjectPSX.Devices {
                     }
 
                     if (primitive.isSemiTransparent && (!primitive.isTextured || (color & 0xFF00_0000) != 0)) {
-                        color = handleSemiTransp(x, y, color, semiTransparencyMode);
+                        color = handleSemiTransp(x, y, color, primitive.semiTransparencyMode);
                     }
 
                     color |= maskWhileDrawing << 24;
