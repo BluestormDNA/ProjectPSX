@@ -468,12 +468,17 @@ namespace ProjectPSX.Devices {
                     } else if (i == 1) {
                         uint texpage = textureData >> 16;
 
-                        primitive.depth = (int)(texpage >> 7) & 0x3;
-                        primitive.textureBase.x = (short)((texpage & 0xF) << 6);
-                        primitive.textureBase.y = (short)(((texpage >> 4) & 0x1) << 8);
-                        primitive.semiTransparencyMode = (int)((texpage >> 5) & 0x3);
+                        //SET GLOBAL GPU E1
+                        textureXBase = (byte)(texpage & 0xF);
+                        textureYBase = (byte)((texpage >> 4) & 0x1);
+                        transparencyMode = (byte)((texpage >> 5) & 0x3);
+                        textureDepth = (byte)((texpage >> 7) & 0x3);
+                        isTextureDisabled = isTextureDisabledAllowed && ((texpage >> 11) & 0x1) != 0;
 
-                        forceSetE1(texpage);
+                        primitive.depth = textureDepth;
+                        primitive.textureBase.x = (short)(textureXBase << 6);
+                        primitive.textureBase.y = (short)(textureYBase << 8);
+                        primitive.semiTransparencyMode = transparencyMode;
                     }
                 }
             }
@@ -953,16 +958,6 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int orient2d(Point2D a, Point2D b, Point2D c) {
             return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-        }
-
-        private void forceSetE1(uint texpage) {
-            textureXBase = (byte)(texpage & 0xF);
-            textureYBase = (byte)((texpage >> 4) & 0x1);
-            transparencyMode = (byte)((texpage >> 5) & 0x3);
-            textureDepth = (byte)((texpage >> 7) & 0x3);
-            isTextureDisabled = isTextureDisabledAllowed && ((texpage >> 11) & 0x1) != 0;
-
-            //Console.WriteLine("[GPU] [GP0] Force DrawMode ");
         }
 
         private void GP0_E1_SetDrawMode(uint val) {
