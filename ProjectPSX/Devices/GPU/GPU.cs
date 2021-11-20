@@ -31,7 +31,7 @@ namespace ProjectPSX.Devices {
         }
         private Mode mode;
 
-        private ref struct Primitive {
+        private struct Primitive {
             public bool isShaded;
             public bool isTextured;
             public bool isSemiTransparent;
@@ -54,12 +54,9 @@ namespace ProjectPSX.Devices {
 
         [StructLayout(LayoutKind.Explicit)]
         private struct Point2D {
-            [FieldOffset(0)] public uint val;
             [FieldOffset(0)] public short x;
             [FieldOffset(2)] public short y;
         }
-
-        private Point2D[] v = new Point2D[4];
         private Point2D min = new Point2D();
         private Point2D max = new Point2D();
 
@@ -69,7 +66,7 @@ namespace ProjectPSX.Devices {
             [FieldOffset(0)] public byte x;
             [FieldOffset(1)] public byte y;
         }
-        private TextureData[] t = new TextureData[4];
+        TextureData textureData = new TextureData();
 
         [StructLayout(LayoutKind.Explicit)]
         private struct Color {
@@ -441,6 +438,8 @@ namespace ProjectPSX.Devices {
 
             int vertexN = isQuad ? 4 : 3;
             Span<uint> c = stackalloc uint[vertexN];
+            Span<Point2D> v = stackalloc Point2D[vertexN];
+            Span<TextureData> t = stackalloc TextureData[vertexN];
 
             if (!isShaded) {
                 uint color = buffer[pointer++];
@@ -453,9 +452,9 @@ namespace ProjectPSX.Devices {
             for (int i = 0; i < vertexN; i++) {
                 if (isShaded) c[i] = buffer[pointer++];
 
-                v[i].val = buffer[pointer++];
-                v[i].x = (short)(signed11bit((uint)v[i].x) + drawingXOffset);
-                v[i].y = (short)(signed11bit((uint)v[i].y) + drawingYOffset);
+                uint xy = buffer[pointer++];
+                v[i].x = (short)(signed11bit(xy & 0xFFFF) + drawingXOffset);
+                v[i].y = (short)(signed11bit(xy >> 16) + drawingYOffset);
 
                 if (isTextured) {
                     uint textureData = buffer[pointer++];
@@ -522,9 +521,9 @@ namespace ProjectPSX.Devices {
             int bias1 = isTopLeft(v2, v0) ? 0 : -1;
             int bias2 = isTopLeft(v0, v1) ? 0 : -1;
 
-            int w0_row = orient2d(v1, v2, min);
-            int w1_row = orient2d(v2, v0, min);
-            int w2_row = orient2d(v0, v1, min);
+            int w0_row = orient2d(v1, v2, min) + bias0;
+            int w1_row = orient2d(v2, v0, min) + bias1;
+            int w2_row = orient2d(v0, v1, min) + bias2;
 
             int baseColor = GetRgbColor(c0);
 
@@ -537,7 +536,7 @@ namespace ProjectPSX.Devices {
 
                 for (int x = min.x; x < max.x; x++) {
                     // If p is on or inside all edges, render pixel.
-                    if ((w0 + bias0 | w1 + bias1 | w2 + bias2) >= 0) {
+                    if ((w0 | w1 | w2) >= 0) {
                         //Adjustements per triangle instead of per pixel can be done at area level
                         //but it still does some little by 1 error apreciable on some textured quads
                         //I assume it could be handled recalculating AXX and BXX offsets but those maths are beyond my scope
@@ -560,15 +559,16 @@ namespace ProjectPSX.Devices {
                             color0.val = c0;
                             color1.val = c1;
                             color2.val = c2;
-                            int r = interpolate(w0, w1, w2, color0.r, color1.r, color2.r, area);
-                            int g = interpolate(w0, w1, w2, color0.g, color1.g, color2.g, area);
-                            int b = interpolate(w0, w1, w2, color0.b, color1.b, color2.b, area);
+
+                            int r = interpolate(w0 - bias0, w1 - bias1, w2 - bias2, color0.r, color1.r, color2.r, area);
+                            int g = interpolate(w0 - bias0, w1 - bias1, w2 - bias2, color0.g, color1.g, color2.g, area);
+                            int b = interpolate(w0 - bias0, w1 - bias1, w2 - bias2, color0.b, color1.b, color2.b, area);
                             color = r << 16 | g << 8 | b;
                         }
 
                         if (primitive.isTextured) {
-                            int texelX = interpolate(w0, w1, w2, t0.x, t1.x, t2.x, area);
-                            int texelY = interpolate(w0, w1, w2, t0.y, t1.y, t2.y, area);
+                            int texelX = interpolate(w0 - bias0, w1 - bias1, w2 - bias2, t0.x, t1.x, t2.x, area);
+                            int texelY = interpolate(w0 - bias0, w1 - bias1, w2 - bias2, t0.y, t1.y, t2.y, area);
                             int texel = getTexel(maskTexelAxis(texelX, preMaskX, postMaskX), maskTexelAxis(texelY, preMaskY, postMaskY), primitive.clut, primitive.textureBase, primitive.depth);
                             if (texel == 0) {
                                 w0 += A12;
@@ -749,8 +749,8 @@ namespace ProjectPSX.Devices {
 
             if (isTextured) {
                 uint texture = buffer[pointer++];
-                t[0].x = (byte)(texture & 0xFF);
-                t[0].y = (byte)((texture >> 8) & 0xFF);
+                textureData.x = (byte)(texture & 0xFF);
+                textureData.y = (byte)((texture >> 8) & 0xFF);
 
                 ushort palette = (ushort)((texture >> 16) & 0xFFFF);
                 primitive.clut.x = (short)((palette & 0x3f) << 4);
@@ -785,13 +785,15 @@ namespace ProjectPSX.Devices {
             short y = signed11bit((uint)(yo + drawingYOffset));
             short x = signed11bit((uint)(xo + drawingXOffset));
 
-            v[0].x = x;
-            v[0].y = y;
+            Point2D origin;
+            origin.x = x;
+            origin.y = y;
 
-            v[3].x = (short)(x + width);
-            v[3].y = (short)(y + heigth);
+            Point2D size;
+            size.x = (short)(x + width);
+            size.y = (short)(y + heigth);
 
-            rasterizeRect(v[0], v[3], t[0], color, primitive);
+            rasterizeRect(origin, size, textureData, color, primitive);
         }
 
         private void rasterizeRect(Point2D origin, Point2D size, TextureData texture, uint bgrColor, Primitive primitive) {
