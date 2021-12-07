@@ -169,16 +169,20 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void blit24bpp(int[] vramBits) {
+        private unsafe void blit24bpp(int[] vramBits) {
             int yRangeOffset = (240 - (displayY2 - displayY1)) >> (verticalRes == 480 ? 0 : 1);
             if (yRangeOffset < 0) yRangeOffset = 0;
 
+            var display = new Span<int>(this.display.BitmapData.ToPointer(), 0x80000);
+            Span<int> scanLine = stackalloc int[horizontalRes];
+
             for (int y = yRangeOffset; y < verticalRes - yRangeOffset; y++) {
                 int offset = 0;
+                var startXYPosition = displayVRAMXStart + ((y - yRangeOffset + displayVRAMYStart) * 1024);
                 for (int x = 0; x < horizontalRes; x += 2) {
-                    int p0rgb = vramBits[(offset++ + displayVRAMXStart) + ((y - yRangeOffset  + displayVRAMYStart) * 1024)];
-                    int p1rgb = vramBits[(offset++ + displayVRAMXStart) + ((y - yRangeOffset  + displayVRAMYStart) * 1024)];
-                    int p2rgb = vramBits[(offset++ + displayVRAMXStart) + ((y - yRangeOffset  + displayVRAMYStart) * 1024)];
+                    int p0rgb = vramBits[startXYPosition + offset++];
+                    int p1rgb = vramBits[startXYPosition + offset++];
+                    int p2rgb = vramBits[startXYPosition + offset++];
 
                     ushort p0bgr555 = GetPixelBGR555(p0rgb);
                     ushort p1bgr555 = GetPixelBGR555(p1rgb);
@@ -197,9 +201,10 @@ namespace ProjectPSX {
                     int p0rgb24bpp = p0R << 16 | p0G << 8 | p0B;
                     int p1rgb24bpp = p1R << 16 | p1G << 8 | p1B;
 
-                    display.DrawPixel(x, y, p0rgb24bpp);
-                    display.DrawPixel(x + 1, y, p1rgb24bpp);
+                    scanLine[x] = p0rgb24bpp;
+                    scanLine[x + 1] = p1rgb24bpp;
                 }
+                scanLine.CopyTo(display.Slice(y * 1024));
             }
 
         }
