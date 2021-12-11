@@ -404,11 +404,18 @@ namespace ProjectPSX.Devices {
             ushort w = (ushort)(((hw & 0x3FF) + 0xF) & ~0xF);
             ushort h = (ushort)((hw >> 16) & 0x1FF);
 
-            int color = (color0.r << 16 | color0.g << 8 | color0.b);
+            int color = color0.r << 16 | color0.g << 8 | color0.b;
 
-            for (int yPos = y; yPos < h + y; yPos++) {
-                for (int xPos = x; xPos < w + x; xPos++) {
-                    vram.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
+            if(x + w <= 0x3FF && y + h <= 0x1FF) {
+                var vramSpan = new Span<int>(vram.Bits);
+                for (int yPos = y; yPos < h + y; yPos++) {
+                    vramSpan.Slice(x + (yPos * 1024), w).Fill(color);
+                }
+            } else {
+                for (int yPos = y; yPos < h + y; yPos++) {
+                    for (int xPos = x; xPos < w + x; xPos++) {
+                        vram.SetPixel(xPos & 0x3FF, yPos & 0x1FF, color);
+                    }
                 }
             }
         }
