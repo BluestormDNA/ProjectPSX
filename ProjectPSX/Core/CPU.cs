@@ -1,4 +1,5 @@
-﻿using System;
+﻿//#define CPU_EXCEPTIONS
+using System;
 using System.Runtime.CompilerServices;
 using ProjectPSX.Disassembler;
 
@@ -247,11 +248,13 @@ namespace ProjectPSX {
             opcodeIsBranch = false;
             opcodeTookBranch = false;
 
+#if CPU_EXCEPTIONS
             if ((PC_Now & 0x3) != 0) {
                 COP0_GPR[BADA] = PC_Now;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR);
                 return;
             }
+#endif
 
             instr.value = load;
             //cycle++;
@@ -337,11 +340,16 @@ namespace ProjectPSX {
             uint rs = GPR[instr.rs];
             uint imm_s = instr.imm_s;
             uint result = rs + imm_s;
+
+#if CPU_EXCEPTIONS
             if(checkOverflow(rs, imm_s, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             } else {
                 setGPR(instr.rt, result);
             }
+#else
+            setGPR(instr.rt, result);
+#endif
         }
 
         private void ADDIU() => setGPR(instr.rt, GPR[instr.rs] + instr.imm_s);
@@ -480,6 +488,7 @@ namespace ProjectPSX {
         private void LWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
             if ((addr & 0x3) == 0) {
                 uint value = bus.load32(addr);
                 gte.writeData(instr.rt, value);
@@ -487,17 +496,25 @@ namespace ProjectPSX {
                 COP0_GPR[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
             }
+#else
+            uint value = bus.load32(addr);
+            gte.writeData(instr.rt, value);
+#endif
         }
 
         private void SWC2() { //TODO WARNING THIS SHOULD HAVE DELAY?
             uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
             if ((addr & 0x3) == 0) {
                 bus.write32(addr, gte.loadData(instr.rt));
             } else {
                 COP0_GPR[BADA] = addr;
                 EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
             }
+#else
+            bus.write32(addr, gte.loadData(instr.rt));
+#endif
         }
 
         private void LB() { //todo redo this as it unnecesary load32
@@ -518,6 +535,7 @@ namespace ProjectPSX {
             if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
                 if ((addr & 0x1) == 0) {
                     uint value = (uint)(short)bus.load32(addr);
                     delayedLoad(instr.rt, value);
@@ -525,6 +543,10 @@ namespace ProjectPSX {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
+#else
+                uint value = (uint)(short)bus.load32(addr);
+                delayedLoad(instr.rt, value);
+#endif
 
             } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
@@ -533,6 +555,7 @@ namespace ProjectPSX {
             if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
                 if ((addr & 0x1) == 0) {
                     uint value = (ushort)bus.load32(addr);
                     delayedLoad(instr.rt, value);
@@ -540,6 +563,10 @@ namespace ProjectPSX {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
+#else
+                uint value = (ushort)bus.load32(addr);
+                delayedLoad(instr.rt, value);
+#endif
 
             } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
@@ -548,6 +575,7 @@ namespace ProjectPSX {
             if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
                 if ((addr & 0x3) == 0) {
                     uint value = bus.load32(addr);
                     delayedLoad(instr.rt, value);
@@ -555,6 +583,10 @@ namespace ProjectPSX {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.LOAD_ADRESS_ERROR, instr.id);
                 }
+#else
+                uint value = bus.load32(addr);
+                delayedLoad(instr.rt, value);
+#endif
 
             } //else Console.WriteLine("IsolatedCache: Ignoring Load");
         }
@@ -613,12 +645,16 @@ namespace ProjectPSX {
             if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
                 if ((addr & 0x1) == 0) {
                     bus.write16(addr, (ushort)GPR[instr.rt]);
                 } else {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
                 }
+#else
+                bus.write16(addr, (ushort)GPR[instr.rt]);
+#endif
             } //else Console.WriteLine("IsolatedCache: Ignoring Write");
         }
 
@@ -626,12 +662,16 @@ namespace ProjectPSX {
             if (dontIsolateCache) {
                 uint addr = GPR[instr.rs] + instr.imm_s;
 
+#if CPU_EXCEPTIONS
                 if ((addr & 0x3) == 0) {
                     bus.write32(addr, GPR[instr.rt]);
                 } else {
                     COP0_GPR[BADA] = addr;
                     EXCEPTION(EX.STORE_ADRESS_ERROR, instr.id);
                 }
+#else
+                bus.write32(addr, GPR[instr.rt]);
+#endif
             } //else Console.WriteLine("IsolatedCache: Ignoring Write");
         }
 
@@ -763,11 +803,16 @@ namespace ProjectPSX {
             uint rs = GPR[instr.rs];
             uint rt = GPR[instr.rt];
             uint result = rs + rt;
+
+#if CPU_EXCEPTIONS
             if (checkOverflow(rs, rt, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             } else {
                 setGPR(instr.rd, result);
             }
+#else
+            setGPR(instr.rd, result);
+#endif
         }
 
         private void ADDU() => setGPR(instr.rd, GPR[instr.rs] + GPR[instr.rt]);
@@ -776,11 +821,16 @@ namespace ProjectPSX {
             uint rs = GPR[instr.rs];
             uint rt = GPR[instr.rt];
             uint result = rs - rt;
+
+#if CPU_EXCEPTIONS
             if (checkUnderflow(rs, rt, result)) {
                 EXCEPTION(EX.OVERFLOW, instr.id);
             } else {
                 setGPR(instr.rd, result);
             }
+#else
+            setGPR(instr.rd, result);
+#endif
         }
 
         private void SUBU() => setGPR(instr.rd, GPR[instr.rs] - GPR[instr.rt]);
