@@ -14,6 +14,8 @@ namespace ProjectPSX.Devices.CdRom {
 
         public List<Track> tracks;
 
+        public bool isTrackChange;
+
         public CD(string diskFilename) {
             string ext = Path.GetExtension(diskFilename);
 
@@ -53,8 +55,9 @@ namespace ProjectPSX.Devices.CdRom {
 
         public Track getTrackFromLoc(int loc) {
             foreach (Track track in tracks) {
-                //Console.WriteLine(loc + " " + track.file + track.lbaEnd);
-                if (track.lbaEnd > loc) return track;
+                isTrackChange = loc == track.lbaEnd;
+                //Console.WriteLine(loc + " " + track.number + " " + track.lbaEnd + " " + isTrackChange);
+                if (track.lbaEnd >= loc) return track;
             }
             Console.WriteLine("[CD] WARNING: LBA beyond tracks!");
             return tracks[0]; //and explode ¯\_(ツ)_/¯ 
