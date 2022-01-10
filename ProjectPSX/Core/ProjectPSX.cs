@@ -66,5 +66,9 @@ namespace ProjectPSX {
             gpu.debug = !gpu.debug;
         }
 
+        public void toggleCdRomLid() {
+            cdrom.toggleLid();
+        }
+
     }
 }

@@ -68,6 +68,7 @@ namespace ProjectPSX.Devices {
         private byte volumeRtoR = 0xFF;
 
         private bool cdDebug = false;
+        private bool isLidOpen = false;
 
         private struct SectorHeader {
             public byte mm;
@@ -134,8 +135,8 @@ namespace ProjectPSX.Devices {
 
             switch (mode) {
                 case Mode.Idle:
-                        counter = 0;
-                        return false;
+                    counter = 0;
+                    return false;
 
                 case Mode.Seek: //Hardcoded seek time...
                     if (counter < 33868800 / 3 || interruptQueue.Count != 0) {
@@ -150,7 +151,7 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case Mode.Read:
-                case Mode.Play:  
+                case Mode.Play:
                     if (counter < (33868800 / (isDoubleSpeed ? 150 : 75)) || interruptQueue.Count != 0) {
                         return false;
                     }
@@ -166,9 +167,20 @@ namespace ProjectPSX.Devices {
 
                     //Handle Mode.Play:
                     if (mode == Mode.Play) {
-                        if (!mutedAudio) {
+                        if (!mutedAudio && isCDDA) {
                             applyVolume(readSector);
                             spu.pushCdBufferSamples(readSector);
+                        }
+
+                        if (isAutoPause && cd.isTrackChange) {
+                            responseBuffer.Enqueue(STAT);
+                            interruptQueue.Enqueue(0x4);
+
+                            pause();
+                        }
+
+                        if (isReport) {
+                            //Console.WriteLine("Report Not Handled");
                         }
 
                         return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
@@ -207,7 +219,7 @@ namespace ProjectPSX.Devices {
 
                             if (cdDebug) Console.WriteLine("[CDROM] XA ON: Realtime + Audio"); //todo flag to pass to SPU?
 
-                            if(!mutedAudio && !mutedXAADPCM) {
+                            if (!mutedAudio && !mutedXAADPCM) {
                                 byte[] decodedXaAdpcm = XaAdpcm.Decode(readSector, sectorSubHeader.codingInfo);
                                 applyVolume(decodedXaAdpcm);
                                 spu.pushCdBufferSamples(decodedXaAdpcm);
@@ -378,8 +390,8 @@ namespace ProjectPSX.Devices {
                             bool applyVolume = (value & 0x20) != 0;
                             if (applyVolume) {
                                 volumeLtoL = pendingVolumeLtoL;
-                                volumeLtoR =  pendingVolumeLtoR;
-                                volumeRtoL =  pendingVolumeRtoL;
+                                volumeLtoR = pendingVolumeLtoR;
+                                volumeRtoL = pendingVolumeRtoL;
                                 volumeRtoR = pendingVolumeRtoR;
                             }
                             break;
@@ -438,6 +450,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void readTOC() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             mode = Mode.TOC;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
@@ -459,6 +477,12 @@ namespace ProjectPSX.Devices {
                     $" file: {sectorSubHeader.file} channel: {sectorSubHeader.channel} subMode: {sectorSubHeader.subMode} codingInfo: {sectorSubHeader.codingInfo}");
             }
 
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             Span<byte> response = stackalloc byte[] {
                 sectorHeader.mm,
                 sectorHeader.ss,
@@ -476,6 +500,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void getLocP() { //SubQ missing...
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
 
             Track track = cd.getTrackFromLoc(readLoc);
             (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.lbaStart);
@@ -509,6 +538,12 @@ namespace ProjectPSX.Devices {
         private void setSession() { //broken
             parameterBuffer.Clear();
 
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             STAT = 0x42;
 
             responseBuffer.Enqueue(STAT);
@@ -527,6 +562,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void readS() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             readLoc = seekLoc;
 
             STAT = 0x2;
@@ -539,6 +580,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void seekP() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             readLoc = seekLoc;
             STAT = 0x42; // seek
 
@@ -550,6 +597,11 @@ namespace ProjectPSX.Devices {
 
 
         private void play() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
             //If theres a trackN param it seeks and plays from the start location of it
             int track = 0;
             if (parameterBuffer.Count > 0) {
@@ -582,6 +634,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void getTD() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             int track = BcdToDec(parameterBuffer.Dequeue());
 
             if (track == 0) { //returns CD LBA / End of last track
@@ -601,6 +659,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void getTN() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
             //if (cdDebug)
             Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
             //Console.ReadLine();
@@ -637,6 +700,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void readN() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             readLoc = seekLoc;
 
             STAT = 0x2;
@@ -675,6 +744,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void seekL() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             readLoc = seekLoc;
             STAT = 0x42; // seek
 
@@ -685,6 +760,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void setLoc() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             byte mm = parameterBuffer.Dequeue();
             byte ss = parameterBuffer.Dequeue();
             byte ff = parameterBuffer.Dequeue();
@@ -724,9 +805,11 @@ namespace ProjectPSX.Devices {
             //interruptQueue.Enqueue(0x5);
 
             //Door Open              INT5(11h,80h)  N/A
-            //STAT = 0x10; //Shell Open
-            //responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80, 0x00, 0x00 });
-            //interruptQueue.Enqueue(0x5);
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
 
             //Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
             STAT = 0x40; //0x40 seek
@@ -740,6 +823,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void getStat() {
+            if (!isLidOpen) {
+                STAT = (byte)(STAT & (~0x18));
+                STAT |= 0x2;
+            }
+
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
@@ -842,7 +930,7 @@ namespace ProjectPSX.Devices {
         private void applyVolume(byte[] rawSector) {
             var samples = MemoryMarshal.Cast<byte, short>(rawSector);
 
-            for(int i = 0; i < samples.Length; i+=2) {
+            for (int i = 0; i < samples.Length; i += 2) {
                 short l = samples[i];
                 short r = samples[i + 1];
 
@@ -857,6 +945,20 @@ namespace ProjectPSX.Devices {
 
         public Span<uint> processDmaLoad(int size) {
             return currentSector.read(size);
+        }
+
+        internal void toggleLid() {
+            isLidOpen = !isLidOpen;
+            if (isLidOpen) {
+                STAT = 0x18;
+                mode = Mode.Idle;
+                interruptQueue.Clear();
+                responseBuffer.Clear();
+            } else {
+                //todo handle the Cd load and not this hardcoded test:
+                //cd = new CD(@"cd_change_path");
+            }
+            Console.WriteLine($"[CDROM] Shell is Open: {isLidOpen} STAT: {STAT}");
         }
 
     }
