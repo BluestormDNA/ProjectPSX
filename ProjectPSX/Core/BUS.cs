@@ -3,15 +3,11 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace ProjectPSX {
-    //TODO:
-    //Do loadX and WriteX simple functions that return a value based on a generic load and write giant switch pointer return
-    // WIP: Already got rid of the multiple loadX writeX variants need to adress the giant switches but then how to handle the individual
-    // components? they expect allways an uint and they transform to variables. (uint)(object) is out probably because it kills perf and
-    // Unsafe.As is still noticeable so... some rework needed on the interaction between components and bus.
+
     public class BUS {
+        //todo write32/16/8 unification pending .NET 7 IBinaryNumber
 
         //Memory
         private unsafe byte* ramPtr = (byte*)Marshal.AllocHGlobal(2048 * 1024);
@@ -67,7 +63,7 @@ namespace ProjectPSX {
                 return load<uint>(addr & 0xF, sio);
             } else if (addr < 0x1F80_1070) {
                 return load<uint>(addr & 0xF, memoryControl2);
-            } else if (addr < 0x1F801080) {
+            } else if (addr < 0x1F80_1080) {
                 return interruptController.load(addr);
             } else if (addr < 0x1F80_1100) {
                 return dma.load(addr);
@@ -83,8 +79,11 @@ namespace ProjectPSX {
                 return mdec.readMDEC0_Data();
             } else if (addr == 0x1F80_1824) {
                 return mdec.readMDEC1_Status();
-            } else if (addr < 0x1F802000) {
+            } else if (addr < 0x1F80_2000) {
                 return spu.load(addr);
+            } else if (addr < 0x1F80_4000) {
+                Console.WriteLine($"[BUS] Read Unsupported to EXP2 address: {addr:x8}");
+                return 0xFFFF_FFFF;
             } else if (addr < 0x1FC8_0000) {
                 return load<uint>(addr & 0x7_FFFF, biosPtr);
             } else if (addr == 0xFFFE0130) {
@@ -113,7 +112,7 @@ namespace ProjectPSX {
                 write(addr & 0xF, value, sio);
             } else if (addr < 0x1F80_1070) {
                 write(addr & 0xF, value, memoryControl2);
-            } else if (addr < 0x1F801080) {
+            } else if (addr < 0x1F80_1080) {
                 interruptController.write(addr, value);
             } else if (addr < 0x1F80_1100) {
                 dma.write(addr, value);
@@ -125,9 +124,11 @@ namespace ProjectPSX {
                 gpu.write(addr, value);
             } else if (addr < 0x1F80_1830) {
                 mdec.write(addr, value);
-            } else if (addr < 0x1F802000) {
+            } else if (addr < 0x1F80_2000) {
                 spu.write(addr, (ushort)value);
-            } else if (addr == 0xFFFE0130) {
+            } else if (addr < 0x1F80_4000) {
+                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+            } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
                 Console.WriteLine($"[BUS] Write32 Unsupported: {addr:x8}");
@@ -141,7 +142,7 @@ namespace ProjectPSX {
                 write(addr & 0x1F_FFFF, value, ramPtr);
             } else if (addr < 0x1F80_0000) {
                 write(addr & 0x7_FFFF, value, ex1Ptr);
-            } else if (addr < 0x1f80_0400) {
+            } else if (addr < 0x1F80_0400) {
                 write(addr & 0x3FF, value, scrathpadPtr);
             } else if (addr < 0x1F80_1040) {
                 write(addr & 0x3F, value, memoryControl1);
@@ -152,7 +153,7 @@ namespace ProjectPSX {
                 write(addr & 0xF, value, sio);
             } else if (addr < 0x1F80_1070) {
                 write(addr & 0xF, value, memoryControl2);
-            } else if (addr < 0x1F801080) {
+            } else if (addr < 0x1F80_1080) {
                 interruptController.write(addr, value);
             } else if (addr < 0x1F80_1100) {
                 dma.write(addr, value);
@@ -164,9 +165,11 @@ namespace ProjectPSX {
                 gpu.write(addr, value);
             } else if (addr < 0x1F80_1830) {
                 mdec.write(addr, value);
-            } else if (addr < 0x1F802000) {
-                spu.write(addr, (ushort)value);
-            } else if (addr == 0xFFFE0130) {
+            } else if (addr < 0x1F80_2000) {
+                spu.write(addr, value);
+            } else if (addr < 0x1F80_4000) {
+                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+            } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
                 Console.WriteLine($"[BUS] Write16 Unsupported: {addr:x8}");
@@ -191,7 +194,7 @@ namespace ProjectPSX {
                 write(addr & 0xF, value, sio);
             } else if (addr < 0x1F80_1070) {
                 write(addr & 0xF, value, memoryControl2);
-            } else if (addr < 0x1F801080) {
+            } else if (addr < 0x1F80_1080) {
                 interruptController.write(addr, value);
             } else if (addr < 0x1F80_1100) {
                 dma.write(addr, value);
@@ -203,18 +206,15 @@ namespace ProjectPSX {
                 gpu.write(addr, value);
             } else if (addr < 0x1F80_1830) {
                 mdec.write(addr, value);
-            } else if (addr < 0x1F802000) {
-                spu.write(addr, (ushort)value);
-            } else if (addr == 0xFFFE0130) {
+            } else if (addr < 0x1F80_2000) {
+                spu.write(addr, value);
+            } else if (addr < 0x1F80_4000) {
+                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+            } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
                 Console.WriteLine($"[BUS] Write8 Unsupported: {addr:x8}");
             }
-        }
-
-        private uint maskAddr(uint addr) {
-            uint i = addr >> 29;
-            return addr & RegionMask[i];
         }
 
         internal unsafe void loadBios() {
@@ -278,7 +278,7 @@ namespace ProjectPSX {
             write(0x6FF0 +  8, 0x3C1C0000 | R28 >> 16, biosPtr);
             write(0x6FF0 + 12, 0x379C0000 | R28 & 0xFFFF, biosPtr);
 
-            if(R29 != 0) {
+            if (R29 != 0) {
                 write(0x6FF0 + 16, 0x3C1D0000 | R29 >> 16, biosPtr);
                 write(0x6FF0 + 20, 0x37BD0000 | R29 & 0xFFFF, biosPtr);
 
@@ -410,19 +410,19 @@ namespace ProjectPSX {
             //var dest = new Span<uint>(ramPtr + (destAddress & 0x1F_FFFC), size);
             //dma.CopyTo(dest);
 
-            for(int i = 0; i < size - 1; i++) {
+            for (int i = 0; i < size - 1; i++) {
                 DmaToRam(baseAddress, baseAddress - 4);
                 baseAddress -= 4;
             }
-            
+
             DmaToRam(baseAddress, 0xFF_FFFF);
         }
 
         private static uint[] RegionMask = {
-        0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, // KUSEG: 2048MB
-        0x7FFF_FFFF,                                        // KSEG0:  512MB
-        0x1FFF_FFFF,                                        // KSEG1:  512MB
-        0xFFFF_FFFF, 0xFFFF_FFFF,                           // KSEG2: 1024MB
+            0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, 0xFFFF_FFFF, // KUSEG: 2048MB
+            0x7FFF_FFFF,                                        // KSEG0:  512MB
+            0x1FFF_FFFF,                                        // KSEG1:  512MB
+            0xFFFF_FFFF, 0xFFFF_FFFF,                           // KSEG2: 1024MB
         };
     }
 }
