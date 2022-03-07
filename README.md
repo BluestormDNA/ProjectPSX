@@ -47,6 +47,8 @@ Select a Bin file (use track1) or a Cue file to generate CD tracks to feed the C
 
 When using the OpenTK project just drag and drop a bin/cue file to the window.
 
+The OpenTK project requires OpenAL, get it here: https://www.openal.org/downloads/.
+
 The bios and expansion files are hardcoded on the BUS class.
  
 Once power on, Input is mapped as:
