@@ -2,6 +2,7 @@ using OpenTK.Mathematics;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.Common;
 using System;
+using ProjectPSX.Util;
 
 namespace ProjectPSX.OpenTK {
     static class Program {
@@ -9,7 +10,7 @@ namespace ProjectPSX.OpenTK {
         ///  The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main() {
+        static void Main(string[] args) {
             GameWindowSettings settings = new GameWindowSettings();
             settings.RenderFrequency = 60;
             settings.UpdateFrequency = 60;
@@ -21,6 +22,12 @@ namespace ProjectPSX.OpenTK {
 
             Window window = new Window(settings, nativeWindow);
             window.VSync = VSyncMode.On;
+
+            if (Storage.TryGetExecutable(args, out var path))
+            {
+                window.SetExecutable(path);
+            }
+
             window.Run();
         }
     }

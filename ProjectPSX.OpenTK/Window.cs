@@ -31,6 +31,11 @@ namespace ProjectPSX.OpenTK {
             }
         }
 
+        public void SetExecutable(string path)
+        {
+            psx = new ProjectPSX(this, path);
+        }
+
         protected override void OnLoad() {
             _gamepadKeyMap = new Dictionary<Keys, GamepadInputsEnum>() {
                 { Keys.Space, GamepadInputsEnum.Space},
