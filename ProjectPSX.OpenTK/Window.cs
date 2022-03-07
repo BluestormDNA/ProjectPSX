@@ -33,6 +33,8 @@ namespace ProjectPSX.OpenTK {
 
         public void SetExecutable(string path)
         {
+            psx?.Dispose();
+
             psx = new ProjectPSX(this, path);
         }
 

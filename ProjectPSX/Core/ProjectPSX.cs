@@ -1,9 +1,10 @@
-﻿using ProjectPSX.Devices;
+﻿using System;
+using ProjectPSX.Devices;
 using ProjectPSX.Devices.CdRom;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
-    public class ProjectPSX {
+    public class ProjectPSX : IDisposable {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
         const int MIPS_UNDERCLOCK = 3; //Testing: This compensates the ausence of HALT instruction on MIPS Architecture, may broke some games.
@@ -70,5 +71,8 @@ namespace ProjectPSX {
             cdrom.toggleLid();
         }
 
+        public void Dispose() {
+            // TODO dispose accordingly
+        }
     }
 }
