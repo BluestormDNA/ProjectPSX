@@ -1,80 +1,168 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 
-namespace ProjectPSX.Devices.CdRom {
-    public class TrackBuilder {
-
+namespace ProjectPSX.Devices.CdRom
+{
+    public static class TrackBuilder
+    {
         private const int BytesPerSectorRaw = 2352;
 
-        public class Track {
+        public static List<Track> FromBin(string file)
+        {
+            Console.WriteLine($"[CD Track Builder] Generating CD Track from: {file}");
+            var tracks = new List<Track>();
 
-            public String file { get; private set; }
-            public long size { get; private set; }
-            public byte number { get; private set; }
-            public int lba { get; private set; }
-            public int lbaStart { get; private set; }
-            public int lbaEnd { get; private set; }
+            var size = new FileInfo(file).Length;
+            var lba = (int)(size / BytesPerSectorRaw);
+            var lbaStart = 150; // 150 frames (2 seconds) offset from track 1
+            var lbaEnd = lba;
+            byte number = 1;
 
-            public Track(String file, long size, byte number, int lba, int lbaStart, int lbaEnd) {
-                this.file = file;
-                this.size = size;
-                this.number = number;
-                this.lba = lba;
-                this.lbaStart = lbaStart;
-                this.lbaEnd = lbaEnd;
-            }
-        }
+            tracks.Add(new Track(file, size, number, lbaStart, lbaEnd));
 
-        public static List<Track> fromCue(String cue) {
-            Console.WriteLine($"[CD Track Builder] Generating CD Tracks from: {cue}");
-            List<Track> tracks = new List<Track>();
-            String dir = Path.GetDirectoryName(cue);
-            String line;
-            int lbaCounter = 0;
-            byte number = 0;
-            using StreamReader cueFile = new StreamReader(cue);
-            while ((line = cueFile.ReadLine()) != null) {
-                if (line.StartsWith("FILE")) {
-                    String[] splittedSring = line.Split("\"");
-
-                    String file = dir + Path.DirectorySeparatorChar + splittedSring[1];
-                    long size = new FileInfo(file).Length;
-                    int lba = (int)(size / BytesPerSectorRaw);
-                    int lbaStart = lbaCounter + 150;
-                    number++;
-                    //hardcoding :P
-                    if (tracks.Count > 0) {
-                        lbaStart += 150;
-                    }
-
-                    int lbaEnd = lbaCounter + lba;
-
-                    lbaCounter += lba;
-
-                    tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));  ;
-
-                    Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
-                }
-            }
-
+            Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
 
             return tracks;
         }
 
-        public static List<Track> fromBin(string file) {
-            Console.WriteLine($"[CD Track Builder] Generating CD Track from: {file}");
-            List<Track> tracks = new List<Track>();
+        [SuppressMessage("ReSharper", "RedundantJumpStatement")]
+        [SuppressMessage("ReSharper", "InvertIf")]
+        [SuppressMessage("CodeQuality", "IDE0079:Remove unnecessary suppression", Justification = "<Pending>")]
+        public static List<Track> FromCue(string path)
+            // NOTE: this parsing outputs exactly like IsoBuster would
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(path));
 
-            long size = new FileInfo(file).Length;
-            int lba = (int)(size / BytesPerSectorRaw);
-            int lbaStart = 150; // 150 frames (2 seconds) offset from track 1
-            int lbaEnd = lba;
-            byte number = 1;
+            Console.WriteLine($"[CD Track Builder] Generating CD Tracks for: {path}");
 
-            tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));
+            var directory = Path.GetDirectoryName(path) ?? throw new NotImplementedException(); // TODO root case
 
-            Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
+            using var reader = new StreamReader(path);
+
+            var tracks = new List<Track>();
+
+            const RegexOptions options = RegexOptions.Singleline | RegexOptions.Compiled;
+
+            var rf = new Regex(@"^\s*FILE\s+("".*"")\s+BINARY\s*$", options);
+            var rt = new Regex(@"^\s*TRACK\s+(\d{2})\s+(MODE2/2352|AUDIO)\s*$", options);
+            var ri = new Regex(@"^\s*INDEX\s+(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\s*$", options);
+
+            var files = new HashSet<string>();
+
+            var currentFile = default(string?);
+            var currentTrack = default(Track?);
+
+            string? line;
+
+            var lineNumber = 0;
+
+            while ((line = reader.ReadLine()) is not null)
+            {
+                lineNumber++;
+
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                var fileMatch = rf.Match(line);
+                if (fileMatch.Success)
+                {
+                    files.Add(currentFile = Path.Combine(directory, fileMatch.Groups[1].Value.Trim('"')));
+                    continue;
+                }
+
+                var trackMatch = rt.Match(line);
+                if (trackMatch.Success)
+                {
+                    if (currentFile is null)
+                        throw new InvalidDataException($"TRACK at line {lineNumber} does not have a parent FILE.");
+
+                    currentTrack = new Track
+                    {
+                        File = currentFile,
+                        Index = Convert.ToByte(trackMatch.Groups[1].Value)
+                    };
+
+                    tracks.Add(currentTrack);
+
+                    continue;
+                }
+
+                var indexMatch = ri.Match(line);
+                if (indexMatch.Success)
+                {
+                    if (currentTrack is null)
+                        throw new InvalidDataException($"INDEX at line {lineNumber} does not have a parent TRACK.");
+
+                    var n = Convert.ToInt32(indexMatch.Groups[1].Value);
+                    var m = Convert.ToInt32(indexMatch.Groups[2].Value);
+                    var s = Convert.ToInt32(indexMatch.Groups[3].Value);
+                    var f = Convert.ToInt32(indexMatch.Groups[4].Value);
+
+                    currentTrack.Indices.Add(new TrackIndex(n, new TrackPosition(m, s, f)));
+
+                    continue;
+                }
+            }
+
+            if (files.Count is 1)
+            {
+                var length = new FileInfo(files.Single()).Length;
+
+                for (var i = 0; i < tracks.Count; i++)
+                {
+                    var track = tracks[i];
+
+                    track.LbaStart = track.Indices.Last().Position.ToInt32();
+
+                    if (i == tracks.Count - 1)
+                    {
+                        track.LbaEnd = (int)(length / BytesPerSectorRaw - 1);
+                    }
+                    else
+                    {
+                        track.LbaEnd = tracks[i + 1].Indices.First().Position.ToInt32() - 1;
+                    }
+
+                    track.LbaLength = track.LbaEnd - track.LbaStart + 1;
+
+                    track.FilePosition = track.LbaStart * BytesPerSectorRaw;
+                }
+            }
+            else
+            {
+                var lba = 0;
+
+                foreach (var track in tracks)
+                {
+                    var length = new FileInfo(track.File).Length;
+                    var blocks = length / BytesPerSectorRaw;
+
+                    track.LbaStart = lba;
+
+                    foreach (var index in track.Indices)
+                    {
+                        track.LbaStart += index.Position.ToInt32(); // pre-gap
+                    }
+
+                    track.LbaEnd = (int)(track.LbaStart + blocks - 1);
+
+                    foreach (var index in track.Indices)
+                    {
+                        track.LbaEnd -= index.Position.ToInt32(); // pre-gap
+                    }
+
+                    track.LbaLength = track.LbaEnd - track.LbaStart + 1;
+
+                    track.FilePosition = track.LbaStart * BytesPerSectorRaw;
+
+                    lba += (int)blocks;
+                }
+            }
 
             return tracks;
         }

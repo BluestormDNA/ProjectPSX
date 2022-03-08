@@ -507,19 +507,19 @@ namespace ProjectPSX.Devices {
             }
 
             Track track = cd.getTrackFromLoc(readLoc);
-            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.lbaStart);
+            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.LbaStart);
             (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(readLoc);
 
             if (cdDebug) {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"track: {track.number} index: {1} mm: {mm} ss: {ss}" +
+                Console.WriteLine($"track: {track.Index} index: {1} mm: {mm} ss: {ss}" +
                     $" ff: {ff} amm: {amm} ass: {ass} aff: {aff}");
-                Console.WriteLine($"track: {track.number} index: {1} mm: {DecToBcd(mm)} ss: {DecToBcd(ss)}" +
+                Console.WriteLine($"track: {track.Index} index: {1} mm: {DecToBcd(mm)} ss: {DecToBcd(ss)}" +
                     $" ff: {DecToBcd(ff)} amm: {DecToBcd(amm)} ass: {DecToBcd(ass)} aff: {DecToBcd(aff)}");
                 Console.ResetColor();
             }
 
-            Span<byte> response = stackalloc byte[] { track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff) };
+            Span<byte> response = stackalloc byte[] { track.Index, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff) };
             responseBuffer.EnqueueRange(response);
 
             interruptQueue.Enqueue(0x3);
@@ -606,7 +606,7 @@ namespace ProjectPSX.Devices {
             int track = 0;
             if (parameterBuffer.Count > 0) {
                 track = BcdToDec(parameterBuffer.Dequeue());
-                readLoc = seekLoc = cd.tracks[track].lbaStart;
+                readLoc = seekLoc = cd.tracks[track].LbaStart;
                 //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
             } else {
                 readLoc = seekLoc;
@@ -648,7 +648,7 @@ namespace ProjectPSX.Devices {
                 //if (cdDebug)
                 Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
             } else { //returns Track Start
-                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
+                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].LbaStart);
                 responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
                 //if (cdDebug)
                 Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");

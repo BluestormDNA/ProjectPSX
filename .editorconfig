@@ -1,0 +1,2 @@
+[*.cs]
+dotnet_remove_unnecessary_suppression_exclusions = category: ReSharper
