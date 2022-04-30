@@ -104,9 +104,9 @@ namespace ProjectPSX.Devices {
         private bool isInterruptRequested;
         private bool isDmaRequest;
 
-        private bool isReadyToReceiveCommand;
-        private bool isReadyToSendVRAMToCPU;
-        private bool isReadyToReceiveDMABlock;
+        private bool isReadyToReceiveCommand = true; //todo
+        private bool isReadyToSendVRAMToCPU = true; //todo 
+        private bool isReadyToReceiveDMABlock = true; //todo
 
         private byte dmaDirection;
         private bool isOddLine;
@@ -203,9 +203,9 @@ namespace ProjectPSX.Devices {
             GPUSTAT |= (uint)(isInterruptRequested ? 1 : 0) << 24;
             GPUSTAT |= (uint)(isDmaRequest ? 1 : 0) << 25;
 
-            GPUSTAT |= (uint)/*(isReadyToReceiveCommand ? 1 : 0)*/1 << 26;
-            GPUSTAT |= (uint)/*(isReadyToSendVRAMToCPU ? 1 : 0)*/1 << 27;
-            GPUSTAT |= (uint)/*(isReadyToReceiveDMABlock ? 1 : 0)*/1 << 28;
+            GPUSTAT |= (uint)(isReadyToReceiveCommand ? 1 : 0) << 26;
+            GPUSTAT |= (uint)(isReadyToSendVRAMToCPU ? 1 : 0) << 27;
+            GPUSTAT |= (uint)(isReadyToReceiveDMABlock ? 1 : 0) << 28;
 
             GPUSTAT |= (uint)dmaDirection << 29;
             GPUSTAT |= (uint)(isOddLine ? 1 : 0) << 31;
@@ -1065,7 +1065,18 @@ namespace ProjectPSX.Devices {
 
         private void GP1_03_DisplayEnable(uint value) => isDisplayDisabled = (value & 1) != 0;
 
-        private void GP1_04_DMADirection(uint value) => dmaDirection = (byte)(value & 0x3);
+        private void GP1_04_DMADirection(uint value) {
+            dmaDirection = (byte)(value & 0x3);
+
+            isDmaRequest = dmaDirection switch {
+                0 => false,
+                1 => isReadyToReceiveDMABlock,
+                2 => isReadyToReceiveDMABlock,
+                3 => isReadyToSendVRAMToCPU,
+                _ => false,
+            };
+        }
+
 
         private void GP1_05_DisplayVRAMStart(uint value) {
             displayVRAMXStart = (ushort)(value & 0x3FE);
