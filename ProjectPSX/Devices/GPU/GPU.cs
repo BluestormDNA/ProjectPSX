@@ -105,7 +105,7 @@ namespace ProjectPSX.Devices {
         private bool isDmaRequest;
 
         private bool isReadyToReceiveCommand = true; //todo
-        private bool isReadyToSendVRAMToCPU = true; //todo 
+        private bool isReadyToSendVRAMToCPU; 
         private bool isReadyToReceiveDMABlock = true; //todo
 
         private byte dmaDirection;
@@ -286,11 +286,19 @@ namespace ProjectPSX.Devices {
         private uint readFromVRAM() {
             ushort pixel0 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
             ushort pixel1 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
+
             if (vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
                 vramTransfer.x -= vramTransfer.w;
                 vramTransfer.y++;
             }
+
             vramTransfer.halfWords -= 2;
+
+            if(vramTransfer.halfWords == 0) {
+                isReadyToSendVRAMToCPU = false;
+                isReadyToReceiveDMABlock = true;
+            }
+
             return (uint)(pixel1 << 16 | pixel0);
         }
 
@@ -927,6 +935,9 @@ namespace ProjectPSX.Devices {
             vramTransfer.origin_x = x;
             vramTransfer.origin_y = y;
             vramTransfer.halfWords = w * h;
+
+            isReadyToSendVRAMToCPU = true;
+            isReadyToReceiveDMABlock = false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
