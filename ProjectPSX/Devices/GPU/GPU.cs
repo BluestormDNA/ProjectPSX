@@ -195,7 +195,7 @@ namespace ProjectPSX.Devices {
             GPUSTAT |= (uint)(isTextureDisabled ? 1 : 0) << 15;
             GPUSTAT |= (uint)horizontalResolution2 << 16;
             GPUSTAT |= (uint)horizontalResolution1 << 17;
-            GPUSTAT |= (uint)(isVerticalResolution480 ? 1 : 0);
+            GPUSTAT |= (uint)(isVerticalResolution480 ? 1 : 0) << 19;
             GPUSTAT |= (uint)(isPal ? 1 : 0) << 20;
             GPUSTAT |= (uint)(is24BitDepth ? 1 : 0) << 21;
             GPUSTAT |= (uint)(isVerticalInterlace ? 1 : 0) << 22;
