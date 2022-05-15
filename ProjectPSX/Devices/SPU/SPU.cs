@@ -278,9 +278,9 @@ namespace ProjectPSX.Devices {
                     if (!control.irq9Enabled)
                         status.irq9Flag = false;
                     
-                    //Status lower 5 bits are the same as control
-                    status.register &= 0xFFE0;
-                    status.register |= (ushort)(value & 0x1F);
+                    //Status 0..5 bits are the same as control
+                    status.register &= 0xFFC0;
+                    status.register |= (ushort)(value & 0x3F);
                     break;
 
                 case 0x1F801DAC:
