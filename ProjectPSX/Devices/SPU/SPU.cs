@@ -274,6 +274,13 @@ namespace ProjectPSX.Devices {
                 case 0x1F801DAA:
                     control.register = value;
 
+                    if (!control.spuEnabled) {
+                        foreach (Voice v in voices) {
+                            v.adsrPhase = Voice.Phase.Off;
+                            v.adsrVolume = 0;
+                        }
+                    }
+
                     //Irq Flag is reseted on ack
                     if (!control.irq9Enabled)
                         status.irq9Flag = false;
@@ -555,10 +562,10 @@ namespace ProjectPSX.Devices {
                 spuOutputPointer = 0;
             }
 
-            if (control.spuEnabled && control.irq9Enabled && edgeTrigger) {
+            if (control.irq9Enabled && edgeTrigger) {
                 status.irq9Flag = true;
             }
-            return control.spuEnabled && control.irq9Enabled && edgeTrigger; //todo move spuEnabled outside
+            return control.irq9Enabled && edgeTrigger;
         }
 
         private bool handleCaptureBuffer(int address, short sample) {
