@@ -73,5 +73,9 @@ namespace ProjectPSX.Devices.CdRom {
             return lba;
         }
 
+        public bool isAudioCD() {
+            return tracks[0].isAudio;
+        }
+
     }
 }

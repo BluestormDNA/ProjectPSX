@@ -604,9 +604,13 @@ namespace ProjectPSX.Devices {
             }
             //If theres a trackN param it seeks and plays from the start location of it
             int track = 0;
-            if (parameterBuffer.Count > 0) {
+            if (parameterBuffer.Count > 0 && parameterBuffer.Peek() != 0) {
                 track = BcdToDec(parameterBuffer.Dequeue());
-                readLoc = seekLoc = cd.tracks[track].lbaStart;
+                if (cd.isAudioCD()) {
+                    readLoc = seekLoc = cd.tracks[track - 1].lbaStart;
+                } else {
+                    readLoc = seekLoc = cd.tracks[track].lbaStart;
+                }
                 //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
             } else {
                 readLoc = seekLoc;
@@ -622,11 +626,11 @@ namespace ProjectPSX.Devices {
         }
 
         private void stop() {
-            STAT = 0;
-
+            STAT = 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
+            STAT = 0;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x2);
 
@@ -796,6 +800,13 @@ namespace ProjectPSX.Devices {
         }
 
         private void getID() {
+            //Door Open              INT5(11h,80h)  N/A
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
             //No Disk                INT3(stat)     INT5(08h, 40h, 00h, 00h, 00h, 00h, 00h, 00h)
             //STAT = 0x2; //0x40 seek
             //responseBuffer.Enqueue(STAT);
@@ -804,21 +815,23 @@ namespace ProjectPSX.Devices {
             //responseBuffer.EnqueueRange(stackalloc byte[] { 0x08, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
             //interruptQueue.Enqueue(0x5);
 
-            //Door Open              INT5(11h,80h)  N/A
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
             //Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
             STAT = 0x40; //0x40 seek
             STAT |= 0x2;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
 
-            Span<byte> response = stackalloc byte[] { 0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41 }; //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
-            responseBuffer.EnqueueRange(response);
+            // Audio Disk INT3(stat) INT5(0Ah,90h, 00h,00h, 00h,00h,00h,00h)
+            if (cd.isAudioCD()) {
+                Span<byte> audioCdResponse = stackalloc byte[] { 0x0A, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+                responseBuffer.EnqueueRange(audioCdResponse);
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            // Licensed: Mode2 INT3(stat)     INT2(02h, 00h, 20h, 00h, 53h, 43h, 45h, 4xh)
+            Span<byte> gameResponse = stackalloc byte[] { 0x02, 0x00, 0x20, 0x00, 0x53, 0x43, 0x45, 0x41 }; //SCE | //A 0x41 (America) - I 0x49 (Japan) - E 0x45 (Europe)
+            responseBuffer.EnqueueRange(gameResponse);
             interruptQueue.Enqueue(0x2);
         }
 
