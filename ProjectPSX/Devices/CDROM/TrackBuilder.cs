@@ -15,14 +15,16 @@ namespace ProjectPSX.Devices.CdRom {
             public int lba { get; private set; }
             public int lbaStart { get; private set; }
             public int lbaEnd { get; private set; }
+            public bool isAudio { get; private set; }
 
-            public Track(String file, long size, byte number, int lba, int lbaStart, int lbaEnd) {
+            public Track(String file, long size, byte number, int lba, int lbaStart, int lbaEnd, bool isAudio) {
                 this.file = file;
                 this.size = size;
                 this.number = number;
                 this.lba = lba;
                 this.lbaStart = lbaStart;
                 this.lbaEnd = lbaEnd;
+                this.isAudio = isAudio;
             }
         }
 
@@ -52,9 +54,12 @@ namespace ProjectPSX.Devices.CdRom {
 
                     lbaCounter += lba;
 
-                    tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));  ;
+                    string trackTypeLine = cueFile.ReadLine();
+                    bool isAudio = trackTypeLine.Contains("AUDIO");
 
-                    Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
+                    tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd, isAudio));
+
+                    Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd} isAudio {isAudio}");
                 }
             }
 
@@ -71,10 +76,11 @@ namespace ProjectPSX.Devices.CdRom {
             int lbaStart = 150; // 150 frames (2 seconds) offset from track 1
             int lbaEnd = lba;
             byte number = 1;
+            bool isAudio = false;
 
-            tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd));
+            tracks.Add(new Track(file, size, number, lba, lbaStart, lbaEnd, isAudio));
 
-            Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd}");
+            Console.WriteLine($"File: {file} Size: {size} Number: {number} LbaStart: {lbaStart} LbaEnd: {lbaEnd} isAudio {isAudio}");
 
             return tracks;
         }
