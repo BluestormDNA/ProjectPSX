@@ -176,7 +176,7 @@ namespace ProjectPSX.Devices {
                             responseBuffer.Enqueue(STAT);
                             interruptQueue.Enqueue(0x4);
 
-                            pause();
+                            Cmd_09_Pause();
                         }
 
                         if (isReport) {
@@ -264,12 +264,15 @@ namespace ProjectPSX.Devices {
                     return STATUS();
 
                 case 0x1F801801:
-                    if (cdDebug) Console.WriteLine("[CDROM] [L01] RESPONSE " /*+ responseBuffer.Peek().ToString("x8")*/);
                     //Console.ReadLine();
                     //if (w == Width.HALF || w == Width.WORD) Console.WriteLine("WARNING RESPONSE BUFFER LOAD " + w);
 
-                    if (responseBuffer.Count > 0)
+                    if (responseBuffer.Count > 0) {
+                        if (cdDebug) Console.WriteLine("[CDROM] [L01] RESPONSE " + responseBuffer.Peek().ToString("x8"));
                         return responseBuffer.Dequeue();
+                    }
+
+                    if (cdDebug) Console.WriteLine("[CDROM] [L01] RESPONSE 0xFF");
 
                     return 0xFF;
 
@@ -409,361 +412,55 @@ namespace ProjectPSX.Devices {
 
         private void ExecuteCommand(uint value) {
             if (cdDebug) Console.WriteLine($"[CDROM] Command {value:x4}");
+            //Console.WriteLine($"PRE STAT {STAT:x2}");
             interruptQueue.Clear();
             responseBuffer.Clear();
             isBusy = true;
             switch (value) {
-                case 0x01: getStat(); break;
-                case 0x02: setLoc(); break;
-                case 0x03: play(); break;
-                case 0x06: readN(); break;
-                case 0x07: motorOn(); break;
-                case 0x08: stop(); break;
-                case 0x09: pause(); break;
-                case 0x0A: init(); break;
-                case 0x0B: mute(); break;
-                case 0x0C: demute(); break;
-                case 0x0D: setFilter(); break;
-                case 0x0E: setMode(); break;
-                case 0x10: getLocL(); break;
-                case 0x11: getLocP(); break;
-                case 0x12: setSession(); break;
-                case 0x13: getTN(); break;
-                case 0x14: getTD(); break;
-                case 0x15: seekL(); break;
-                case 0x16: seekP(); break;
-                case 0x19: test(); break;
-                case 0x1A: getID(); break;
-                case 0x1B: readS(); break;
-                case 0x1E: readTOC(); break;
-                case 0x1F: videoCD(); break;
-                case uint _ when value >= 0x50 && value <= 0x57: lockUnlock(); break;
+                case 0x01: Cmd_01_GetStat(); break;
+                case 0x02: Cmd_02_SetLoc(); break;
+                case 0x03: Cmd_03_Play(); break;
+                //case 0x04: Cmd_04_Forward(); break; //todo
+                //case 0x05: Cmd_05_Backward(); break; //todo
+                case 0x06: Cmd_06_ReadN(); break;
+                case 0x07: Cmd_07_MotorOn(); break;
+                case 0x08: Cmd_08_Stop(); break;
+                case 0x09: Cmd_09_Pause(); break;
+                case 0x0A: Cmd_0A_Init(); break;
+                case 0x0B: Cmd_0B_Mute(); break;
+                case 0x0C: Cmd_0C_Demute(); break;
+                case 0x0D: Cmd_0D_SetFilter(); break;
+                case 0x0E: Cmd_0E_SetMode(); break;
+                //case 0x0F: Cmd_0F_GetParam(); break; //todo
+                case 0x10: Cmd_10_GetLocL(); break;
+                case 0x11: Cmd_11_GetLocP(); break;
+                case 0x12: Cmd_12_SetSession(); break;
+                case 0x13: Cmd_13_GetTN(); break;
+                case 0x14: Cmd_14_GetTD(); break;
+                case 0x15: Cmd_15_SeekL(); break;
+                case 0x16: Cmd_16_SeekP(); break;
+                case 0x19: Cmd_19_Test(); break;
+                case 0x1A: Cmd_1A_GetID(); break;
+                case 0x1B: Cmd_1B_ReadS(); break;
+                case 0x1E: Cmd_1E_ReadTOC(); break;
+                case 0x1F: Cmd_1F_VideoCD(); break;
+                case uint _ when value >= 0x50 && value <= 0x57: Cmd_5x_lockUnlock(); break;
                 default: UnimplementedCDCommand(value); break;
             }
+            //Console.WriteLine($"POST STAT {STAT:x2}");
         }
 
-        private void mute() {
-            mutedAudio = true;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void readTOC() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
+        private void Cmd_01_GetStat() {
+            if (!isLidOpen) {
+                STAT = (byte)(STAT & (~0x18));
+                STAT |= 0x2;
             }
 
-            mode = Mode.TOC;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
 
-        private void motorOn() {
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
-        }
-
-        private void getLocL() {
-            if (cdDebug) {
-                Console.WriteLine($"mm: {sectorHeader.mm} ss: {sectorHeader.ss} ff: {sectorHeader.ff} mode: {sectorHeader.mode}" +
-                    $" file: {sectorSubHeader.file} channel: {sectorSubHeader.channel} subMode: {sectorSubHeader.subMode} codingInfo: {sectorSubHeader.codingInfo}");
-            }
-
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            Span<byte> response = stackalloc byte[] {
-                sectorHeader.mm,
-                sectorHeader.ss,
-                sectorHeader.ff,
-                sectorHeader.mode,
-                sectorSubHeader.file,
-                sectorSubHeader.channel,
-                sectorSubHeader.subMode,
-                sectorSubHeader.codingInfo
-            };
-
-            responseBuffer.EnqueueRange(response);
-
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void getLocP() { //SubQ missing...
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            Track track = cd.getTrackFromLoc(readLoc);
-            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.lbaStart);
-            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(readLoc);
-
-            if (cdDebug) {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"track: {track.number} index: {1} mm: {mm} ss: {ss}" +
-                    $" ff: {ff} amm: {amm} ass: {ass} aff: {aff}");
-                Console.WriteLine($"track: {track.number} index: {1} mm: {DecToBcd(mm)} ss: {DecToBcd(ss)}" +
-                    $" ff: {DecToBcd(ff)} amm: {DecToBcd(amm)} ass: {DecToBcd(ass)} aff: {DecToBcd(aff)}");
-                Console.ResetColor();
-            }
-
-            Span<byte> response = stackalloc byte[] { track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff) };
-            responseBuffer.EnqueueRange(response);
-
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void lockUnlock() {
-            interruptQueue.Enqueue(0x5);
-        }
-
-        private void videoCD() { //INT5(11h,40h)  ;-Unused/invalid
-            responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x40 });
-
-            interruptQueue.Enqueue(0x5);
-        }
-
-        private void setSession() { //broken
-            parameterBuffer.Clear();
-
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            STAT = 0x42;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
-        }
-
-        private void setFilter() {
-            filterFile = parameterBuffer.Dequeue();
-            filterChannel = parameterBuffer.Dequeue();
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void readS() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            readLoc = seekLoc;
-
-            STAT = 0x2;
-            STAT |= 0x20;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            mode = Mode.Read;
-        }
-
-        private void seekP() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            readLoc = seekLoc;
-            STAT = 0x42; // seek
-
-            mode = Mode.Seek;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-
-        private void play() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-            //If theres a trackN param it seeks and plays from the start location of it
-            int track = 0;
-            if (parameterBuffer.Count > 0 && parameterBuffer.Peek() != 0) {
-                track = BcdToDec(parameterBuffer.Dequeue());
-                if (cd.isAudioCD()) {
-                    readLoc = seekLoc = cd.tracks[track - 1].lbaStart;
-                } else {
-                    readLoc = seekLoc = cd.tracks[track].lbaStart;
-                }
-                //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
-            } else {
-                readLoc = seekLoc;
-            }
-
-            Console.WriteLine($"[CDROM] CDDA Play Triggered Track: {track} readLoc: {readLoc}");
-
-            STAT = 0x82;
-            mode = Mode.Play;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void stop() {
-            STAT = 0x2;
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            STAT = 0;
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
-
-            mode = Mode.Idle;
-        }
-
-        private void getTD() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            int track = BcdToDec(parameterBuffer.Dequeue());
-
-            if (track == 0) { //returns CD LBA / End of last track
-                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
-                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
-                //if (cdDebug)
-                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
-            } else { //returns Track Start
-                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
-                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
-                //if (cdDebug)
-                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
-            }
-
-            //Console.ReadLine();
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void getTN() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-            //if (cdDebug)
-            Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
-            //Console.ReadLine();
-            responseBuffer.EnqueueRange(stackalloc byte[] { STAT, 1, DecToBcd((byte)cd.tracks.Count) });
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void demute() {
-            mutedAudio = false;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void init() {
-            STAT = 0x2;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
-        }
-
-        private void pause() {
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            STAT = 0x2;
-            mode = Mode.Idle;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x2);
-        }
-
-        private void readN() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            readLoc = seekLoc;
-
-            STAT = 0x2;
-            STAT |= 0x20;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-
-            mode = Mode.Read;
-        }
-
-        private void setMode() {
-            //7   Speed(0 = Normal speed, 1 = Double speed)
-            //6   XA - ADPCM(0 = Off, 1 = Send XA - ADPCM sectors to SPU Audio Input)
-            //5   Sector Size(0 = 800h = DataOnly, 1 = 924h = WholeSectorExceptSyncBytes)
-            //4   Ignore Bit(0 = Normal, 1 = Ignore Sector Size and Setloc position)
-            //3   XA - Filter(0 = Off, 1 = Process only XA - ADPCM sectors that match Setfilter)
-            //2   Report(0 = Off, 1 = Enable Report - Interrupts for Audio Play)
-            //1   AutoPause(0 = Off, 1 = Auto Pause upon End of Track); for Audio Play
-            //0   CDDA(0 = Off, 1 = Allow to Read CD - DA Sectors; ignore missing EDC)
-            uint mode = parameterBuffer.Dequeue();
-
-            //Console.WriteLine($"[CDROM] SetMode: {mode:x8}");
-
-            isDoubleSpeed = ((mode >> 7) & 0x1) == 1;
-            isXAADPCM = ((mode >> 6) & 0x1) == 1;
-            isSectorSizeRAW = ((mode >> 5) & 0x1) == 1;
-            isIgnoreBit = ((mode >> 4) & 0x1) == 1;
-            isXAFilter = ((mode >> 3) & 0x1) == 1;
-            isReport = ((mode >> 2) & 0x1) == 1;
-            isAutoPause = ((mode >> 1) & 0x1) == 1;
-            isCDDA = (mode & 0x1) == 1;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void seekL() {
-            if (isLidOpen) {
-                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
-                interruptQueue.Enqueue(0x5);
-                return;
-            }
-
-            readLoc = seekLoc;
-            STAT = 0x42; // seek
-
-            mode = Mode.Seek;
-
-            responseBuffer.Enqueue(STAT);
-            interruptQueue.Enqueue(0x3);
-        }
-
-        private void setLoc() {
+        private void Cmd_02_SetLoc() {
             if (isLidOpen) {
                 responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
                 interruptQueue.Enqueue(0x5);
@@ -799,7 +496,320 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x3);
         }
 
-        private void getID() {
+        private void Cmd_03_Play() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+            //If theres a trackN param it seeks and plays from the start location of it
+            int track = 0;
+            if (parameterBuffer.Count > 0 && parameterBuffer.Peek() != 0) {
+                track = BcdToDec(parameterBuffer.Dequeue());
+                if (cd.isAudioCD()) {
+                    readLoc = seekLoc = cd.tracks[track - 1].lbaStart;
+                } else {
+                    readLoc = seekLoc = cd.tracks[track].lbaStart;
+                }
+                //else it plays from the previously seekLoc and seeks if not done (actually not checking if already seeked)
+            } else {
+                readLoc = seekLoc;
+            }
+
+            Console.WriteLine($"[CDROM] CDDA Play Triggered Track: {track} readLoc: {readLoc}");
+
+            STAT = 0x82;
+            mode = Mode.Play;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_06_ReadN() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            readLoc = seekLoc;
+
+            STAT = 0x2;
+            STAT |= 0x20;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            mode = Mode.Read;
+        }
+
+        private void Cmd_07_MotorOn() {
+            STAT = 0x2;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+        }
+
+        private void Cmd_08_Stop() {
+            STAT = 0x2;
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            STAT = 0;
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+
+            mode = Mode.Idle;
+        }
+
+        private void Cmd_09_Pause() {
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            STAT = 0x2;
+            mode = Mode.Idle;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+        }
+
+        private void Cmd_0A_Init() {
+            STAT = 0x2;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+        }
+
+        private void Cmd_0B_Mute() {
+            mutedAudio = true;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_0C_Demute() {
+            mutedAudio = false;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_0D_SetFilter() {
+            filterFile = parameterBuffer.Dequeue();
+            filterChannel = parameterBuffer.Dequeue();
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_0E_SetMode() {
+            //7   Speed(0 = Normal speed, 1 = Double speed)
+            //6   XA - ADPCM(0 = Off, 1 = Send XA - ADPCM sectors to SPU Audio Input)
+            //5   Sector Size(0 = 800h = DataOnly, 1 = 924h = WholeSectorExceptSyncBytes)
+            //4   Ignore Bit(0 = Normal, 1 = Ignore Sector Size and Setloc position)
+            //3   XA - Filter(0 = Off, 1 = Process only XA - ADPCM sectors that match Setfilter)
+            //2   Report(0 = Off, 1 = Enable Report - Interrupts for Audio Play)
+            //1   AutoPause(0 = Off, 1 = Auto Pause upon End of Track); for Audio Play
+            //0   CDDA(0 = Off, 1 = Allow to Read CD - DA Sectors; ignore missing EDC)
+            uint mode = parameterBuffer.Dequeue();
+
+            //Console.WriteLine($"[CDROM] SetMode: {mode:x8}");
+
+            isDoubleSpeed = ((mode >> 7) & 0x1) == 1;
+            isXAADPCM = ((mode >> 6) & 0x1) == 1;
+            isSectorSizeRAW = ((mode >> 5) & 0x1) == 1;
+            isIgnoreBit = ((mode >> 4) & 0x1) == 1;
+            isXAFilter = ((mode >> 3) & 0x1) == 1;
+            isReport = ((mode >> 2) & 0x1) == 1;
+            isAutoPause = ((mode >> 1) & 0x1) == 1;
+            isCDDA = (mode & 0x1) == 1;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_10_GetLocL() {
+            if (cdDebug) {
+                Console.WriteLine($"mm: {sectorHeader.mm} ss: {sectorHeader.ss} ff: {sectorHeader.ff} mode: {sectorHeader.mode}" +
+                    $" file: {sectorSubHeader.file} channel: {sectorSubHeader.channel} subMode: {sectorSubHeader.subMode} codingInfo: {sectorSubHeader.codingInfo}");
+            }
+
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            Span<byte> response = stackalloc byte[] {
+                sectorHeader.mm,
+                sectorHeader.ss,
+                sectorHeader.ff,
+                sectorHeader.mode,
+                sectorSubHeader.file,
+                sectorSubHeader.channel,
+                sectorSubHeader.subMode,
+                sectorSubHeader.codingInfo
+            };
+
+            responseBuffer.EnqueueRange(response);
+
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_11_GetLocP() { //SubQ missing...
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            Track track = cd.getTrackFromLoc(readLoc);
+            (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(readLoc - track.lbaStart);
+            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(readLoc);
+
+            if (cdDebug) {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"track: {track.number} index: {1} mm: {mm} ss: {ss}" +
+                    $" ff: {ff} amm: {amm} ass: {ass} aff: {aff}");
+                Console.WriteLine($"track: {track.number} index: {1} mm: {DecToBcd(mm)} ss: {DecToBcd(ss)}" +
+                    $" ff: {DecToBcd(ff)} amm: {DecToBcd(amm)} ass: {DecToBcd(ass)} aff: {DecToBcd(aff)}");
+                Console.ResetColor();
+            }
+
+            Span<byte> response = stackalloc byte[] { track.number, 1, DecToBcd(mm), DecToBcd(ss), DecToBcd(ff), DecToBcd(amm), DecToBcd(ass), DecToBcd(aff) };
+            responseBuffer.EnqueueRange(response);
+
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_12_SetSession() { //broken
+            parameterBuffer.Clear();
+
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            STAT = 0x42;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x2);
+        }
+
+        private void Cmd_13_GetTN() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+            //if (cdDebug)
+            Console.WriteLine($"[CDROM] getTN First Track: 1 (Hardcoded) - Last Track: {cd.tracks.Count}");
+            //Console.ReadLine();
+            responseBuffer.EnqueueRange(stackalloc byte[] { STAT, 1, DecToBcd((byte)cd.tracks.Count) });
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_14_GetTD() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            int track = BcdToDec(parameterBuffer.Dequeue());
+
+            if (track == 0) { //returns CD LBA / End of last track
+                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.getLBA());
+                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
+                //if (cdDebug)
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
+            } else { //returns Track Start
+                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(cd.tracks[track - 1].lbaStart);
+                responseBuffer.EnqueueRange(stackalloc byte[] { STAT, DecToBcd(mm), DecToBcd(ss) });
+                //if (cdDebug)
+                Console.WriteLine($"[CDROM] getTD Track: {track} STAT: {STAT:x2} {mm}:{ss}");
+            }
+
+            //Console.ReadLine();
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_15_SeekL() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            readLoc = seekLoc;
+            STAT = 0x42; // seek
+
+            mode = Mode.Seek;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_16_SeekP() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            readLoc = seekLoc;
+            STAT = 0x42; // seek
+
+            mode = Mode.Seek;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+        }
+
+        private void Cmd_19_Test() {
+            uint command = parameterBuffer.Dequeue();
+            responseBuffer.Clear(); //we need to clear the delay on response to get the actual 0 0 to bypass antimodchip protection
+            switch (command) {
+                case 0x04://Com 19h,04h   ;ResetSCExInfo (reset GetSCExInfo response to 0,0) Used for antimodchip games like Dino Crisis
+                    Console.WriteLine("[CDROM] Command 19 04 ResetSCExInfo Anti Mod Chip Meassures");
+                    STAT = 0x2;
+                    responseBuffer.Enqueue(STAT);
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x05:// 05h      -   INT3(total,success);Stop SCEx reading and get counters
+                    Console.WriteLine("[CDROM] Command 19 05 GetSCExInfo Hack 0 0 Bypass Response");
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0, 0 });
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x94, 0x09, 0x19, 0xC0 });
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x22: //INT3("for US/AEP") --> Region-free debug version --> accepts unlicensed CDRs
+                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x66, 0x6F, 0x72, 0x20, 0x55, 0x53, 0x2F, 0x41, 0x45, 0x50 });
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                case 0x60://  60h      lo,hi     INT3(databyte)   ;HC05 SUB-CPU read RAM and I/O ports
+                    responseBuffer.Enqueue(0);
+                    interruptQueue.Enqueue(0x3);
+                    break;
+                default:
+                    Console.WriteLine($"[CDROM] Unimplemented 0x19 Test Command {command:x8}");
+                    break;
+            }
+        }
+
+        private void Cmd_1A_GetID() {
             //Door Open              INT5(11h,80h)  N/A
             if (isLidOpen) {
                 responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
@@ -835,52 +845,49 @@ namespace ProjectPSX.Devices {
             interruptQueue.Enqueue(0x2);
         }
 
-        private void getStat() {
-            if (!isLidOpen) {
-                STAT = (byte)(STAT & (~0x18));
-                STAT |= 0x2;
+        private void Cmd_1B_ReadS() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
             }
 
+            readLoc = seekLoc;
+
+            STAT = 0x2;
+            STAT |= 0x20;
+
+            responseBuffer.Enqueue(STAT);
+            interruptQueue.Enqueue(0x3);
+
+            mode = Mode.Read;
+        }
+
+        private void Cmd_1E_ReadTOC() {
+            if (isLidOpen) {
+                responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x80 });
+                interruptQueue.Enqueue(0x5);
+                return;
+            }
+
+            mode = Mode.TOC;
             responseBuffer.Enqueue(STAT);
             interruptQueue.Enqueue(0x3);
         }
 
-        private void UnimplementedCDCommand(uint value) {
-            Console.WriteLine($"[CDROM] Unimplemented CD Command {value}");
-            //Console.ReadLine();
+        private void Cmd_1F_VideoCD() { //INT5(11h,40h)  ;-Unused/invalid
+            responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x40 });
+
+            interruptQueue.Enqueue(0x5);
         }
 
-        private void test() {
-            uint command = parameterBuffer.Dequeue();
-            responseBuffer.Clear(); //we need to clear the delay on response to get the actual 0 0 to bypass antimodchip protection
-            switch (command) {
-                case 0x04://Com 19h,04h   ;ResetSCExInfo (reset GetSCExInfo response to 0,0) Used for antimodchip games like Dino Crisis
-                    Console.WriteLine("[CDROM] Command 19 04 ResetSCExInfo Anti Mod Chip Meassures");
-                    STAT = 0x2;
-                    responseBuffer.Enqueue(STAT);
-                    interruptQueue.Enqueue(0x3);
-                    break;
-                case 0x05:// 05h      -   INT3(total,success);Stop SCEx reading and get counters
-                    Console.WriteLine("[CDROM] Command 19 05 GetSCExInfo Hack 0 0 Bypass Response");
-                    responseBuffer.EnqueueRange(stackalloc byte[] { 0, 0 });
-                    interruptQueue.Enqueue(0x3);
-                    break;
-                case 0x20: //INT3(yy,mm,dd,ver) ;Get cdrom BIOS date/version (yy,mm,dd,ver) http://www.psxdev.net/forum/viewtopic.php?f=70&t=557
-                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x94, 0x09, 0x19, 0xC0 });
-                    interruptQueue.Enqueue(0x3);
-                    break;
-                case 0x22: //INT3("for US/AEP") --> Region-free debug version --> accepts unlicensed CDRs
-                    responseBuffer.EnqueueRange(stackalloc byte[] { 0x66, 0x6F, 0x72, 0x20, 0x55, 0x53, 0x2F, 0x41, 0x45, 0x50 });
-                    interruptQueue.Enqueue(0x3);
-                    break;
-                case 0x60://  60h      lo,hi     INT3(databyte)   ;HC05 SUB-CPU read RAM and I/O ports
-                    responseBuffer.Enqueue(0);
-                    interruptQueue.Enqueue(0x3);
-                    break;
-                default:
-                    Console.WriteLine($"[CDROM] Unimplemented 0x19 Test Command {command:x8}");
-                    break;
-            }
+        private void Cmd_5x_lockUnlock() {
+            interruptQueue.Enqueue(0x5);
+        }
+
+        private void UnimplementedCDCommand(uint value) {
+            Console.WriteLine($"[CDROM] Unimplemented CD Command {value}");
+            Console.ReadLine();
         }
 
         private byte STATUS() {
