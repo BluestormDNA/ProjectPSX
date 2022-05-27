@@ -660,15 +660,16 @@ namespace ProjectPSX.Devices {
 
 
         public Span<uint> processDmaLoad(int size) { //todo trigger interrupt
-            Span<byte> dma = ram.AsSpan().Slice((int)ramDataTransferAddressInternal, size);
+            int dmaLength = size * 4;
+            Span<byte> dma = ram.AsSpan().Slice((int)ramDataTransferAddressInternal, dmaLength);
 
             //ramDataTransferAddressInternal and ramIrqAddress already are >> 3
             //so check if it's in the size range and trigger int
-            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
+            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + dmaLength) {
                 interruptController.set(Interrupt.SPU);
             }
 
-            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size * 4);
+            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + dmaLength);
 
             return MemoryMarshal.Cast<byte, uint>(dma);
         }
