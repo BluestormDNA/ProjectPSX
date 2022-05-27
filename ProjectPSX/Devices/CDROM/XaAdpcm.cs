@@ -149,7 +149,9 @@ namespace ProjectPSX.Devices.CdRom {
         }
 
         public static short[] decodeNibbles(byte[] xaapdcm, int position, int blk, int nibble, ref short old, ref short older) {
-            int shift = 12 - (xaapdcm[position + 4 + blk * 2 + nibble] & 0x0F);
+            int headerShift = xaapdcm[position + 4 + blk * 2 + nibble] & 0x0F;
+            if (headerShift > 12) headerShift = 9;
+            int shift = 12 - headerShift;
             int filter = (xaapdcm[position + 4 + blk * 2 + nibble] & 0x30) >> 4;
 
             int f0 = positiveXaAdpcmTable[filter];

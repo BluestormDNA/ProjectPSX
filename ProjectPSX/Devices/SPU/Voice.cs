@@ -108,9 +108,12 @@ namespace ProjectPSX.Devices.Spu {
             Array.Copy(ram, currentAddress * 8, spuAdpcm, 0, 16);
 
             //ramIrqAddress is >> 8 so we only need to check for currentAddress and + 1
-            readRamIrq |= currentAddress == ramIrqAddress || currentAddress + 1 == ramIrqAddress;           
+            readRamIrq |= currentAddress == ramIrqAddress || currentAddress + 1 == ramIrqAddress;
 
-            int shift = 12 - (spuAdpcm[0] & 0x0F);
+            int headerShift = spuAdpcm[0] & 0x0F;
+            if (headerShift > 12) headerShift = 9;
+            int shift = 12 - headerShift;
+
             int filter = (spuAdpcm[0] & 0x70) >> 4; //filter on SPU adpcm is 0-4 vs XA wich is 0-3
             if (filter > 4) filter = 4; //Crash Bandicoot sets this to 7 at the end of the first level and overflows the filter
 
