@@ -8,9 +8,10 @@ namespace ProjectPSX.Devices.CdRom {
         // Standard size for a raw sector / CDDA
         public const int RAW_BUFFER = 2352;
 
-        // This sector data is already pre decoded and resampled so we need a bigger buffer (RAW_BUFFER * 4)
-        // and on the case of mono even a bigger one, as samples are mirrored to L/R as our output is allways stereo
-        public const int XA_BUFFER = RAW_BUFFER * 8;
+        // Only for the SPU: It represents a sector of data already pre decoded AND resampled so we need a bigger buffer (RAW_BUFFER * 4)
+        // and on the case of mono even a bigger one, as samples are mirrored to L/R as our output is allways stereo (that would be * 8)
+        // but on the special case of 18900 resampling we need even a bigger one... so go * 16
+        public const int XA_BUFFER = RAW_BUFFER * 16;
 
         private byte[] sectorBuffer;
 

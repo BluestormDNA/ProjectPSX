@@ -122,7 +122,6 @@ namespace ProjectPSX.Devices.CdRom {
             List<short> resamples = isStereo ? stereoResamples : monoResamples;
 
             resamples.Clear();
-            //todo handle 18900hz
 
             for (int i = 0; i < samples.Count; i++) {
                 resampleRingBuffer[channel][resamplePointer++ & 0x1F] = samples[i];
@@ -131,7 +130,11 @@ namespace ProjectPSX.Devices.CdRom {
                 if (sixStep == 0) {
                     sixStep = 6;
                     for (int table = 0; table < 7; table++) {
-                        resamples.Add(zigZagInterpolate(resamplePointer, table, channel));
+                        short sample = zigZagInterpolate(resamplePointer, table, channel);
+                        resamples.Add(sample);
+                        if(is18900hz) {
+                            resamples.Add(sample);
+                        }
                     }
                 }
             }
