@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ProjectPSX.Devices.CdRom;
 using ProjectPSX.Devices.Spu;
@@ -8,11 +8,8 @@ namespace ProjectPSX.Devices {
     public class SPU {
 
         // Todo:
-        // Spu Enable/Disable (koff voices? Ints?)
         // lr sweep envelope
-        // reverb
         // clean up queue/list dequeues enqueues and casts
-        // ...
 
         private static short[] gaussTable = new short[] {
                 -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001,
@@ -86,13 +83,13 @@ namespace ProjectPSX.Devices {
 
         private Sector cdBuffer = new Sector(Sector.XA_BUFFER);
 
-        private byte[] ram = new byte[512 * 1024];
+        private unsafe byte* ram = (byte*)Marshal.AllocHGlobal(512 * 1024);
         private Voice[] voices = new Voice[24];
 
-        private ushort mainVolumeLeft;
-        private ushort mainVolumeRight;
-        private ushort reverbOutputLeft;
-        private ushort reverbOutputRight;
+        private short mainVolumeLeft;
+        private short mainVolumeRight;
+        private short reverbOutputVolumeLeft;
+        private short reverbOutputVolumeRight;
 
         private uint keyOn;
         private uint keyOff;
@@ -103,7 +100,8 @@ namespace ProjectPSX.Devices {
 
         private ushort unknownA0;
 
-        private ushort ramReverbStartAddress;
+        private uint ramReverbStartAddress;
+        private uint ramReverbInternalAddress;
         private ushort ramIrqAddress;
         private ushort ramDataTransferAddress;
         private uint ramDataTransferAddressInternal;
@@ -121,6 +119,40 @@ namespace ProjectPSX.Devices {
         private uint unknownBC;
 
         private int captureBufferPos;
+
+        //Reverb Area
+        private uint dAPF1;   // Reverb APF Offset 1
+        private uint dAPF2;   // Reverb APF Offset 2
+        private short vIIR;   // Reverb Reflection Volume 1
+        private short vCOMB1; // Reverb Comb Volume 1
+        private short vCOMB2; // Reverb Comb Volume 2
+        private short vCOMB3; // Reverb Comb Volume 3
+        private short vCOMB4; // Reverb Comb Volume 4
+        private short vWALL;  // Reverb Reflection Volume 2
+        private short vAPF1;  // Reverb APF Volume 1
+        private short vAPF2;  // Reverb APF Volume 2
+        private uint mLSAME;  // Reverb Same Side Reflection Address 1 Left
+        private uint mRSAME;  // Reverb Same Side Reflection Address 1 Right
+        private uint mLCOMB1; // Reverb Comb Address 1 Left
+        private uint mLCOMB2; // Reverb Comb Address 2 Left
+        private uint mRCOMB1; // Reverb Comb Address 1 Right
+        private uint mRCOMB2; // Reverb Comb Address 2 Right
+        private uint dLSAME;  // Reverb Same Side Reflection Address 2 Left
+        private uint dRSAME;  // Reverb Same Side Reflection Address 2 Right
+        private uint mLDIFF;  // Reverb Different Side Reflection Address 1 Left
+        private uint mRDIFF;  // Reverb Different Side Reflection Address 1 Right
+        private uint mLCOMB3; // Reverb Comb Address 3 Left
+        private uint mRCOMB3; // Reverb Comb Address 3 Right
+        private uint mLCOMB4; // Reverb Comb Address 4 Left
+        private uint mRCOMB4; // Reverb Comb Address 4 Right
+        private uint dLDIFF;  // Reverb Different Side Reflection Address 2 Left
+        private uint dRDIFF;  // Reverb Different Side Reflection Address 2 Right
+        private uint mLAPF1;  // Reverb APF Address 1 Left
+        private uint mRAPF1;  // Reverb APF Address 1 Right
+        private uint mLAPF2;  // Reverb APF Address 2 Left
+        private uint mRAPF2;  // Reverb APF Address 2 Right
+        private short vLIN;   // Reverb Input Volume Left
+        private short vRIN;   // Reverb Input Volume Right
 
         private struct Control {
             public ushort register;
@@ -144,11 +176,12 @@ namespace ProjectPSX.Devices {
             public bool dataTransferBusyFlag => ((register >> 10) & 0x1) != 0;
             public bool dataTransferDmaReadRequest => ((register >> 9) & 0x1) != 0;
             public bool dataTransferDmaWriteRequest => ((register >> 8) & 0x1) != 0;
-            //  7     Data Transfer DMA Read/Write Request ;seems to be same as SPUCNT.Bit5 todo
+            //  7     Data Transfer DMA Read/Write Request ;seems to be same as SPUCNT.Bit5
             public bool irq9Flag {
                 get { return ((register >> 6) & 0x1) != 0; }
                 set { register = value ? (ushort)(register | (1 << 6)) : (ushort)(register & ~(1 << 6)); }
             }
+            //  0..5     Mode same as SPUCNT 0..5
         }
         Status status;
 
@@ -183,19 +216,19 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case 0x1F801D80:
-                    mainVolumeLeft = value;
+                    mainVolumeLeft = (short)value;
                     break;
 
                 case 0x1F801D82:
-                    mainVolumeRight = value;
+                    mainVolumeRight = (short)value;
                     break;
 
                 case 0x1F801D84:
-                    reverbOutputLeft = value;
+                    reverbOutputVolumeLeft = (short)value;
                     break;
 
                 case 0x1F801D86:
-                    reverbOutputRight = value;
+                    reverbOutputVolumeRight = (short)value;
                     break;
 
                 case 0x1F801D88:
@@ -252,7 +285,8 @@ namespace ProjectPSX.Devices {
                     break;
 
                 case 0x1F801DA2:
-                    ramReverbStartAddress = value;
+                    ramReverbStartAddress = (uint)(value << 3);
+                    ramReverbInternalAddress = (uint)(value << 3);
                     break;
 
                 case 0x1F801DA4:
@@ -267,8 +301,8 @@ namespace ProjectPSX.Devices {
                 case 0x1F801DA8:
                     //Console.WriteLine($"[SPU] Manual DMA Write {ramDataTransferAddressInternal:x8} {value:x4}");
                     ramDataTransferFifo = value;
-                    ram[ramDataTransferAddressInternal++] = (byte)value;
-                    ram[ramDataTransferAddressInternal++] = (byte)(value >> 8);
+                    writeRam(ramDataTransferAddressInternal, value);
+                    ramDataTransferAddressInternal += 2;
                     break;
 
                 case 0x1F801DAA:
@@ -329,6 +363,140 @@ namespace ProjectPSX.Devices {
                 case 0x1F801DBE:
                     unknownBC = (unknownBC & 0xFFFF) | (uint)(value << 16);
                     break;
+
+                // SPU Reverb Configuration Area
+                case 0x1F801DC0:
+                    dAPF1 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DC2:
+                    dAPF2 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DC4:
+                    vIIR = (short)value;
+                    break;
+
+                case 0x1F801DC6:
+                    vCOMB1 = (short)value;
+                    break;
+
+                case 0x1F801DC8:
+                    vCOMB2 = (short)value;
+                    break;
+
+                case 0x1F801DCA:
+                    vCOMB3 = (short)value;
+                    break;
+
+                case 0x1F801DCC:
+                    vCOMB4 = (short)value;
+                    break;
+
+                case 0x1F801DCE:
+                    vWALL = (short)value;
+                    break;
+
+                case 0x1F801DD0:
+                    vAPF1 = (short)value;
+                    break;
+
+                case 0x1F801DD2:
+                    vAPF2 = (short)value;
+                    break;
+
+                case 0x1F801DD4:
+                    mLSAME = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DD6:
+                    mRSAME = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DD8:
+                    mLCOMB1 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DDA:
+                    mRCOMB1 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DDC:
+                    mLCOMB2 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DDE:
+                    mRCOMB2 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DE0:
+                    dLSAME = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DE2:
+                    dRSAME = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DE4:
+                    mLDIFF = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DE6:
+                    mRDIFF = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DE8:
+                    mLCOMB3 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DEA:
+                    mRCOMB3 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DEC:
+                    mLCOMB4 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DEE:
+                    mRCOMB4 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DF0:
+                    dLDIFF = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DF2:
+                    dRDIFF = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DF4:
+                    mLAPF1 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DF6:
+                    mRAPF1 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DF8:
+                    mLAPF2 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DFA:
+                    mRAPF2 = (uint)(value << 3);
+                    break;
+
+                case 0x1F801DFC:
+                    vLIN = (short)value;
+                    break;
+
+                case 0x1F801DFE:
+                    vRIN = (short)value;
+                    break;
+
+                default:
+                    Console.WriteLine($"[SPU] Warning write:{addr:x8} value:{value:x8}");
+                    writeRam(addr, value);
+                    break;
             }
 
         }
@@ -339,29 +507,29 @@ namespace ProjectPSX.Devices {
 
                     uint index = ((addr & 0xFF0) >> 4) - 0xC0;
 
-                    switch (addr & 0xF) {
-                        case 0x0: return voices[index].volumeLeft.register;
-                        case 0x2: return voices[index].volumeRight.register;
-                        case 0x4: return voices[index].pitch;
-                        case 0x6: return voices[index].startAddress;
-                        case 0x8: return voices[index].adsr.lo;
-                        case 0xA: return voices[index].adsr.hi;
-                        case 0xC: return voices[index].adsrVolume;
-                        case 0xE: return voices[index].adpcmRepeatAddress;
-                    }
-                    return 0xFFFF;
+                    return (addr & 0xF) switch {
+                        0x0 => voices[index].volumeLeft.register,
+                        0x2 => voices[index].volumeRight.register,
+                        0x4 => voices[index].pitch,
+                        0x6 => voices[index].startAddress,
+                        0x8 => voices[index].adsr.lo,
+                        0xA => voices[index].adsr.hi,
+                        0xC => voices[index].adsrVolume,
+                        0xE => voices[index].adpcmRepeatAddress,
+                        _ => 0xFFFF,
+                    };
 
                 case 0x1F801D80:
-                    return mainVolumeLeft;
+                    return (ushort)mainVolumeLeft;
 
                 case 0x1F801D82:
-                    return mainVolumeRight;
+                    return (ushort)mainVolumeRight;
 
                 case 0x1F801D84:
-                    return reverbOutputLeft;
+                    return (ushort)reverbOutputVolumeLeft;
 
                 case 0x1F801D86:
-                    return reverbOutputRight;
+                    return (ushort)reverbOutputVolumeRight;
 
                 case 0x1F801D88:
                     return (ushort)keyOn;
@@ -403,7 +571,7 @@ namespace ProjectPSX.Devices {
                     return unknownA0;
 
                 case 0x1F801DA2:
-                    return ramReverbStartAddress;
+                    return (ushort)(ramReverbStartAddress >> 3);
 
                 case 0x1F801DA4:
                     return ramIrqAddress;
@@ -447,8 +615,105 @@ namespace ProjectPSX.Devices {
                 case 0x1F801DBE:
                     return (ushort)(unknownBC >> 16);
 
+                // SPU Reverb Configuration Area
+                case 0x1F801DC0:
+                    return (ushort)(dAPF1 >> 3);
+
+                case 0x1F801DC2:
+                    return (ushort)(dAPF2 >> 3);
+
+                case 0x1F801DC4:
+                    return (ushort)vIIR;
+
+                case 0x1F801DC6:
+                    return (ushort)vCOMB1;
+
+                case 0x1F801DC8:
+                    return (ushort)vCOMB2;
+
+                case 0x1F801DCA:
+                    return (ushort)vCOMB3;
+
+                case 0x1F801DCC:
+                    return (ushort)vCOMB4;
+
+                case 0x1F801DCE:
+                    return (ushort)vWALL;
+
+                case 0x1F801DD0:
+                    return (ushort)vAPF1;
+
+                case 0x1F801DD2:
+                    return (ushort)vAPF2;
+
+                case 0x1F801DD4:
+                    return (ushort)(mLSAME >> 3);
+
+                case 0x1F801DD6:
+                    return (ushort)(mRSAME >> 3);
+
+                case 0x1F801DD8:
+                    return (ushort)(mLCOMB1 >> 3);
+
+                case 0x1F801DDA:
+                    return (ushort)(mRCOMB1 >> 3);
+
+                case 0x1F801DDC:
+                    return (ushort)(mLCOMB2 >> 3);
+
+                case 0x1F801DDE:
+                    return (ushort)(mRCOMB2 >> 3);
+
+                case 0x1F801DE0:
+                    return (ushort)(dLSAME >> 3);
+
+                case 0x1F801DE2:
+                    return (ushort)(dRSAME >> 3);
+
+                case 0x1F801DE4:
+                    return (ushort)(mLDIFF >> 3);
+
+                case 0x1F801DE6:
+                    return (ushort)(mRDIFF >> 3);
+
+                case 0x1F801DE8:
+                    return (ushort)(mLCOMB3 >> 3);
+
+                case 0x1F801DEA:
+                    return (ushort)(mRCOMB3 >> 3);
+
+                case 0x1F801DEC:
+                    return (ushort)(mLCOMB4 >> 3);
+
+                case 0x1F801DEE:
+                    return (ushort)(mRCOMB4 >> 3);
+
+                case 0x1F801DF0:
+                    return (ushort)(dLDIFF >> 3);
+
+                case 0x1F801DF2:
+                    return (ushort)(dRDIFF >> 3);
+
+                case 0x1F801DF4:
+                    return (ushort)(mLAPF1 >> 3);
+
+                case 0x1F801DF6:
+                    return (ushort)(mRAPF1 >> 3);
+
+                case 0x1F801DF8:
+                    return (ushort)(mLAPF2 >> 3);
+
+                case 0x1F801DFA:
+                    return (ushort)(mRAPF2 >> 3);
+
+                case 0x1F801DFC:
+                    return (ushort)vLIN;
+
+                case 0x1F801DFE:
+                    return (ushort)vRIN;
+
                 default:
-                    return 0xFFFF;
+                    return (ushort)loadRam(addr);
             }
         }
 
@@ -457,7 +722,8 @@ namespace ProjectPSX.Devices {
         }
 
         private int counter = 0;
-        private int CYCLES_PER_SAMPLE = 0x300; //33868800 / 44100hz
+        private const int CYCLES_PER_SAMPLE = 0x300; //33868800 / 44100hz
+        private int reverbCounter = 0;
         public bool tick(int cycles) {
             bool edgeTrigger = false;
             counter += cycles;
@@ -469,6 +735,9 @@ namespace ProjectPSX.Devices {
 
             int sumLeft = 0;
             int sumRight = 0;
+
+            int sumLeftReverb = 0;
+            int sumRightReverb = 0;
 
             uint edgeKeyOn = keyOn;
             uint edgeKeyOff = keyOff;
@@ -516,6 +785,11 @@ namespace ProjectPSX.Devices {
                 //Sum each voice sample
                 sumLeft += (sample * v.processVolume(v.volumeLeft)) >> 15;
                 sumRight += (sample * v.processVolume(v.volumeRight)) >> 15;
+
+                if((channelReverbMode & (0x1 << i)) != 0) {
+                    sumLeftReverb += (sample * v.processVolume(v.volumeLeft)) >> 15;
+                    sumRightReverb += (sample * v.processVolume(v.volumeRight)) >> 15;
+                }
             }
 
             if (!control.spuUnmuted) { //todo merge this on the for voice loop
@@ -538,7 +812,22 @@ namespace ProjectPSX.Devices {
 
                 sumLeft += cdL;
                 sumRight += cdR;
+
+                if(control.cdAudioReverb) {
+                    sumLeftReverb += cdL;
+                    sumRightReverb += cdR;
+                }
             }
+
+            if (reverbCounter == 0) {
+                var (reverbL, reverbR) = processReverb(sumLeftReverb, sumRightReverb);
+
+                sumLeft += reverbL;
+                sumRight += reverbR;
+            }
+
+            // reverb is on a 22050hz clock
+            reverbCounter = (reverbCounter + 1) & 0x1;
 
             //Write to capture buffers and check ram irq
             edgeTrigger |= handleCaptureBuffer(0 * 1024 + captureBufferPos, cdL);
@@ -569,9 +858,7 @@ namespace ProjectPSX.Devices {
         }
 
         private bool handleCaptureBuffer(int address, short sample) {
-            ram[address] = (byte)(sample & 0xFF);
-            ram[address + 1] = (byte)((sample >> 8) & 0xFF);
-
+            writeRam((uint)address, sample);
             return address >> 3 == ramIrqAddress;
         }
 
@@ -594,7 +881,7 @@ namespace ProjectPSX.Devices {
             if (noiseTimer < 0) noiseTimer += 0x20000 >> noiseShift;
         }
 
-        public short sampleVoice(int v) {
+        public unsafe short sampleVoice(int v) {
             Voice voice = voices[v];
 
             //Decode samples if its empty / next block
@@ -658,30 +945,92 @@ namespace ProjectPSX.Devices {
             return (short)interpolated;
         }
 
+        public (short, short) processReverb(int lInput, int rInput) {
+            // Input from mixer
+            int Lin = (vLIN * lInput) >> 15;
+            int Rin = (vRIN * rInput) >> 15;
 
-        public Span<uint> processDmaLoad(int size) { //todo trigger interrupt
-            int dmaLength = size * 4;
-            Span<byte> dma = ram.AsSpan().Slice((int)ramDataTransferAddressInternal, dmaLength);
+            // Same side reflection LtoL and RtoR
+            short mlSame = saturateSample(Lin + ((loadReverb(dLSAME) * vWALL) >> 15) - ((loadReverb(mLSAME - 2) * vIIR) >> 15) + loadReverb(mLSAME - 2));
+            short mrSame = saturateSample(Rin + ((loadReverb(dRSAME) * vWALL) >> 15) - ((loadReverb(mRSAME - 2) * vIIR) >> 15) + loadReverb(mRSAME - 2));
+            writeReverb(mLSAME, mlSame);
+            writeReverb(mRSAME, mrSame);
+
+            // Different side reflection LtoR and RtoL
+            short mldiff = saturateSample(Lin + ((loadReverb(dRDIFF) * vWALL) >> 15) - ((loadReverb(mLDIFF - 2) * vIIR) >> 15) + loadReverb(mLDIFF - 2));
+            short mrdiff = saturateSample(Rin + ((loadReverb(dLDIFF) * vWALL) >> 15) - ((loadReverb(mRDIFF - 2) * vIIR) >> 15) + loadReverb(mRDIFF - 2));
+            writeReverb(mLDIFF, mldiff);
+            writeReverb(mRDIFF, mrdiff);
+
+            // Early echo (comb filter with input from buffer)
+            short l = saturateSample((vCOMB1 * loadReverb(mLCOMB1) >> 15) + (vCOMB2 * loadReverb(mLCOMB2) >> 15) + (vCOMB3 * loadReverb(mLCOMB3) >> 15) + (vCOMB4 * loadReverb(mLCOMB4) >> 15));
+            short r = saturateSample((vCOMB1 * loadReverb(mRCOMB1) >> 15) + (vCOMB2 * loadReverb(mRCOMB2) >> 15) + (vCOMB3 * loadReverb(mRCOMB3) >> 15) + (vCOMB4 * loadReverb(mRCOMB4) >> 15));
+
+            // Late reverb APF1 (All pass filter 1 with input from COMB)
+            l = saturateSample(l - saturateSample((vAPF1 * loadReverb(mLAPF1 - dAPF1)) >> 15));
+            r = saturateSample(r - saturateSample((vAPF1 * loadReverb(mRAPF1 - dAPF1)) >> 15));
+
+            writeReverb(mLAPF1, l);
+            writeReverb(mRAPF1, r);
+            
+            l = saturateSample((l * vAPF1 >> 15) + loadReverb(mLAPF1 - dAPF1));
+            r = saturateSample((r * vAPF1 >> 15) + loadReverb(mRAPF1 - dAPF1));
+
+            // Late reverb APF2 (All pass filter 2 with input from APF1)
+            l = saturateSample(l - saturateSample((vAPF2 * loadReverb(mLAPF2 - dAPF2)) >> 15));
+            r = saturateSample(r - saturateSample((vAPF2 * loadReverb(mRAPF2 - dAPF2)) >> 15));
+            
+            writeReverb(mLAPF2, l);
+            writeReverb(mRAPF2, r);
+
+            l = saturateSample((l * vAPF2 >> 15) + loadReverb(mLAPF2 - dAPF2));
+            r = saturateSample((r * vAPF2 >> 15) + loadReverb(mRAPF2 - dAPF2));
+
+            // Output to mixer (output volume multiplied with input from APF2)
+            l = saturateSample(l * reverbOutputVolumeLeft >> 15);
+            r = saturateSample(r * reverbOutputVolumeRight >> 15);
+
+            // Saturate address
+            ramReverbInternalAddress = Math.Max(ramReverbStartAddress, (ramReverbInternalAddress + 2) & 0x7_FFFE);
+
+            return (l, r);
+        }
+
+        public short saturateSample(int sample) {
+            if(sample < -0x8000) {
+                return -0x8000;
+            }
+
+            if(sample > 0x7FFF) {
+                return 0x7FFF;
+            }
+
+            return (short)sample;
+        }
+
+
+        public unsafe Span<uint> processDmaLoad(int size) { //todo trigger interrupt
+            Span<byte> dma = new Span<byte>(ram, 1024*512).Slice((int)ramDataTransferAddressInternal, size * 4);
 
             //ramDataTransferAddressInternal and ramIrqAddress already are >> 3
             //so check if it's in the size range and trigger int
-            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + dmaLength) {
+            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + (size * 4)) {
                 interruptController.set(Interrupt.SPU);
             }
 
-            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + dmaLength);
+            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + (size * 4));
 
             return MemoryMarshal.Cast<byte, uint>(dma);
         }
 
-        public void processDmaWrite(Span<uint> dma) { //todo trigger interrupt
+        public unsafe void processDmaWrite(Span<uint> dma) { //todo trigger interrupt
             //Tekken 3 and FF8 overflows SPU Ram
             int size = dma.Length * 4;
             int destAddress = (int)ramDataTransferAddressInternal + size - 1;
 
             Span<byte> dmaSpan = MemoryMarshal.Cast<uint, byte>(dma);
 
-            Span<byte> ramStartSpan = ram.AsSpan();
+            Span<byte> ramStartSpan = new Span<byte>(ram, 1024 * 512);
             Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
 
             if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
@@ -701,6 +1050,32 @@ namespace ProjectPSX.Devices {
             }
         
             ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private unsafe void writeRam<T>(uint addr, T value) where T : unmanaged {
+            *(T*)(ram + addr) = value;
+        }
+
+        private unsafe short loadRam(uint addr) {
+            //Console.WriteLine($"loadSPURam from addr {(addr & 0x3_FFFF):x8}");
+            return *(short*)(ram + (addr & 0x7_FFFF));
+        }
+
+        private unsafe void writeReverb(uint addr, short value) {
+            if (!control.reverbMasterEnabled) return;
+
+            uint relative = (addr + ramReverbInternalAddress - ramReverbStartAddress) % (0x8_0000 - ramReverbStartAddress);
+            uint wrapped = (ramReverbStartAddress + relative) & 0x7_FFFE;
+
+            *(short*)(ram + wrapped) = value;
+        }
+
+        private unsafe short loadReverb(uint addr) {
+            uint relative = (addr + ramReverbInternalAddress - ramReverbStartAddress) % (0x8_0000 - ramReverbStartAddress);
+            uint wrapped = (ramReverbStartAddress + relative) & 0x7_FFFE;
+
+            return *(short*)(ram + wrapped);
         }
 
     }

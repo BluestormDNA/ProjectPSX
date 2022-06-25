@@ -98,14 +98,14 @@ namespace ProjectPSX.Devices.Spu {
 
         public byte[] spuAdpcm = new byte[16];
         public short[] decodedSamples = new short[31]; //28 samples from current block + 3 to make room for interpolation
-        internal void decodeSamples(byte[] ram, ushort ramIrqAddress) {
+        internal unsafe void decodeSamples(byte* ram, ushort ramIrqAddress) {
             //save the last 3 samples from the last decoded block
             //this are needed for interpolation in case the voice.counter.currentSampleIndex is 0 1 or 2
             decodedSamples[2] = decodedSamples[decodedSamples.Length - 1];
             decodedSamples[1] = decodedSamples[decodedSamples.Length - 2];
             decodedSamples[0] = decodedSamples[decodedSamples.Length - 3];
 
-            Array.Copy(ram, currentAddress * 8, spuAdpcm, 0, 16);
+            new Span<byte>(ram, 1024 * 512).Slice(currentAddress * 8, 16).CopyTo(spuAdpcm);
 
             //ramIrqAddress is >> 8 so we only need to check for currentAddress and + 1
             readRamIrq |= currentAddress == ramIrqAddress || currentAddress + 1 == ramIrqAddress;
@@ -147,7 +147,7 @@ namespace ProjectPSX.Devices.Spu {
             if (!volume.isSweepMode) {
                 return volume.fixedVolume;
             } else {
-                return 0; //todo handle sweep mode volume envelope
+                return 0x7FFF; //todo handle sweep mode volume envelope
             }
         }
 
