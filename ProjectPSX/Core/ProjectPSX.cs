@@ -1,5 +1,6 @@
 ﻿using ProjectPSX.Devices;
 using ProjectPSX.Devices.CdRom;
+using ProjectPSX.Devices.Expansion;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
@@ -22,6 +23,7 @@ namespace ProjectPSX {
         private MemoryCard memoryCard;
         private CD cd;
         private InterruptController interruptController;
+        private Exp2 exp2;
 
         public ProjectPSX(IHostWindow window, string diskFilename) {
             controller = new DigitalController();
@@ -36,7 +38,8 @@ namespace ProjectPSX {
             joypad = new JOYPAD(controller, memoryCard);
             timers = new TIMERS();
             mdec = new MDEC();
-            bus = new BUS(gpu, cdrom, spu, joypad, timers, mdec, interruptController);
+            exp2 = new Exp2();
+            bus = new BUS(gpu, cdrom, spu, joypad, timers, mdec, interruptController, exp2);
             cpu = new CPU(bus);
 
             bus.loadBios();

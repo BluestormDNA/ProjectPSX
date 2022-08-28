@@ -1,4 +1,5 @@
 ﻿using ProjectPSX.Devices;
+using ProjectPSX.Devices.Expansion;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -29,12 +30,13 @@ namespace ProjectPSX {
         private JOYPAD joypad;
         private MDEC mdec;
         private SPU spu;
+        private Exp2 exp2;
 
         //temporary hardcoded bios/ex1
-        private static string bios = "./SCPH1001.BIN";
+        private static string bios = "./SCPH1001.BIN"; //SCPH1001 //openbios
         private static string ex1 = "./caetlaEXP.BIN";
 
-        public BUS(GPU gpu, CDROM cdrom, SPU spu, JOYPAD joypad, TIMERS timers, MDEC mdec, InterruptController interruptController) {
+        public BUS(GPU gpu, CDROM cdrom, SPU spu, JOYPAD joypad, TIMERS timers, MDEC mdec, InterruptController interruptController, Exp2 exp2) {
             dma = new DMA(this);
             this.gpu = gpu;
             this.cdrom = cdrom;
@@ -43,6 +45,7 @@ namespace ProjectPSX {
             this.spu = spu;
             this.joypad = joypad;
             this.interruptController = interruptController;
+            this.exp2 = exp2;
         }
 
         public unsafe uint load32(uint address) {
@@ -82,8 +85,7 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_2000) {
                 return spu.load(addr);
             } else if (addr < 0x1F80_4000) {
-                Console.WriteLine($"[BUS] Read Unsupported to EXP2 address: {addr:x8}");
-                return 0xFFFF_FFFF;
+                return exp2.load(addr);
             } else if (addr < 0x1FC8_0000) {
                 return load<uint>(addr & 0x7_FFFF, biosPtr);
             } else if (addr == 0xFFFE0130) {
@@ -127,7 +129,7 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_2000) {
                 spu.write(addr, (ushort)value);
             } else if (addr < 0x1F80_4000) {
-                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+                exp2.write(addr, value);
             } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
@@ -168,7 +170,7 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_2000) {
                 spu.write(addr, value);
             } else if (addr < 0x1F80_4000) {
-                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+                exp2.write(addr, value);
             } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
@@ -209,7 +211,7 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_2000) {
                 spu.write(addr, value);
             } else if (addr < 0x1F80_4000) {
-                Console.WriteLine($"[BUS] Write Unsupported to EXP2: {addr:x8} Value: {value:x8}");
+                exp2.write(addr, value);
             } else if (addr == 0xFFFE_0130) {
                 memoryCache = value;
             } else {
