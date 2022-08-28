@@ -162,6 +162,7 @@ namespace ProjectPSX.Devices {
 
                     if (isVerticalInterlace && isVerticalResolution480) {
                         isOddLine = !isOddLine;
+                        isInterlaceField = !isOddLine;
                     }
 
                     window.Render(vram.Bits);
