@@ -20,8 +20,8 @@ namespace ProjectPSX.Devices {
 
         private IHostWindow window;
 
-        private VRAM vram = new VRAM(1024, 512); //Vram is 8888 and we transform everything to it
-        private VRAM1555 vram1555 = new VRAM1555(1024, 512); //an un transformed 1555 to 8888 vram so we can fetch clut indexes without reverting to 1555
+        private VRAM vram = new VRAM(); //Vram is 8888 and we transform everything to it
+        private VRAM1555 vram1555 = new VRAM1555(); //an un transformed 1555 to 8888 vram so we can fetch clut indexes without reverting to 1555
 
         private int[] color1555to8888LUT;
 

@@ -4,14 +4,12 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX {
     public class VRAM1555 {
         public ushort[] Bits { get; private set; }
-        public int Height;
-        public int Width;
+        public const int Height = 512;
+        public const int Width = 1024;
 
         protected GCHandle BitsHandle { get; private set; }
 
-        public VRAM1555(int width, int height) {
-            Height = height;
-            Width = width;
+        public VRAM1555() {
             Bits = new ushort[Width * Height];
             BitsHandle = GCHandle.Alloc(Bits, GCHandleType.Pinned);
         }
