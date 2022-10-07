@@ -4,14 +4,12 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX {
     public class VRAM {
         public int[] Bits { get; private set; }
-        public int Height;
-        public int Width;
+        public const int Height = 512;
+        public const int Width = 1024;
 
         protected GCHandle BitsHandle { get; private set; }
 
-        public VRAM(int width, int height) {
-            Height = height;
-            Width = width;
+        public VRAM() {
             Bits = new int[Width * Height];
             BitsHandle = GCHandle.Alloc(Bits, GCHandleType.Pinned);
         }
@@ -19,19 +17,27 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetPixel(int x, int y, int color) {
             int index = x + (y * Width);
-            Bits[index] = color;
+
+            ref int r0 = ref MemoryMarshal.GetArrayDataReference(Bits);
+            Unsafe.Add(ref r0, (nint)index) = color;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetPixelRGB888(int x, int y) {
+        public ref int GetPixelRGB888(int x, int y) {
             int index = x + (y * Width);
-            return Bits[index];
+
+            ref int r0 = ref MemoryMarshal.GetArrayDataReference(Bits);
+            ref int ri = ref Unsafe.Add(ref r0, (nint)index);
+
+            return ref ri;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort GetPixelBGR555(int x, int y) {
             int index = x + (y * Width);
-            int color = Bits[index];
+
+            ref int r0 = ref MemoryMarshal.GetArrayDataReference(Bits);
+            ref int color = ref Unsafe.Add(ref r0, (nint)index);
 
             byte m = (byte)((color & 0xFF000000) >> 24);
             byte r = (byte)((color & 0x00FF0000) >> 16 + 3);

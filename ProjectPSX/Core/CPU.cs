@@ -1,6 +1,7 @@
 ﻿//#define CPU_EXCEPTIONS
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using ProjectPSX.Disassembler;
 
 namespace ProjectPSX {
@@ -263,7 +264,8 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MemAccess() {
             if (delayedMemoryLoad.register != memoryLoad.register) { //if loadDelay on same reg it is lost/overwritten (amidog tests)
-                GPR[memoryLoad.register] = memoryLoad.value;
+                ref uint r0 = ref MemoryMarshal.GetArrayDataReference(GPR);
+                Unsafe.Add(ref r0, (nint)memoryLoad.register) = memoryLoad.value;
             }
             memoryLoad = delayedMemoryLoad;
             delayedMemoryLoad.register = 0;
@@ -271,9 +273,10 @@ namespace ProjectPSX {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteBack() {
-            GPR[writeBack.register] = writeBack.value;
+            ref uint r0 = ref MemoryMarshal.GetArrayDataReference(GPR);
+            Unsafe.Add(ref r0, (nint)writeBack.register) = writeBack.value;
             writeBack.register = 0;
-            GPR[0] = 0;
+            r0 = 0;
         }
 
         // Non Implemented by the CPU Opcodes

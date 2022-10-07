@@ -20,8 +20,10 @@ namespace ProjectPSX.Devices {
 
         private IHostWindow window;
 
-        private VRAM vram = new VRAM(1024, 512); //Vram is 8888 and we transform everything to it
-        private VRAM1555 vram1555 = new VRAM1555(1024, 512); //an un transformed 1555 to 8888 vram so we can fetch clut indexes without reverting to 1555
+        private VRAM vram = new VRAM(); //Vram is 8888 and we transform everything to it
+        private VRAM1555 vram1555 = new VRAM1555(); //an un transformed 1555 to 8888 vram so we can fetch clut indexes without reverting to 1555
+
+        private int[] color1555to8888LUT;
 
         public bool debug;
 
@@ -141,7 +143,21 @@ namespace ProjectPSX.Devices {
         public GPU(IHostWindow window) {
             this.window = window;
             mode = Mode.COMMAND;
+            initColorTable();
             GP1_00_ResetGPU();
+        }
+
+        public void initColorTable() {
+            color1555to8888LUT = new int[ushort.MaxValue + 1];
+            for (int m = 0; m < 2; m++) {
+                for (int r = 0; r < 32; r++) {
+                    for (int g = 0; g < 32; g++) {
+                        for (int b = 0; b < 32; b++) {
+                            color1555to8888LUT[m << 15 | b << 10 | g << 5 | r] = m << 24 | r << 16 + 3 | g << 8 + 3| b << 3;
+                        }
+                    }
+                }
+            }
         }
 
         public bool tick(int cycles) {
@@ -304,17 +320,10 @@ namespace ProjectPSX.Devices {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void drawVRAMPixel(ushort val) {
-            if (checkMaskBeforeDraw) {
-                int bg = vram.GetPixelRGB888(vramTransfer.x, vramTransfer.y);
-
-                if (bg >> 24 == 0) {
-                    vram.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555to8888(val));
-                    vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, val);
-                }
-            } else {
-                vram.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555to8888(val));
-                vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, val);
+        private void drawVRAMPixel(ushort color1555) {
+            if (!checkMaskBeforeDraw || vram.GetPixelRGB888(vramTransfer.x, vramTransfer.y) >> 24 == 0) {
+                vram.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555to8888LUT[color1555]);
+                vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555);
             }
 
             vramTransfer.x++;
@@ -1232,17 +1241,6 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static short signed11bit(uint n) {
             return (short)(((int)n << 21) >> 21);
-        }
-
-        //This needs to go away once a BGR bitmap is achieved
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int color1555to8888(ushort val) {
-            byte m = (byte)(val >> 15);
-            byte r = (byte)((val & 0x1F) << 3);
-            byte g = (byte)(((val >> 5) & 0x1F) << 3);
-            byte b = (byte)(((val >> 10) & 0x1F) << 3);
-
-            return (m << 24 | r << 16 | g << 8 | b);
         }
 
         //This is only needed for the Direct GP0 commands as the command number needs to be
