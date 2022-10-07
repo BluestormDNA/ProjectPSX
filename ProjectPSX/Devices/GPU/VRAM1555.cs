@@ -19,13 +19,19 @@ namespace ProjectPSX {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetPixel(int x, int y, ushort color) {
             int index = x + (y * Width);
-            Bits[index] = color;
+
+            ref ushort r0 = ref MemoryMarshal.GetArrayDataReference(Bits);
+            Unsafe.Add(ref r0, (nint)index) = color;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ushort GetPixel(int x, int y) {
+        public ref ushort GetPixel(int x, int y) {
             int index = x + (y * Width);
-            return Bits[index];
+
+            ref ushort r0 = ref MemoryMarshal.GetArrayDataReference(Bits);
+            ref ushort ri = ref Unsafe.Add(ref r0, (nint)index);
+
+            return ref ri;
         }
 
     }
