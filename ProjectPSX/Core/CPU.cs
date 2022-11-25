@@ -52,10 +52,10 @@ namespace ProjectPSX {
             public uint opcode => value >> 26;     //Instr opcode
 
             //I-Type
-            public uint rs => (value >> 21) & 0x1F;//Register Source
-            public uint rt => (value >> 16) & 0x1F;//Register Target
-            public uint imm => value & 0xFFFF;     //Immediate value
-            public uint imm_s => (uint)(short)imm; //Immediate value sign extended
+            public uint rs => (value >> 21) & 0x1F;  //Register Source
+            public uint rt => (value >> 16) & 0x1F;  //Register Target
+            public uint imm => (ushort)value;        //Immediate value
+            public uint imm_s => (uint)(short)value; //Immediate value sign extended
 
             //R-Type
             public uint rd => (value >> 11) & 0x1F;
@@ -150,8 +150,8 @@ namespace ProjectPSX {
             }
 
             bool IEC = (COP0_GPR[SR] & 0x1) == 1;
-            uint IM = (COP0_GPR[SR] >> 8) & 0xFF;
-            uint IP = (COP0_GPR[CAUSE] >> 8) & 0xFF;
+            byte IM = (byte)((COP0_GPR[SR] >> 8) & 0xFF);
+            byte IP = (byte)((COP0_GPR[CAUSE] >> 8) & 0xFF);
 
             if (IEC && (IM & IP) > 0) {
                 EXCEPTION(this, EX.INTERRUPT);
