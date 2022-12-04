@@ -81,6 +81,10 @@ namespace ProjectPSX.Devices {
                 }
             }
 
+            public bool isDMAControlMasterEnabled(int channelNumber) {
+                return (((control >> 3) >> 4 * channelNumber) & 0x1) != 0;
+            }
+
             private bool updateMasterFlag() {
                 //Bit31 is a simple readonly flag that follows the following rules:
                 //IF b15 = 1 OR(b23 = 1 AND(b16 - 22 AND b24 - 30) > 0) THEN b31 = 1 ELSE b31 = 0
@@ -111,6 +115,8 @@ namespace ProjectPSX.Devices {
             private uint choppingCPUWindowSize;
             private bool enable;
             private bool trigger;
+
+            private uint unknownBit29;
             private uint unknownBit30;
 
             private BUS bus;
@@ -143,6 +149,7 @@ namespace ProjectPSX.Devices {
                 channelControl |= choppingCPUWindowSize << 20;
                 channelControl |= (enable ? 1u : 0) << 24;
                 channelControl |= (trigger ? 1u : 0) << 28;
+                channelControl |= unknownBit29 << 29;
                 channelControl |= unknownBit30 << 30;
 
                 if (channelNumber == 6) {
@@ -170,13 +177,14 @@ namespace ProjectPSX.Devices {
                 choppingCPUWindowSize = (value >> 20) & 0x7;
                 enable = ((value >> 24) & 0x1) != 0;
                 trigger = ((value >> 28) & 0x1) != 0;
+                unknownBit29 = (value >> 29) & 0x1;
                 unknownBit30 = (value >> 30) & 0x1;
 
                 handleDMA();
             }
 
             private void handleDMA() {
-                if (!isActive()) return;
+                if (!isActive() || !interrupt.isDMAControlMasterEnabled(channelNumber)) return;
                 if (syncMode == 0) {
                     blockCopy(blockSize == 0 ? 0x10_000 : blockSize);
                 } else if (syncMode == 1) {
