@@ -171,7 +171,7 @@ namespace ProjectPSX.Devices {
             private void handleDMA() {
                 if (!isActive()) return;
                 if (syncMode == 0) {
-                    blockCopy(blockSize);
+                    blockCopy(blockSize == 0 ? 0x10_000 : blockSize);
                 } else if (syncMode == 1) {
                     blockCopy(blockSize * blockCount);
                 } else if (syncMode == 2) {
