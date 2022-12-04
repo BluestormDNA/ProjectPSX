@@ -111,6 +111,7 @@ namespace ProjectPSX.Devices {
             private uint choppingCPUWindowSize;
             private bool enable;
             private bool trigger;
+            private uint unknownBit30;
 
             private BUS bus;
             private InterruptChannel interrupt;
@@ -142,6 +143,11 @@ namespace ProjectPSX.Devices {
                 channelControl |= choppingCPUWindowSize << 20;
                 channelControl |= (enable ? 1u : 0) << 24;
                 channelControl |= (trigger ? 1u : 0) << 28;
+                channelControl |= unknownBit30 << 30;
+
+                if (channelNumber == 6) {
+                    return channelControl & 0x5000_0002 | 0x2;
+                }
 
                 return channelControl;
             }
@@ -164,6 +170,7 @@ namespace ProjectPSX.Devices {
                 choppingCPUWindowSize = (value >> 20) & 0x7;
                 enable = ((value >> 24) & 0x1) != 0;
                 trigger = ((value >> 28) & 0x1) != 0;
+                unknownBit30 = (value >> 30) & 0x1;
 
                 handleDMA();
             }
