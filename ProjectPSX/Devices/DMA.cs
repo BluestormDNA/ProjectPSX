@@ -1,6 +1,5 @@
 ﻿
 using System;
-using System.Collections.Generic;
 
 namespace ProjectPSX.Devices {
     public class DMA {
@@ -76,7 +75,6 @@ namespace ProjectPSX.Devices {
                 //Console.WriteLine($"MasterFlag: {masterFlag} irqEnable16: {irqEnable:x8} irqFlag24: {irqFlag:x8} {forceIRQ} {masterEnable} {((irqEnable & irqFlag) > 0)}");
                 masterFlag = updateMasterFlag();
                 edgeInterruptTrigger |= masterFlag;
-                }
             }
 
             public bool isDMAControlMasterEnabled(int channelNumber) {
@@ -120,6 +118,8 @@ namespace ProjectPSX.Devices {
             private BUS bus;
             private InterruptChannel interrupt;
             private int channelNumber;
+
+            private uint pendingBlocks;
 
             public Channel(int channelNumber, InterruptChannel interrupt, BUS bus) {
                 this.channelNumber = channelNumber;
@@ -178,26 +178,46 @@ namespace ProjectPSX.Devices {
                 unknownBit29 = (value >> 29) & 0x1;
                 unknownBit30 = (value >> 30) & 0x1;
 
+                if (!enable) pendingBlocks = 0;
+
                 handleDMA();
             }
 
             private void handleDMA() {
                 if (!isActive() || !interrupt.isDMAControlMasterEnabled(channelNumber)) return;
                 if (syncMode == 0) {
+                    //if (choppingEnable == 1) {
+                    //    Console.WriteLine($"[DMA] Chopping Syncmode 0 not supported. DmaWindow: {choppingDMAWindowSize} CpuWindow: {choppingCPUWindowSize}");
+                    //}
+
                     blockCopy(blockSize == 0 ? 0x10_000 : blockSize);
+                    finishDMA();
+
                 } else if (syncMode == 1) {
-                    blockCopy(blockSize * blockCount);
+                    // HACK:
+                    // GPUIn: Bypass blocks to elude mdec/gpu desync as MDEC is actually too fast decoding blocks
+                    // MdecIn: GranTurismo produces some artifacts that still needs to be checked otherwise it's ok on other games i've checked
+                    if (channelNumber == 2 && transferDirection == 1 || channelNumber == 0) {
+                        blockCopy(blockSize * blockCount);
+                        finishDMA();
+                        return;
+                    }
+
+                    trigger = false;
+                    pendingBlocks = blockCount;
+                    transferBlockIfPending();
                 } else if (syncMode == 2) {
                     linkedList();
+                    finishDMA();
                 }
+            }
 
-                //disable channel
+            private void finishDMA() {
                 enable = false;
                 trigger = false;
 
                 interrupt.handleInterrupt(channelNumber);
             }
-
 
             private void blockCopy(uint size) {
                 if (transferDirection == 0) { //To Ram
@@ -217,7 +237,7 @@ namespace ProjectPSX.Devices {
 
                     Span<uint> dma = bus.DmaFromRam(baseAddress & 0x1F_FFFC, size);
 
-                    switch(channelNumber) {
+                    switch (channelNumber) {
                         case 0: bus.DmaToMdecIn(dma); break;
                         case 2: bus.DmaToGpu(dma); break;
                         case 4: bus.DmaToSpu(dma); break;
@@ -254,6 +274,18 @@ namespace ProjectPSX.Devices {
             //0  Start immediately and transfer all at once (used for CDROM, OTC) needs TRIGGER
             private bool isActive() => syncMode == 0 ? enable && trigger : enable;
 
+            public void transferBlockIfPending() {
+                //TODO: check if device can actually transfer. Here we assume devices are always
+                // capable of processing the dmas and never busy.
+                if (pendingBlocks > 0) {
+                    pendingBlocks--;
+                    blockCopy(blockSize);
+
+                    if (pendingBlocks == 0) {
+                        finishDMA();
+                    }
+                }
+            }
         }
 
         AChannel[] channels = new AChannel[8];
@@ -285,7 +317,12 @@ namespace ProjectPSX.Devices {
             channels[channel].write(register, value);
         }
 
-        public bool tick() => ((InterruptChannel)channels[7]).tick();
+        public bool tick() {
+            for (int i = 0; i < 7; i++) {
+                ((Channel)channels[i]).transferBlockIfPending();
+            }
+            return ((InterruptChannel)channels[7]).tick();
+        }
 
     }
 }
