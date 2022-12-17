@@ -75,9 +75,7 @@ namespace ProjectPSX.Devices {
 
                 //Console.WriteLine($"MasterFlag: {masterFlag} irqEnable16: {irqEnable:x8} irqFlag24: {irqFlag:x8} {forceIRQ} {masterEnable} {((irqEnable & irqFlag) > 0)}");
                 masterFlag = updateMasterFlag();
-
-                if (masterFlag) {
-                    edgeInterruptTrigger = true;
+                edgeInterruptTrigger |= masterFlag;
                 }
             }
 
