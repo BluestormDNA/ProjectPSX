@@ -301,22 +301,27 @@ namespace ProjectPSX.Devices {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private uint readFromVRAM() {
-            ushort pixel0 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
-            ushort pixel1 = vram.GetPixelBGR555(vramTransfer.x++ & 0x3FF, vramTransfer.y & 0x1FF);
-
-            if (vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
-                vramTransfer.x -= vramTransfer.w;
-                vramTransfer.y++;
-            }
+            ushort pixel0 = vram.GetPixelBGR555(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF);
+            stepVramTransfer();
+            ushort pixel1 = vram.GetPixelBGR555(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF);
+            stepVramTransfer();
 
             vramTransfer.halfWords -= 2;
 
-            if(vramTransfer.halfWords == 0) {
+            if (vramTransfer.halfWords == 0) {
                 isReadyToSendVRAMToCPU = false;
                 isReadyToReceiveDMABlock = true;
             }
 
             return (uint)(pixel1 << 16 | pixel0);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void stepVramTransfer() {
+            if (++vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
+                vramTransfer.x -= vramTransfer.w;
+                vramTransfer.y++;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -326,12 +331,7 @@ namespace ProjectPSX.Devices {
                 vram1555.SetPixel(vramTransfer.x & 0x3FF, vramTransfer.y & 0x1FF, color1555);
             }
 
-            vramTransfer.x++;
-
-            if (vramTransfer.x == vramTransfer.origin_x + vramTransfer.w) {
-                vramTransfer.x -= vramTransfer.w;
-                vramTransfer.y++;
-            }
+            stepVramTransfer();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
