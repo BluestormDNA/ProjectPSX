@@ -13,8 +13,8 @@ namespace ProjectPSX.Devices {
         private const int MACRO_BLOCK_DECODED_BYTES = 256 * 3;
 
         //Status Register
-        //private bool isDataOutFifoEmpty;
         private bool isDataInFifoFull;
+        private bool isDataOutFifoEmpty;
         private bool isCommandBusy;
         private bool isDataInRequested;
         private bool isDataOutRequested;
@@ -41,6 +41,8 @@ namespace ProjectPSX.Devices {
         private IMemoryOwner<byte> outBuffer = MemoryPool<byte>.Shared.Rent(0x30000); //wild guess while resumable dmas come...
         private int outBufferPos = 0;
 
+        private int pendingBytesToTransfer;
+
         public void write(uint addr, uint value) {
             uint register = addr & 0xF;
             if (register == 0) {
@@ -53,7 +55,8 @@ namespace ProjectPSX.Devices {
         }
 
         public void writeMDEC0_Command(uint value) { //1F801820h - MDEC0 - MDEC Command/Parameter Register (W)
-            //Console.WriteLine("[MDEC] Write " + value.ToString("x8"));
+            isCommandBusy = true;
+
             if (remainingDataWords == 0) {
                 decodeCommand(value);
             } else {
@@ -61,18 +64,15 @@ namespace ProjectPSX.Devices {
                 inBuffer.Enqueue((ushort)(value >> 16));
 
                 remainingDataWords--;
-                //Console.WriteLine("[MDEC] remaining " + remainingDataWords);
                 if (command == decodeMacroBlocks) {
                     command();
                 }
             }
 
             if (remainingDataWords == 0) {
-                isCommandBusy = true;
-                yuvToRgbBlockPos = 0;
-                outBufferPos = 0;
                 if (command != decodeMacroBlocks) {
                     command();
+                    isCommandBusy = false;
                 }
             }
 
@@ -107,17 +107,19 @@ namespace ProjectPSX.Devices {
 
                 currentBlock = 0;
 
+                blockPointer = 64;
+                q_scale = 0;
+                val = 0;
+                n = 0;
+
                 yuv_to_rgb(block[2], 0, 0);
                 yuv_to_rgb(block[3], 8, 0);
                 yuv_to_rgb(block[4], 0, 8);
                 yuv_to_rgb(block[5], 8, 8);
 
+                isDataOutFifoEmpty = false;
                 yuvToRgbBlockPos += MACRO_BLOCK_DECODED_BYTES;
-
-                blockPointer = 64;
-                q_scale = 0;
-                val = 0;
-                n = 0;
+                pendingBytesToTransfer += MACRO_BLOCK_DECODED_BYTES;
             }
         }
 
@@ -158,7 +160,7 @@ namespace ProjectPSX.Devices {
         private int val;
         private ushort n;
         public bool rl_decode_block(short[] blk, byte[] qt) {
-            if (blockPointer >= 64) { //Start of new block
+            if (blockPointer >= 63) { //Start of new block
                 for (int i = 0; i < blk.Length; i++) {
                     blk[i] = 0;
                 }
@@ -177,7 +179,7 @@ namespace ProjectPSX.Devices {
             }
 
 
-            while (blockPointer < blk.Length) {
+            while (blockPointer < 63) {
                 if (q_scale == 0) {
                     val = signed10bit(n & 0x3FF) * 2;
                 }
@@ -253,6 +255,11 @@ namespace ProjectPSX.Devices {
                 outBufferPos = 0;
                 currentBlock = 0;
                 remainingDataWords = 0;
+                pendingBytesToTransfer = 0;
+                yuvToRgbBlockPos = 0;
+
+                inBuffer.Clear();
+                //outBuffer.Memory.Span.Clear();
 
                 blockPointer = 64;
                 q_scale = 0;
@@ -262,20 +269,28 @@ namespace ProjectPSX.Devices {
                 command = null;
             }
 
-            isDataInRequested = ((value >> 30) & 0x1) == 1; //todo enable dma
+            isDataInRequested = ((value >> 30) & 0x1) == 1;
             isDataOutRequested = ((value >> 29) & 0x1) == 1;
-
-            //Console.WriteLine("[MDEC] dataInRequest " + isDataInRequested + " dataOutRequested " + isDataOutRequested);
         }
 
 
         public uint readMDEC0_Data() { //1F801820h.Read - MDEC Data/Response Register (R)
             if (dataOutputDepth == 2) { //2 24b
-                var span = outBuffer.Memory.Span.Slice(outBufferPos++ * 4, 4);
+                int size = 4;
+                var span = outBuffer.Memory.Span.Slice(outBufferPos, size);
+                outBufferPos += size;
+                pendingBytesToTransfer -= size;
+
+                handlePossibleDataOutEnd();
 
                 return Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(span));
             } else if (dataOutputDepth == 3) { //3 15b
-                var span = outBuffer.Memory.Span.Slice(outBufferPos++ * 6, 6);
+                int size = 6; // 6 bytes for 2 packed 15b
+                var span = outBuffer.Memory.Span.Slice(outBufferPos, size);
+                outBufferPos += size;
+                pendingBytesToTransfer -= size;
+
+                handlePossibleDataOutEnd();
 
                 ushort lo = (ushort)(bit15 << 15 | convert24to15bpp(span[0], span[1], span[2]));
                 ushort hi = (ushort)(bit15 << 15 | convert24to15bpp(span[3], span[4], span[5]));
@@ -287,13 +302,23 @@ namespace ProjectPSX.Devices {
 
         }
 
-        public Span<uint> processDmaLoad(int size) {
+        public Span<uint> processDmaLoad(int dmaSize) {
             if (dataOutputDepth == 2) { //2 24b
-                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos++ * 4 * size, 4 * size); //4 = RGBR, GBRG, BRGB...
+                int size = dmaSize * 4; // DMA Size in words to bytes extracting 4 bytes of packed RGB data
+                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos, size); //4 = RGBR, GBRG, BRGB...
+                outBufferPos += size;
+                pendingBytesToTransfer -= size;
+
+                handlePossibleDataOutEnd();
 
                 return MemoryMarshal.Cast<byte, uint>(byteSpan);
             } else if (dataOutputDepth == 3) { //3 15b
-                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos++ * 6 * size, 6 * size); //6 = RGB * 2 => b15|b15
+                int size = dmaSize * 6; // DMA Size in words to bytes as packed 15b data (RGB * 2 => b15|b15)
+                var byteSpan = outBuffer.Memory.Span.Slice(outBufferPos, size);
+                outBufferPos += size;
+                pendingBytesToTransfer -= size;
+
+                handlePossibleDataOutEnd();
 
                 for (int b24 = 0, b15 = 0; b24 < byteSpan.Length; b24 += 3, b15 += 2) {
                     var r = byteSpan[b24 + 0] >> 3;
@@ -308,11 +333,11 @@ namespace ProjectPSX.Devices {
                     byteSpan[b15 + 1] = hi;
                 }
 
-                var dma = MemoryMarshal.Cast<byte, uint>(byteSpan.Slice(0, 4 * size));
+                var dma = MemoryMarshal.Cast<byte, uint>(byteSpan.Slice(0, 4 * dmaSize));
 
                 return dma;
             } else { //unsupported mode allocate and return garbage so can be seen
-                uint[] garbage = new uint[size];
+                uint[] garbage = new uint[dmaSize];
                 var dma = new Span<uint>(garbage);
                 dma.Fill(0xFF00FF00);
                 return dma;
@@ -330,25 +355,29 @@ namespace ProjectPSX.Devices {
         public uint readMDEC1_Status() {//1F801824h - MDEC1 - MDEC Status Register (R)
             uint status = 0;
 
-            status |= (isDataOutFifoEmpty() ? 1u : 0) << 31;
+            status |= (isDataOutFifoEmpty ? 1u : 0) << 31;
             status |= (isDataInFifoFull ? 1u : 0) << 30;
             status |= (isCommandBusy ? 1u : 0) << 29;
-            status |= (isDataInRequested ? 1u : 0) << 28;
-            status |= (isDataOutRequested ? 1u : 0) << 27;
+            status |= (isDataInRequested ? 1u : 0) << 28; // this should be && "enough space in the inQueue"
+            status |= ((isDataOutRequested && pendingBytesToTransfer != 0) ? 1u : 0) << 27;
             status |= dataOutputDepth << 25;
             status |= (isSigned ? 1u : 0) << 24;
             status |= bit15 << 23;
             status |= (currentBlock + 4) % NUM_BLOCKS << 16;
             status |= (ushort)(remainingDataWords - 1);
             //Console.WriteLine("[MDEC] Load Status " + status.ToString("x8"));
-            //Console.ReadLine();
-
-            isCommandBusy = false;
 
             return status;
         }
 
-        private bool isDataOutFifoEmpty() => outBufferPos == 0; //Todo compare to inbufferpos when we handle full dma in
+        private void handlePossibleDataOutEnd() {
+            if (pendingBytesToTransfer <= 0 && remainingDataWords == 0) {
+                outBufferPos = 0;
+                yuvToRgbBlockPos = 0;
+                isCommandBusy = false;
+                isDataOutFifoEmpty = true;
+            }
+        }
 
         private static ReadOnlySpan<byte> zagzig => new byte[] {
              0,  1,  8, 16,  9,  2,  3, 10,

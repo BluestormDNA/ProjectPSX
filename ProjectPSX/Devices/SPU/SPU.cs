@@ -1041,7 +1041,7 @@ namespace ProjectPSX.Devices {
                 dmaSpan.CopyTo(ramDestSpan);
             } else {
                 int overflow = destAddress - 0x7FFFF;
-        
+
                 Span<byte> firstSlice = dmaSpan.Slice(0, dmaSpan.Length - overflow);
                 Span<byte> overflowSpan = dmaSpan.Slice(dmaSpan.Length - overflow);
         
@@ -1049,7 +1049,7 @@ namespace ProjectPSX.Devices {
                 overflowSpan.CopyTo(ramStartSpan);
             }
         
-            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + size);
+            ramDataTransferAddressInternal = (uint)((ramDataTransferAddressInternal + size) & 0x7FFFF);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
