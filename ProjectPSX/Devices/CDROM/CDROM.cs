@@ -107,7 +107,7 @@ namespace ProjectPSX.Devices {
         private int counter;
         private Queue<DelayedInterrupt> interruptQueue = new Queue<DelayedInterrupt>();
 
-       public class DelayedInterrupt {
+        public class DelayedInterrupt {
             public int delay;
             public byte interrupt;
 
@@ -147,10 +147,44 @@ namespace ProjectPSX.Devices {
 
         private bool edgeTrigger;
 
+        private Dictionary<uint, string> commands = new Dictionary<uint, string> {
+            [0x01] = "Cmd_01_GetStat",
+            [0x02] = "Cmd_02_SetLoc",
+            [0x03] = "Cmd_03_Play",
+            [0x04] = "Cmd_04_Forward",
+            [0x05] = "Cmd_05_Backward",
+            [0x06] = "Cmd_06_ReadN",
+            [0x07] = "Cmd_07_MotorOn",
+            [0x08] = "Cmd_08_Stop",
+            [0x09] = "Cmd_09_Pause",
+            [0x0A] = "Cmd_0A_Init",
+            [0x0B] = "Cmd_0B_Mute",
+            [0x0C] = "Cmd_0C_Demute",
+            [0x0D] = "Cmd_0D_SetFilter",
+            [0x0E] = "Cmd_0E_SetMode",
+            [0x0F] = "Cmd_0F_GetParam",
+            [0x10] = "Cmd_10_GetLocL",
+            [0x11] = "Cmd_11_GetLocP",
+            [0x12] = "Cmd_12_SetSession",
+            [0x13] = "Cmd_13_GetTN",
+            [0x14] = "Cmd_14_GetTD",
+            [0x15] = "Cmd_15_SeekL",
+            [0x16] = "Cmd_16_SeekP",
+            [0x17] = "--- [Unimplemented]",
+            [0x18] = "--- [Unimplemented]",
+            [0x19] = "Cmd_19_Test",
+            [0x1A] = "Cmd_1A_GetID",
+            [0x1B] = "Cmd_1B_ReadS",
+            [0x1C] = "Cmd_1C_Reset [Unimplemented]",
+            [0x1D] = "Cmd_1D_GetQ [Unimplemented]",
+            [0x1E] = "Cmd_1E_ReadTOC",
+            [0x1F] = "Cmd_1F_VideoCD",
+        };
+
         public bool tick(int cycles) {
             counter += cycles;
 
-            if(interruptQueue.Count != 0) {
+            if (interruptQueue.Count != 0) {
                 var delayedInterrupt = interruptQueue.Peek();
                 delayedInterrupt.delay -= cycles;
             }
@@ -345,8 +379,8 @@ namespace ProjectPSX.Devices {
                 case 0x1F801801:
                     if (INDEX == 0) {
                         if (cdDebug) {
-                            Console.BackgroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine($"[CDROM] [W01.0] [COMMAND] >>> {value:x2}");
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"[CDROM] [W01.0] [COMMAND] {value:x2} {commands.GetValueOrDefault(value, "---")}");
                             Console.ResetColor();
                         }
                         ExecuteCommand(value);
@@ -914,7 +948,7 @@ namespace ProjectPSX.Devices {
             responseBuffer.EnqueueRange(stackalloc byte[] { 0x11, 0x40 });
 
             interruptQueue.EnqueueDelayedInterrupt(Interrupt.INT5_ERROR);
-        }   
+        }
 
         private void Cmd_5x_lockUnlock() {
             interruptQueue.EnqueueDelayedInterrupt(Interrupt.INT5_ERROR);
