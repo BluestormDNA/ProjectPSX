@@ -68,6 +68,8 @@ namespace ProjectPSX {
             screen.MouseDoubleClick += new MouseEventHandler(toggleDebug);
 
             Controls.Add(screen);
+            // Debug will crash if not:
+            CheckForIllegalCrossThreadCalls = false;
 
             KeyDown += new KeyEventHandler(handleJoyPadDown);
             KeyUp += new KeyEventHandler(handleJoyPadUp);
