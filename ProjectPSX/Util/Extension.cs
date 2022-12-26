@@ -9,7 +9,7 @@ namespace ProjectPSX.Devices {
                 queue.Enqueue(parameter);
         }
 
-        public static void EnqueueDelayedInterrupt(this Queue<DelayedInterrupt> queue, byte interrupt, int delay = 5000) {
+        public static void EnqueueDelayedInterrupt(this Queue<DelayedInterrupt> queue, byte interrupt, int delay = 50_000) {
             queue.Enqueue(new DelayedInterrupt(delay, interrupt));
         }
     }
