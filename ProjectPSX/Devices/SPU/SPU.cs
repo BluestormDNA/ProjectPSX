@@ -801,11 +801,15 @@ namespace ProjectPSX.Devices {
             //Merge in CD audio (CDDA or XA)
             short cdL = 0;
             short cdR = 0;
-            if(control.cdAudioEnabled && cdBuffer.hasSamples()) { //Be sure theres something on the queue...
-                //todo refactor the byte/short queues and casts
+
+            // CD Audio samples are always "consumed" even if cdAudio is disabled and will end
+            // on the capture buffer area of ram, this is needed for VibRibbon to be playable
+            if(cdBuffer.hasSamples()) {
                 cdL = cdBuffer.readShort();
                 cdR = cdBuffer.readShort();
+            }
 
+            if(control.cdAudioEnabled) { //Be sure theres something on the queue...
                 //Apply Spu Cd In (CDDA/XA) Volume
                 cdL = (short)((cdL * cdVolumeLeft) >> 15);
                 cdR = (short)((cdR * cdVolumeRight) >> 15);
@@ -1012,13 +1016,17 @@ namespace ProjectPSX.Devices {
         public unsafe Span<uint> processDmaLoad(int size) { //todo trigger interrupt
             Span<byte> dma = new Span<byte>(ram, 1024*512).Slice((int)ramDataTransferAddressInternal, size * 4);
 
-            //ramDataTransferAddressInternal and ramIrqAddress already are >> 3
+            //ramDataTransferAddressInternal already is >> 3 while ramIrqAddress is set as ushort
             //so check if it's in the size range and trigger int
-            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + (size * 4)) {
-                interruptController.set(Interrupt.SPU);
+            uint ramIrqAddress32 = (uint)ramIrqAddress << 3;
+            if (ramIrqAddress32 > ramDataTransferAddressInternal && ramIrqAddress32 < (ramDataTransferAddressInternal + (size * 4))) {
+                if(control.irq9Enabled) {
+                    status.irq9Flag = true;
+                    interruptController.set(Interrupt.SPU);
+                }
             }
 
-            ramDataTransferAddressInternal = (uint)(ramDataTransferAddressInternal + (size * 4));
+            ramDataTransferAddressInternal += (uint)(size * 4);
 
             return MemoryMarshal.Cast<byte, uint>(dma);
         }
@@ -1033,8 +1041,14 @@ namespace ProjectPSX.Devices {
             Span<byte> ramStartSpan = new Span<byte>(ram, 1024 * 512);
             Span<byte> ramDestSpan = ramStartSpan.Slice((int)ramDataTransferAddressInternal);
 
-            if (ramIrqAddress > ramDataTransferAddressInternal && ramIrqAddress < ramDataTransferAddressInternal + size) {
-                interruptController.set(Interrupt.SPU);
+            //ramDataTransferAddressInternal already is >> 3 while ramIrqAddress is set as ushort
+            //so check if it's in the size range and trigger int
+            uint ramIrqAddress32 = (uint)ramIrqAddress << 3;
+            if (ramIrqAddress32 > ramDataTransferAddressInternal && ramIrqAddress32 < (ramDataTransferAddressInternal + size)) {
+                if (control.irq9Enabled) {
+                    status.irq9Flag = true;
+                    interruptController.set(Interrupt.SPU);
+                }
             }
 
             if (destAddress <= 0x7FFFF) {
