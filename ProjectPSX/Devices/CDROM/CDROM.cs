@@ -236,7 +236,7 @@ namespace ProjectPSX.Devices {
 
                     //Handle Mode.Play:
                     if (mode == Mode.Play) {
-                        if (!mutedAudio && isCDDA) {
+                        if (!mutedAudio) {
                             applyVolume(readSector);
                             spu.pushCdBufferSamples(readSector);
                         }
