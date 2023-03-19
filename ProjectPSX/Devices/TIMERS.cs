@@ -137,8 +137,7 @@ namespace ProjectPSX.Devices {
                             counterValue += (ushort)cycles;
                             cycles = 0;
                         } else {
-                            counterValue += (ushort)(cycles / 2160);
-                            cycles %= 2160;
+                            if (!prevHblank && hblank) counterValue += 1;
                         }
 
                         return handleIrq();
