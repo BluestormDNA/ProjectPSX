@@ -243,16 +243,41 @@ namespace ProjectPSX.Devices {
 
                         if (isAutoPause && cd.isTrackChange) {
                             responseBuffer.Enqueue(STAT);
-                            interruptQueue.EnqueueDelayedInterrupt(Interrupt.INT4_DATA_END);
+                            interruptQueue.EnqueueDelayedInterrupt(Interrupt.INT4_DATA_END, 1);
 
-                            Cmd_09_Pause();
+                            STAT = 0x2;
+                            mode = Mode.Idle;
                         }
 
                         if (isReport) {
-                            //Console.WriteLine("Report Not Handled");
+                            (byte amm, byte ass, byte aff) = getMMSSFFfromLBA(readLoc);
+                            Track track = cd.getTrackFromLoc(readLoc);
+                            bool inPregap = readLoc < track.lbaStart;
+                            byte index = inPregap ? (byte)0 : (byte)1;
+
+                            responseBuffer.Enqueue(STAT);
+                            responseBuffer.Enqueue(track.number);
+                            responseBuffer.Enqueue(index);
+
+                            if ((aff & 0x10) != 0) {
+                                (byte mm, byte ss, byte ff) = getMMSSFFfromLBA(Math.Abs(readLoc - track.lbaStart));
+
+                                responseBuffer.Enqueue(DecToBcd(mm));
+                                responseBuffer.Enqueue((byte)(DecToBcd(ss) | 0x80));
+                                responseBuffer.Enqueue(DecToBcd(ff));
+                            } else {
+                                responseBuffer.Enqueue(DecToBcd(amm));
+                                responseBuffer.Enqueue(DecToBcd(ass));
+                                responseBuffer.Enqueue(DecToBcd(aff));
                         }
 
-                        return false; //CDDA isn't delivered to CPU and doesn't raise interrupt
+                            responseBuffer.Enqueue(0x80); // peekLo
+                            responseBuffer.Enqueue(0x80); // peekHi
+
+                            interruptQueue.EnqueueDelayedInterrupt(Interrupt.INT1_SECOND_RESPONSE_READ_PLAY, 1);
+                    }
+
+                        return false; //CDDA without report isn't delivered to CPU and doesn't raise interrupt
                     }
 
                     //Handle Mode.Read:
