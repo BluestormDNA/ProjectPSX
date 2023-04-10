@@ -528,19 +528,15 @@ namespace ProjectPSX {
             uint aligned_addr = addr & 0xFFFF_FFFC;
             uint aligned_load = cpu.bus.load32(aligned_addr);
 
-            uint value = 0;
             uint LRValue = cpu.GPR[cpu.instr.rt];
 
             if (cpu.instr.rt == cpu.memoryLoad.register) {
                 LRValue = cpu.memoryLoad.value;
             }
 
-            switch (addr & 0b11) {
-                case 0: value = (LRValue & 0x00FF_FFFF) | (aligned_load << 24); break;
-                case 1: value = (LRValue & 0x0000_FFFF) | (aligned_load << 16); break;
-                case 2: value = (LRValue & 0x0000_00FF) | (aligned_load << 8); break;
-                case 3: value = aligned_load; break;
-            }
+            int shift = (int)((addr & 0x3) << 3);
+            uint mask = (uint)0x00FF_FFFF >> shift;
+            uint value = (LRValue & mask) | (aligned_load << (24 - shift)); 
 
             delayedLoad(cpu, cpu.instr.rt, value);
         }
@@ -550,19 +546,15 @@ namespace ProjectPSX {
             uint aligned_addr = addr & 0xFFFF_FFFC;
             uint aligned_load = cpu.bus.load32(aligned_addr);
 
-            uint value = 0;
             uint LRValue = cpu.GPR[cpu.instr.rt];
 
             if (cpu.instr.rt == cpu.memoryLoad.register) {
                 LRValue = cpu.memoryLoad.value;
             }
 
-            switch (addr & 0b11) {
-                case 0: value = aligned_load; break;
-                case 1: value = (LRValue & 0xFF00_0000) | (aligned_load >> 8); break;
-                case 2: value = (LRValue & 0xFFFF_0000) | (aligned_load >> 16); break;
-                case 3: value = (LRValue & 0xFFFF_FF00) | (aligned_load >> 24); break;
-            }
+            int shift = (int)((addr & 0x3) << 3);
+            uint mask = 0xFFFF_FF00 << (24 - shift);
+            uint value = (LRValue & mask) | (aligned_load >> shift);
 
             delayedLoad(cpu, cpu.instr.rt, value);
         }
@@ -612,13 +604,9 @@ namespace ProjectPSX {
             uint aligned_addr = addr & 0xFFFF_FFFC;
             uint aligned_load = cpu.bus.load32(aligned_addr);
 
-            uint value = 0;
-            switch (addr & 0b11) {
-                case 0: value = cpu.GPR[cpu.instr.rt]; break;
-                case 1: value = (aligned_load & 0x0000_00FF) | (cpu.GPR[cpu.instr.rt] << 8); break;
-                case 2: value = (aligned_load & 0x0000_FFFF) | (cpu.GPR[cpu.instr.rt] << 16); break;
-                case 3: value = (aligned_load & 0x00FF_FFFF) | (cpu.GPR[cpu.instr.rt] << 24); break;
-            }
+            int shift = (int)((addr & 0x3) << 3);
+            uint mask = (uint)0x00FF_FFFF >> (24 - shift);
+            uint value = (aligned_load & mask) | (cpu.GPR[cpu.instr.rt] << shift);
 
             cpu.bus.write32(aligned_addr, value);
         }
@@ -628,13 +616,9 @@ namespace ProjectPSX {
             uint aligned_addr = addr & 0xFFFF_FFFC;
             uint aligned_load = cpu.bus.load32(aligned_addr);
 
-            uint value = 0;
-            switch (addr & 0b11) {
-                case 0: value = (aligned_load & 0xFFFF_FF00) | (cpu.GPR[cpu.instr.rt] >> 24); break;
-                case 1: value = (aligned_load & 0xFFFF_0000) | (cpu.GPR[cpu.instr.rt] >> 16); break;
-                case 2: value = (aligned_load & 0xFF00_0000) | (cpu.GPR[cpu.instr.rt] >> 8); break;
-                case 3: value = cpu.GPR[cpu.instr.rt]; break;
-            }
+            int shift = (int)((addr & 0x3) << 3);
+            uint mask = 0xFFFF_FF00 << shift;
+            uint value = (aligned_load & mask) | (cpu.GPR[cpu.instr.rt] >> (24 - shift));
 
             cpu.bus.write32(aligned_addr, value);
         }
