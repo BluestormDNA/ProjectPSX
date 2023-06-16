@@ -774,8 +774,7 @@ namespace ProjectPSX.Devices {
 
             if (isTextured) {
                 uint texture = buffer[pointer++];
-                textureData.x = (byte)(texture & 0xFF);
-                textureData.y = (byte)((texture >> 8) & 0xFF);
+                textureData.val = (ushort)texture;
 
                 ushort palette = (ushort)((texture >> 16) & 0xFFFF);
                 primitive.clut.x = (short)((palette & 0x3f) << 4);
@@ -787,24 +786,21 @@ namespace ProjectPSX.Devices {
             primitive.textureBase.y = (short)(textureYBase << 8);
             primitive.semiTransparencyMode = transparencyMode;
 
-            short width = 0;
-            short heigth = 0;
+            short width;
+            short heigth;
 
-            switch ((opcode & 0x18) >> 3) {
-                case 0x0:
-                    uint hw = buffer[pointer++];
-                    width = (short)(hw & 0xFFFF);
-                    heigth = (short)(hw >> 16);
-                    break;
-                case 0x1:
-                    width = 1; heigth = 1;
-                    break;
-                case 0x2:
-                    width = 8; heigth = 8;
-                    break;
-                case 0x3:
-                    width = 16; heigth = 16;
-                    break;
+            uint type = (opcode & 0x18) >> 3;
+
+            if (type == 0) {
+                uint hw = buffer[pointer++];
+                width = (short)(hw & 0xFFFF);
+                heigth = (short)(hw >> 16);
+            } else if (type == 1) {
+                width = 1; heigth = 1;
+            } else if (type == 2) {
+                width = 8; heigth = 8;
+            } else {
+                width = 16; heigth = 16;
             }
 
             short y = signed11bit((uint)(yo + drawingYOffset));
