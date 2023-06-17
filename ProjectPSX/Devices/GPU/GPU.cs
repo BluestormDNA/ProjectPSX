@@ -468,8 +468,9 @@ namespace ProjectPSX.Devices {
 
             if (!isShaded) {
                 uint color = buffer[pointer++];
-                c[0] = color; //triangle 1 opaque color
-                c[1] = color; //triangle 2 opaque color
+                uint rgbColor = (uint)GetRgbColor(color);
+                c[0] = rgbColor; //triangle 1 opaque color
+                c[1] = rgbColor; //triangle 2 opaque color
             }
 
             primitive.semiTransparencyMode = transparencyMode;
@@ -550,8 +551,6 @@ namespace ProjectPSX.Devices {
             int w1_row = orient2d(v2, v0, min) + bias1;
             int w2_row = orient2d(v0, v1, min) + bias2;
 
-            int baseColor = GetRgbColor(c0);
-
             // Rasterize
             for (int y = min.y; y < max.y; y++) {
                 // Barycentric coordinates at start of row
@@ -578,7 +577,7 @@ namespace ProjectPSX.Devices {
                         }
 
                         // reset default color of the triangle calculated outside the for as it gets overwriten as follows...
-                        int color = baseColor;
+                        int color = (int)c0;
 
                         if (primitive.isShaded) {
                             color0.val = c0;
@@ -1149,22 +1148,6 @@ namespace ProjectPSX.Devices {
                 case 0x8: GPUREAD = 0; break;
                 default: Console.WriteLine("[GPU] GP1 Unhandled GetInfo: " + info.ToString("x8")); break;
             }
-        }
-
-        private uint getTexpageFromGPU() {
-            uint texpage = 0;
-
-            texpage |= (isTexturedRectangleYFlipped ? 1u : 0) << 13;
-            texpage |= (isTexturedRectangleXFlipped ? 1u : 0) << 12;
-            texpage |= (isTextureDisabled ? 1u : 0) << 11;
-            texpage |= (isDrawingToDisplayAllowed ? 1u : 0) << 10;
-            texpage |= (isDithered ? 1u : 0) << 9;
-            texpage |= (uint)(textureDepth << 7);
-            texpage |= (uint)(transparencyMode << 5);
-            texpage |= (uint)(textureYBase << 4);
-            texpage |= textureXBase;
-
-            return texpage;
         }
 
         private int handleSemiTransp(int x, int y, int color, int semiTranspMode) {
