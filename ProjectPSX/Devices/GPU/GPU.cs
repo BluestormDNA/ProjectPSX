@@ -536,8 +536,8 @@ namespace ProjectPSX.Devices {
             /*clip*/
             min.x = (short)Math.Max(minX, drawingAreaLeft);
             min.y = (short)Math.Max(minY, drawingAreaTop);
-            max.x = (short)Math.Min(maxX, drawingAreaRight);
-            max.y = (short)Math.Min(maxY, drawingAreaBottom);
+            max.x = (short)Math.Min(maxX, drawingAreaRight + 1);
+            max.y = (short)Math.Min(maxY, drawingAreaBottom + 1);
 
             int A01 = v0.y - v1.y, B01 = v1.x - v0.x;
             int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
@@ -819,8 +819,8 @@ namespace ProjectPSX.Devices {
         private void rasterizeRect(Point2D origin, Point2D size, TextureData texture, uint bgrColor, Primitive primitive) {
             int xOrigin = Math.Max(origin.x, drawingAreaLeft);
             int yOrigin = Math.Max(origin.y, drawingAreaTop);
-            int width = Math.Min(size.x, drawingAreaRight);
-            int height = Math.Min(size.y, drawingAreaBottom);
+            int width = Math.Min(size.x, drawingAreaRight + 1);
+            int height = Math.Min(size.y, drawingAreaBottom + 1);
 
             int uOrigin = texture.x + (xOrigin - origin.x);
             int vOrigin = texture.y + (yOrigin - origin.y);
