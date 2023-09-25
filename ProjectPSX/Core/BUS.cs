@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 namespace ProjectPSX {
 
     public class BUS {
-        //todo write32/16/8 unification pending .NET 7 IBinaryNumber
 
         //Memory
         private unsafe byte* ramPtr = (byte*)Marshal.AllocHGlobal(2048 * 1024);
@@ -62,6 +61,8 @@ namespace ProjectPSX {
             } else if (addr < 0x1F80_1050) {
                 return joypad.load(addr);
             } else if (addr < 0x1F80_1060) {
+                //HardCode SIO_STAT
+                if (addr == 0x1F80_1054) return 0x0000_0805;
                 Console.WriteLine($"[BUS] Read Unsupported to SIO address: {addr:x8}");
                 return load<uint>(addr & 0xF, sio);
             } else if (addr < 0x1F80_1070) {
