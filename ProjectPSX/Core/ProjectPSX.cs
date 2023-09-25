@@ -50,12 +50,14 @@ namespace ProjectPSX {
 
         public void RunFrame() {
             //A lame mainloop with a workaround to be able to underclock.
+            int sync = 0;
             for (int i = 0; i < SYNC_LOOPS; i++) {
-                for (int j = 0; j < SYNC_CYCLES; j++) {
-                    cpu.Run();
+                while (sync < SYNC_CYCLES) {
+                    sync += cpu.Run();
                     //cpu.handleInterrupts();
                 }
-                bus.tick(SYNC_CYCLES * MIPS_UNDERCLOCK);
+                sync -= SYNC_CYCLES;
+                bus.tick(SYNC_CYCLES * MIPS_UNDERCLOCK + 1);
                 cpu.handleInterrupts();
             }
         }

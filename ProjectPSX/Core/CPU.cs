@@ -71,7 +71,6 @@ namespace ProjectPSX {
         private Instr instr;
 
         //Debug
-        private long cycle; //current CPU cycle counter for debug
         public bool debug = false;
 
         public CPU(BUS bus) {
@@ -106,8 +105,8 @@ namespace ProjectPSX {
             };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Run() {
-            fetchDecode();
+        public int Run() {
+            int ticks = fetchDecode();
             if (instr.value != 0) { //Skip Nops
                 opcodeMainTable[instr.opcode](this); //Execute
             }
@@ -121,6 +120,8 @@ namespace ProjectPSX {
 
             //TTY();
             //bios.verbose(PC_Now, GPR);
+
+            return ticks;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -159,15 +160,9 @@ namespace ProjectPSX {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void fetchDecode() {
+        private int fetchDecode() {
             //Executable address space is limited to ram and bios on psx
             uint maskedPC = PC & 0x1FFF_FFFF;
-            uint load;
-            if (maskedPC < 0x1F00_0000) {
-                load = bus.LoadFromRam(maskedPC);
-            } else {
-                load = bus.LoadFromBios(maskedPC);
-            }
 
             PC_Now = PC;
             PC = PC_Predictor;
@@ -182,12 +177,17 @@ namespace ProjectPSX {
             if ((PC_Now & 0x3) != 0) {
                 COP0_GPR[BADA] = PC_Now;
                 EXCEPTION(this, EX.LOAD_ADRESS_ERROR);
-                return;
+                return 1;
             }
 #endif
 
-            instr.value = load;
-            //cycle++;
+            if (maskedPC < 0x1F00_0000) {
+                instr.value = bus.LoadFromRam(maskedPC);
+                return 1;
+            } else {
+                instr.value = bus.LoadFromBios(maskedPC);
+                return 20;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -406,6 +406,7 @@ namespace ProjectPSX {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void MFC2(CPU cpu) => delayedLoad(cpu, cpu.instr.rt, cpu.gte.loadData(cpu.instr.rd));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
