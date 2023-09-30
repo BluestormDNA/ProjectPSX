@@ -841,8 +841,8 @@ namespace ProjectPSX.Devices {
             captureBufferPos = (captureBufferPos + 2) & 0x3FF;
 
             //Clamp sum
-            sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * mainVolumeLeft) >> 15;
-            sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * mainVolumeRight) >> 15;
+            sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFF) * (mainVolumeLeft << 1)) >> 15;
+            sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFF) * (mainVolumeRight << 1)) >> 15;
 
             //Add to samples bytes to output array
             spuOutput[spuOutputPointer++] = (byte)sumLeft;
