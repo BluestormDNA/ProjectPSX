@@ -52,7 +52,7 @@ namespace ProjectPSX.OpenTK {
                 queueLength++;
             }
             
-            if (AL.GetSourceState(audioSource) != ALSourceState.Playing)
+            if (GetSourceState(audioSource) != ALSourceState.Playing)
                 AL.SourcePlay(audioSource);
 
         }
@@ -61,6 +61,12 @@ namespace ProjectPSX.OpenTK {
         ~AudioPlayer() {
             ALC.DestroyContext(audioContext);
             ALC.CloseDevice(audioDevice);
+        }
+
+        public static ALSourceState GetSourceState(int sid)
+        {
+            AL.GetSource(sid, ALGetSourcei.SourceState, out var value);
+            return (ALSourceState)value;
         }
     }
 }

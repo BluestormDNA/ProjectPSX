@@ -11,7 +11,6 @@ namespace ProjectPSX.OpenTK {
         [STAThread]
         static void Main() {
             GameWindowSettings settings = new GameWindowSettings();
-            settings.RenderFrequency = 60;
             settings.UpdateFrequency = 60;
             NativeWindowSettings nativeWindow = new NativeWindowSettings();
             nativeWindow.API = ContextAPI.OpenGL;
