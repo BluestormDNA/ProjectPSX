@@ -1027,6 +1027,7 @@ namespace ProjectPSX.Devices {
             }
 
             ramDataTransferAddressInternal += (uint)(size * 4);
+            ramDataTransferAddressInternal &= 0x7FFFF;
 
             return MemoryMarshal.Cast<byte, uint>(dma);
         }
