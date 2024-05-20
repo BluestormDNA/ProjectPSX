@@ -116,7 +116,10 @@ namespace ProjectPSX.Devices {
         private bool isTexturedRectangleXFlipped;
         private bool isTexturedRectangleYFlipped;
 
-        private uint drawModeBits;
+        private uint drawModeBits = 0xFFFF_FFFF;
+        private uint displayModeBits = 0xFFFF_FFFF;
+        uint displayVerticalRange = 0xFFFF_FFFF;
+        uint displayHorizontalRange = 0xFFFF_FFFF;
 
         private uint textureWindowBits = 0xFFFF_FFFF;
         private int preMaskX;
@@ -1101,6 +1104,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_06_DisplayHorizontalRange(uint value) {
+            uint bits = value & 0xFF_FFFF;
+
+            if (bits == displayHorizontalRange) return;
+
+            displayHorizontalRange = bits;
+
             displayX1 = (ushort)(value & 0xFFF);
             displayX2 = (ushort)((value >> 12) & 0xFFF);
 
@@ -1108,6 +1117,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_07_DisplayVerticalRange(uint value) {
+            uint bits = value & 0xFF_FFFF;
+
+            if (bits == displayVerticalRange) return;
+
+            displayVerticalRange = bits;
+
             displayY1 = (ushort)(value & 0x3FF);
             displayY2 = (ushort)((value >> 10) & 0x3FF);
 
@@ -1115,6 +1130,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP1_08_DisplayMode(uint value) {
+            uint bits = value & 0xFF_FFFF;
+
+            if (bits == displayModeBits) return;
+
+            displayModeBits = bits;
+
             horizontalResolution1 = (byte)(value & 0x3);
             isVerticalResolution480 = (value & 0x4) != 0;
             isPal = (value & 0x8) != 0;
