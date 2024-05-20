@@ -116,6 +116,8 @@ namespace ProjectPSX.Devices {
         private bool isTexturedRectangleXFlipped;
         private bool isTexturedRectangleYFlipped;
 
+        private uint drawModeBits;
+
         private uint textureWindowBits = 0xFFFF_FFFF;
         private int preMaskX;
         private int preMaskY;
@@ -199,12 +201,7 @@ namespace ProjectPSX.Devices {
         public uint loadGPUSTAT() {
             uint GPUSTAT = 0;
 
-            GPUSTAT |= textureXBase;
-            GPUSTAT |= (uint)textureYBase << 4;
-            GPUSTAT |= (uint)transparencyMode << 5;
-            GPUSTAT |= (uint)textureDepth << 7;
-            GPUSTAT |= (uint)(isDithered ? 1 : 0) << 9;
-            GPUSTAT |= (uint)(isDrawingToDisplayAllowed ? 1 : 0) << 10;
+            GPUSTAT |= drawModeBits & 0x7FF;
             GPUSTAT |= (uint)maskWhileDrawing << 11;
             GPUSTAT |= (uint)(checkMaskBeforeDraw ? 1 : 0) << 12;
             GPUSTAT |= (uint)(isInterlaceField ? 1 : 0) << 13;
@@ -268,7 +265,7 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void processDma(Span<uint> dma) {
             if (mode == Mode.COMMAND) {
-                DecodeGP0Command(dma);
+                    DecodeGP0Command(dma);
             } else {
                 for (int i = 0; i < dma.Length; i++) {
                     WriteToVRAM(dma[i]);
@@ -494,11 +491,7 @@ namespace ProjectPSX.Devices {
                         uint texpage = textureData >> 16;
 
                         //SET GLOBAL GPU E1
-                        textureXBase = (byte)(texpage & 0xF);
-                        textureYBase = (byte)((texpage >> 4) & 0x1);
-                        transparencyMode = (byte)((texpage >> 5) & 0x3);
-                        textureDepth = (byte)((texpage >> 7) & 0x3);
-                        isTextureDisabled = isTextureDisabledAllowed && ((texpage >> 11) & 0x1) != 0;
+                        GP0_E1_SetDrawMode(texpage);
 
                         primitive.depth = textureDepth;
                         primitive.textureBase.x = (short)(textureXBase << 6);
@@ -986,6 +979,12 @@ namespace ProjectPSX.Devices {
         }
 
         private void GP0_E1_SetDrawMode(uint val) {
+            uint bits = val & 0xFF_FFFF;
+
+            if (bits == drawModeBits) return;
+
+            drawModeBits = bits;
+
             textureXBase = (byte)(val & 0xF);
             textureYBase = (byte)((val >> 4) & 0x1);
             transparencyMode = (byte)((val >> 5) & 0x3);
@@ -996,7 +995,7 @@ namespace ProjectPSX.Devices {
             isTexturedRectangleXFlipped = ((val >> 12) & 0x1) != 0;
             isTexturedRectangleYFlipped = ((val >> 13) & 0x1) != 0;
 
-            //Console.WriteLine("[GPU] [GP0] DrawMode ");
+            //Console.WriteLine("[GPU] [GP0] DrawMode " + val.ToString("x8"));
         }
 
         private void GP0_E2_SetTextureWindow(uint val) {
