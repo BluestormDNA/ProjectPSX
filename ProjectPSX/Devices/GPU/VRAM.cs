@@ -3,11 +3,11 @@ using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
     public class VRAM {
-        public int[] Bits { get; private set; }
+        public int[] Bits;
         public const int Height = 512;
         public const int Width = 1024;
 
-        protected GCHandle BitsHandle { get; private set; }
+        protected GCHandle BitsHandle;
 
         public VRAM() {
             Bits = new int[Width * Height];
