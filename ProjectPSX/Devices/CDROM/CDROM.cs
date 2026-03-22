@@ -1042,7 +1042,7 @@ namespace ProjectPSX.Devices {
         }
 
         private void applyVolume(byte[] rawSector) {
-            var samples = MemoryMarshal.Cast<byte, short>(rawSector);
+            var samples = MemoryMarshal.Cast<byte, short>(rawSector.AsSpan());
 
             for (int i = 0; i < samples.Length; i += 2) {
                 short l = samples[i];
