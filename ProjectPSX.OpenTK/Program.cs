@@ -26,7 +26,7 @@ namespace ProjectPSX.OpenTK {
             nativeWindow.APIVersion = new Version(3, 3);
             nativeWindow.Profile = ContextProfile.Core;
             nativeWindow.Flags = ContextFlags.ForwardCompatible; //Required by macOS
-            nativeWindow.Size = new Vector2i(800, 600);
+            nativeWindow.ClientSize = new Vector2i(800, 600);
             nativeWindow.Title = "ProjectPSX";
 
             using Window window = new Window(settings, nativeWindow, bootFile);

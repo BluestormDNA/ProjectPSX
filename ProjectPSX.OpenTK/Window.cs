@@ -163,16 +163,16 @@ namespace ProjectPSX.OpenTK {
             SwapBuffers();
         }
 
-        protected override void OnResize(ResizeEventArgs e) {
-            base.OnResize(e);
+        protected override void OnFramebufferResize(FramebufferResizeEventArgs e) {
+            base.OnFramebufferResize(e);
             UpdateViewport();
         }
 
         //Letterboxes the viewport so the output keeps its aspect ratio on any window size
         private void UpdateViewport() {
             float targetAspect = isVramViewer ? 1024f / 512f : 4f / 3f;
-            int width = ClientSize.X;
-            int height = ClientSize.Y;
+            int width = FramebufferSize.X;
+            int height = FramebufferSize.Y;
             if (height == 0) return;
 
             int viewportWidth = width;
