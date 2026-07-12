@@ -1,71 +1,78 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using OpenTK.Audio.OpenAL;
-using OpenTK.Mathematics;
 
 namespace ProjectPSX.OpenTK {
 
-    public class AudioPlayer {
-        int audioSource;
-        ALDevice audioDevice;
-        ALContext audioContext;
-        int queueLength = 0;
+    public class AudioPlayer : IDisposable {
+        private const int SampleRate = 44100;
+        private const int BufferCount = 5;
+
+        private ALDevice audioDevice;
+        private ALContext audioContext;
+        private int audioSource;
+        private readonly Stack<int> freeBuffers = new Stack<int>(BufferCount);
+
         public bool fastForward;
-        public bool audioDisabled;
+        private readonly bool audioDisabled;
 
         public AudioPlayer() {
             audioDevice = ALC.OpenDevice(null);
-            if (audioDevice == null) {
-                Console.WriteLine("Unable to create audio device");
+            if (audioDevice == ALDevice.Null) {
+                Console.WriteLine("[AUDIO] Unable to open the audio device. Audio disabled.");
+                audioDisabled = true;
                 return;
             }
             audioContext = ALC.CreateContext(audioDevice, (int[])null);
             ALC.MakeContextCurrent(audioContext);
+
             audioSource = AL.GenSource();
-            AL.Listener(ALListener3f.Position, 0, 0, 0);
-            AL.Listener(ALListener3f.Velocity, 0, 0, 0);
-            var orientation = new Vector3(0, 0, 0);
-            AL.Listener(ALListenerfv.Orientation, ref orientation, ref orientation);
-            fastForward = false;
-            audioDisabled = false;
+            for (int i = 0; i < BufferCount; i++) {
+                freeBuffers.Push(AL.GenBuffer());
+            }
         }
 
-        public unsafe void UpdateAudio(byte[] samples) {
-            int processed = 0;
-            int alBuffer = 0;
+        public void UpdateAudio(byte[] samples) {
+            if (audioDisabled) return;
 
-            while (true) {
-                AL.GetSource(audioSource, ALGetSourcei.BuffersProcessed, out processed);
-            
-                while (processed-- > 0) {
-                    AL.SourceUnqueueBuffers(audioSource, 1, ref alBuffer);
-                    AL.DeleteBuffer(alBuffer);
-                    queueLength--;
-                }
-            
-                if (queueLength < 5 || fastForward) break;
-            }
-            
-            if (queueLength < 5) {
-                alBuffer = AL.GenBuffer();
-                AL.BufferData(alBuffer, ALFormat.Stereo16, samples, 44100);
-                AL.SourceQueueBuffer(audioSource, alBuffer);
-                queueLength++;
-            }
-            
-            if (GetSourceState(audioSource) != ALSourceState.Playing)
+            ReclaimProcessedBuffers();
+
+            //Drop the samples if the queue is full (or on fast forward) instead of stalling the emulator
+            if (fastForward || freeBuffers.Count == 0) return;
+
+            int alBuffer = freeBuffers.Pop();
+            AL.BufferData(alBuffer, ALFormat.Stereo16, samples, SampleRate);
+            AL.SourceQueueBuffer(audioSource, alBuffer);
+
+            if (GetSourceState(audioSource) != ALSourceState.Playing) {
                 AL.SourcePlay(audioSource);
-
+            }
         }
 
-        // Is this automatically called by GC?
-        ~AudioPlayer() {
+        private void ReclaimProcessedBuffers() {
+            AL.GetSource(audioSource, ALGetSourcei.BuffersProcessed, out int processed);
+            while (processed-- > 0) {
+                freeBuffers.Push(AL.SourceUnqueueBuffer(audioSource));
+            }
+        }
+
+        public void Dispose() {
+            if (audioDisabled) return;
+
+            AL.SourceStop(audioSource);
+            ReclaimProcessedBuffers();
+            AL.DeleteSource(audioSource);
+            while (freeBuffers.Count > 0) {
+                AL.DeleteBuffer(freeBuffers.Pop());
+            }
+
+            ALC.MakeContextCurrent(ALContext.Null);
             ALC.DestroyContext(audioContext);
             ALC.CloseDevice(audioDevice);
         }
 
-        public static ALSourceState GetSourceState(int sid)
-        {
-            AL.GetSource(sid, ALGetSourcei.SourceState, out var value);
+        private static ALSourceState GetSourceState(int sid) {
+            AL.GetSource(sid, ALGetSourcei.SourceState, out int value);
             return (ALSourceState)value;
         }
     }
