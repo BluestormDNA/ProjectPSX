@@ -18,9 +18,6 @@ namespace ProjectPSX.OpenTK {
                 }
             }
 
-            GameWindowSettings settings = new GameWindowSettings();
-            settings.UpdateFrequency = 60;
-
             NativeWindowSettings nativeWindow = new NativeWindowSettings();
             nativeWindow.API = ContextAPI.OpenGL;
             nativeWindow.APIVersion = new Version(3, 3);
@@ -28,9 +25,9 @@ namespace ProjectPSX.OpenTK {
             nativeWindow.Flags = ContextFlags.ForwardCompatible; //Required by macOS
             nativeWindow.ClientSize = new Vector2i(800, 600);
             nativeWindow.Title = "ProjectPSX";
+            nativeWindow.Vsync = VSyncMode.On;
 
-            using Window window = new Window(settings, nativeWindow, bootFile);
-            window.VSync = VSyncMode.On;
+            using Window window = new Window(nativeWindow, bootFile);
             window.Run();
         }
     }

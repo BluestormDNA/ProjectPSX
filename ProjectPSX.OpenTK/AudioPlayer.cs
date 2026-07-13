@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using OpenTK.Audio.OpenAL;
+using OpenTK.Audio.OpenAL.ALC;
 
 namespace ProjectPSX.OpenTK {
 
@@ -8,17 +9,16 @@ namespace ProjectPSX.OpenTK {
         private const int SampleRate = 44100;
         private const int BufferCount = 5;
 
-        private ALDevice audioDevice;
-        private ALContext audioContext;
+        private ALCDevice audioDevice;
+        private ALCContext audioContext;
         private int audioSource;
         private readonly Stack<int> freeBuffers = new Stack<int>(BufferCount);
 
-        public bool fastForward;
         private readonly bool audioDisabled;
 
         public AudioPlayer() {
             audioDevice = ALC.OpenDevice(null);
-            if (audioDevice == ALDevice.Null) {
+            if (audioDevice == ALCDevice.Null) {
                 Console.WriteLine("[AUDIO] Unable to open the audio device. Audio disabled.");
                 audioDisabled = true;
                 return;
@@ -37,22 +37,25 @@ namespace ProjectPSX.OpenTK {
 
             ReclaimProcessedBuffers();
 
-            //Drop the samples if the queue is full (or on fast forward) instead of stalling the emulator
-            if (fastForward || freeBuffers.Count == 0) return;
+            //Drop the samples if the queue is full instead of stalling the emulator.
+            //This also plays what it can on fast forward like the WinForms NAudio discard does.
+            if (freeBuffers.Count == 0) return;
 
             int alBuffer = freeBuffers.Pop();
-            AL.BufferData(alBuffer, ALFormat.Stereo16, samples, SampleRate);
-            AL.SourceQueueBuffer(audioSource, alBuffer);
+            AL.BufferData(alBuffer, Format.Stereo16, samples, samples.Length, SampleRate);
+            AL.SourceQueueBuffers(audioSource, 1, ref alBuffer);
 
-            if (GetSourceState(audioSource) != ALSourceState.Playing) {
+            if (GetSourceState(audioSource) != SourceState.Playing) {
                 AL.SourcePlay(audioSource);
             }
         }
 
         private void ReclaimProcessedBuffers() {
-            AL.GetSource(audioSource, ALGetSourcei.BuffersProcessed, out int processed);
+            int processed = AL.GetSourcei(audioSource, SourceGetPNameI.BuffersProcessed);
             while (processed-- > 0) {
-                freeBuffers.Push(AL.SourceUnqueueBuffer(audioSource));
+                int alBuffer = 0;
+                AL.SourceUnqueueBuffers(audioSource, 1, ref alBuffer);
+                freeBuffers.Push(alBuffer);
             }
         }
 
@@ -66,14 +69,13 @@ namespace ProjectPSX.OpenTK {
                 AL.DeleteBuffer(freeBuffers.Pop());
             }
 
-            ALC.MakeContextCurrent(ALContext.Null);
+            ALC.MakeContextCurrent(ALCContext.Null);
             ALC.DestroyContext(audioContext);
             ALC.CloseDevice(audioDevice);
         }
 
-        private static ALSourceState GetSourceState(int sid) {
-            AL.GetSource(sid, ALGetSourcei.SourceState, out int value);
-            return (ALSourceState)value;
+        private static SourceState GetSourceState(int sid) {
+            return (SourceState)AL.GetSourcei(sid, SourceGetPNameI.SourceState);
         }
     }
 }

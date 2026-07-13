@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Threading;
 using OpenTK.Graphics.OpenGL;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
@@ -7,7 +10,9 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX.OpenTK {
-    public class Window : GameWindow, IHostWindow {
+    public class Window : NativeWindow, IHostWindow {
+
+        private const double FrameTime = 1.0 / 60;
 
         private const string VertexShaderSource = @"
             #version 330 core
@@ -30,6 +35,7 @@ namespace ProjectPSX.OpenTK {
 
         private ProjectPSX psx;
         private readonly string bootFile;
+        private bool isRunning = true;
 
         private readonly int[] displayBuffer = new int[1024 * 512];
         private readonly AudioPlayer audioPlayer = new AudioPlayer();
@@ -74,8 +80,7 @@ namespace ProjectPSX.OpenTK {
         private int vao;
         private int texture;
 
-        public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings, string bootFile)
-            : base(gameWindowSettings, nativeWindowSettings) {
+        public Window(NativeWindowSettings nativeWindowSettings, string bootFile) : base(nativeWindowSettings) {
             this.bootFile = bootFile;
         }
 
@@ -85,18 +90,76 @@ namespace ProjectPSX.OpenTK {
                 || file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        private void Window_FileDrop(FileDropEventArgs fileDrop) {
-            string file = fileDrop.FileNames[0];
-            if (IsPsxFile(file)) {
-                psx = new ProjectPSX(this, file);
+        public void Run() {
+            Context.MakeCurrent();
+            InitGL();
+
+            if (bootFile != null) {
+                psx = new ProjectPSX(this, bootFile);
+            } else {
+                Title = "ProjectPSX | Drop a .bin, .cue or .exe file to boot";
             }
+
+            long previous = Stopwatch.GetTimestamp();
+            double accumulator = 0;
+
+            while (isRunning) {
+                ProcessWindowEvents(false);
+                if (!isRunning) break;
+
+                long now = Stopwatch.GetTimestamp();
+                double delta = (now - previous) / (double)Stopwatch.Frequency;
+                previous = now;
+
+                if (psx != null) {
+                    if (isFastForward) {
+                        //The swap chain is capped to the display refresh rate on some drivers
+                        //even with vsync off so fast forward runs all the frames that fit on
+                        //a host frame budget instead of trying to uncap the loop
+                        long start = now;
+                        long budget = Stopwatch.Frequency / 70;
+                        do {
+                            psx.RunFrame();
+                        } while (Stopwatch.GetTimestamp() - start < budget);
+                        accumulator = 0;
+                    } else {
+                        //One emulated frame each 1/60 of wall time no matter how fast
+                        //the host loop spins or how the swap is paced
+                        accumulator += delta;
+                        if (accumulator > FrameTime * 4) accumulator = FrameTime * 4;
+                        while (accumulator >= FrameTime) {
+                            psx.RunFrame();
+                            accumulator -= FrameTime;
+                        }
+                    }
+                }
+
+                RenderFrame();
+                Context.SwapBuffers();
+
+                titleElapsed += delta;
+                if (titleElapsed >= 1) {
+                    titleElapsed = 0;
+                    if (psx != null) {
+                        Title = $"ProjectPSX | Vps {GetVPS()}{(isFastForward ? " | FF" : "")}";
+                    }
+                }
+
+                //Dont burn a core when the swap is not pacing the loop
+                if (psx == null) {
+                    Thread.Sleep(10);
+                } else if (!isFastForward && accumulator < FrameTime / 2) {
+                    Thread.Sleep(1);
+                }
+            }
+
+            GL.DeleteTexture(texture);
+            GL.DeleteVertexArray(vao);
+            GL.DeleteProgram(shaderProgram);
+            audioPlayer.Dispose();
         }
 
-        protected override void OnLoad() {
-            base.OnLoad();
-
-            FileDrop += Window_FileDrop;
-
+        private void InitGL() {
             shaderProgram = LinkProgram(
                 CompileShader(ShaderType.VertexShader, VertexShaderSource),
                 CompileShader(ShaderType.FragmentShader, FragmentShaderSource));
@@ -107,45 +170,18 @@ namespace ProjectPSX.OpenTK {
 
             texture = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2D, texture);
-            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba8,
+            GL.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8,
                 1024, 512, 0, PixelFormat.Bgra, PixelType.UnsignedByte, IntPtr.Zero);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
 
             GL.ClearColor(0, 0, 0, 1);
             UpdateViewport();
-
-            if (bootFile != null) {
-                psx = new ProjectPSX(this, bootFile);
-            } else {
-                Title = "ProjectPSX | Drop a .bin, .cue or .exe file to boot";
-            }
         }
 
-        protected override void OnUnload() {
-            GL.DeleteTexture(texture);
-            GL.DeleteVertexArray(vao);
-            GL.DeleteProgram(shaderProgram);
-            audioPlayer.Dispose();
-            base.OnUnload();
-        }
-
-        protected override void OnUpdateFrame(FrameEventArgs args) {
-            base.OnUpdateFrame(args);
-            psx?.RunFrame();
-
-            titleElapsed += args.Time;
-            if (titleElapsed >= 1 && psx != null) {
-                titleElapsed = 0;
-                Title = $"ProjectPSX | Vps {GetVPS()}{(isFastForward ? " | FF" : "")}";
-            }
-        }
-
-        protected override void OnRenderFrame(FrameEventArgs args) {
-            base.OnRenderFrame(args);
-
+        private void RenderFrame() {
             GL.Clear(ClearBufferMask.ColorBufferBit);
 
             GL.BindTexture(TextureTarget.Texture2D, texture);
@@ -156,11 +192,24 @@ namespace ProjectPSX.OpenTK {
             float uvScaleY = isVramViewer ? 1f : verticalRes / 512f;
 
             GL.UseProgram(shaderProgram);
-            GL.Uniform2(uvScaleLocation, uvScaleX, uvScaleY);
+            GL.Uniform2f(uvScaleLocation, uvScaleX, uvScaleY);
             GL.BindVertexArray(vao);
             GL.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+        }
 
-            SwapBuffers();
+        protected override void OnClosing(CancelEventArgs e) {
+            base.OnClosing(e);
+            if (!e.Cancel) {
+                isRunning = false;
+            }
+        }
+
+        protected override void OnFileDrop(FileDropEventArgs e) {
+            base.OnFileDrop(e);
+            string file = e.FileNames[0];
+            if (IsPsxFile(file)) {
+                psx = new ProjectPSX(this, file);
+            }
         }
 
         protected override void OnFramebufferResize(FramebufferResizeEventArgs e) {
@@ -196,9 +245,6 @@ namespace ProjectPSX.OpenTK {
                     return;
                 case Keys.F2:
                     isFastForward = !isFastForward;
-                    audioPlayer.fastForward = isFastForward;
-                    UpdateFrequency = isFastForward ? 0 : 60;
-                    VSync = isFastForward ? VSyncMode.Off : VSyncMode.On;
                     return;
             }
 
@@ -274,7 +320,7 @@ namespace ProjectPSX.OpenTK {
             int shader = GL.CreateShader(type);
             GL.ShaderSource(shader, source);
             GL.CompileShader(shader);
-            GL.GetShader(shader, ShaderParameter.CompileStatus, out int status);
+            int status = GL.GetShaderi(shader, ShaderParameterName.CompileStatus);
             if (status == 0) {
                 throw new Exception($"{type} compilation failed: {GL.GetShaderInfoLog(shader)}");
             }
@@ -286,7 +332,7 @@ namespace ProjectPSX.OpenTK {
             GL.AttachShader(program, vertexShader);
             GL.AttachShader(program, fragmentShader);
             GL.LinkProgram(program);
-            GL.GetProgram(program, GetProgramParameterName.LinkStatus, out int status);
+            int status = GL.GetProgrami(program, ProgramProperty.LinkStatus);
             if (status == 0) {
                 throw new Exception($"Shader program link failed: {GL.GetProgramInfoLog(program)}");
             }
